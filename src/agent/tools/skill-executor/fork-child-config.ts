@@ -59,7 +59,7 @@ export function buildForkedChildConfig(
   const { ctx, currentCwd } = internals;
   const depth = ctx.depth ?? 0;
   const maxDepth = ctx.maxDepth ?? resolveMaxNestingDepth();
-  const childConfig: AgentConfig = { ...baseConfig };
+  const childConfig: AgentConfig = { ...baseConfig, depth: depth + 1, maxDepth }; // #2266
 
   // Invariant (single source of truth for effective allowlist):
   //   readOnly && allowedTools  → intersection(allowedTools, RECON_ALLOWED_TOOLS) + readOnlyBash

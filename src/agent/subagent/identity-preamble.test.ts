@@ -1,4 +1,8 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+vi.mock('../tools/nesting.js', () => ({
+  resolveMaxNestingDepth: vi.fn().mockReturnValue(6),
+}));
 
 import {
   injectSubagentIdentityPreamble,
@@ -48,13 +52,23 @@ describe('renderSubagentIdentityPreamble', () => {
   it('falls back to the conditional-delegation line when depth or maxDepth is unknown', () => {
     for (const facts of [
       { depth: undefined, maxDepth: 3 },
-      { depth: 1, maxDepth: undefined },
+      { depth: 1, maxDepth: undefined }, // resolveMaxNestingDepth()=6 so 1<6 → may-delegate
       { depth: Number.NaN, maxDepth: 3 },
     ]) {
       const out = renderSubagentIdentityPreamble({ isNonInteractive: true, ...facts });
       expect(out).toContain(MAY_NEST);
       expect(out).not.toContain(AT_CAP);
     }
+  });
+
+  it('detects at-cap when maxDepth is absent but depth equals resolveMaxNestingDepth() (issue #2266)', () => {
+    // When a fork path threads depth but not maxDepth, resolveMaxNestingDepth()
+    // fills the gap so a child at the default cap is correctly told it cannot
+    // dispatch further, rather than silently receiving the "may delegate" line.
+    // resolveMaxNestingDepth is mocked to 6 at the top of this file.
+    const out = renderSubagentIdentityPreamble({ isNonInteractive: true, depth: 6, maxDepth: undefined });
+    expect(out).toContain(`${AT_CAP} (6/6)`);
+    expect(out).not.toContain(MAY_NEST);
   });
 });
 

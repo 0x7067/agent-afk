@@ -63,7 +63,9 @@ export interface AssembleChildConfigArgs<T> {
  * config AFTER every default in {@link assembleChildConfig} has been resolved,
  * because it derives its lines from `isNonInteractive` (defaulted to `true`
  * there) and the threaded `depth` / `maxDepth`. The budget preamble then
- * appends after it and stays the prompt's operational trailer; it likewise
+ * appends after the identity preamble, and when `workspaceStore` is set
+ * `injectWorkspacePreamble` appends after both — so the budget preamble is
+ * the trailer of the two fork preambles, not of the whole prompt. It likewise
  * reads the final resolved `maxToolUseIterations`.
  */
 function applyForkPreambles(config: AgentConfig): AgentConfig {
