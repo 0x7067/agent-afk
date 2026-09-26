@@ -397,7 +397,7 @@ export const ENV_REGISTRY = [
     type: 'string',
     required: false,
     default: 'medium',
-    example: 'claude-opus-5',
+    example: 'claude-opus-5-5',
     category: 'model',
   },
   {
@@ -522,7 +522,7 @@ export const ENV_REGISTRY = [
     description: 'Bind the "large" capability tier (most capable) to a model id/alias. Overrides afk.config.json models.large.',
     type: 'string',
     required: false,
-    example: 'claude-opus-5',
+    example: 'claude-opus-5-5',
     category: 'model',
   },
   {

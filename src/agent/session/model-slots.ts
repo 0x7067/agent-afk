@@ -115,7 +115,11 @@ export const CLAUDE_SONNET_ID = 'claude-sonnet-4-6';
 // model-limits.ts / resolve-params.ts / pricing keep entries for both wire ids,
 // and `claude-opus-5` stays reachable by its raw id either way.
 export const CLAUDE_OPUS_ID = 'claude-opus-5-5';
-/** Claude Opus 5.5 wire id (released 2026-09-22). */
+/**
+ * Claude Opus 5.5 wire id (released 2026-09-22) — kept as an independent
+ * literal so the `opus-5.5` / `opus-5.5_1m` aliases remain pinned to this
+ * exact model even if {@link CLAUDE_OPUS_ID} is later bumped to Opus 6+.
+ */
 export const CLAUDE_OPUS_55_ID = 'claude-opus-5-5';
 /** Claude Fable 5 wire id — Anthropic's most-capable widely-released model. */
 export const CLAUDE_FABLE_5_ID = 'claude-fable-5';
