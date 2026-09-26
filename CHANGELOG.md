@@ -11,6 +11,22 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.257.2] - 2026-09-26
+
+### Added
+- organic smoke reveal, eased settle, reduced-motion gate (886bdec1)
+
+### Fixed
+- thread depth/maxDepth through skill-fork and compose/DAG paths (8361a778)
+- advisory fixes for glob-absolute — metacharacter comment, separator normalization, typed test context, win32 testability (19cb41ea)
+- fix false-green tracking test, assert rank stripped, clean up unused vars (4dc68625)
+
+### Changed
+- Merge pull request #2284 from griffinwork40/afk/iso-agent-tool-1-6yudyk (22c6b0ae)
+- Merge pull request #2293 from griffinwork40/afk/smoke-organic (1314992c)
+- Merge pull request #2294 from griffinwork40/afk/iso-agent-tool-7-2cu3t7 (e006ab00)
+- Merge pull request #2292 from griffinwork40/afk/iso-agent-tool-9-tztgv1 (700b9ca6)
+
 ## [5.257.1] - 2026-09-26
 
 ### Fixed
