@@ -716,10 +716,8 @@ export class ComposeExecutor {
           ...(n.isolation === 'worktree' ? { isolation: 'worktree' as const } : {}),
           // Workspace-enabled provider (see compose-node-provider.ts).
           ...resolveComposeNodeProvider(nodeModel, this.ctx.workspaceStore, this.ctx.openaiBaseUrl),
-          // Per-node resolved attachments (undefined = no attachments, preserves
-          // prior behaviour exactly — dag-subagent.ts only builds image blocks
-          // when this field is set and non-empty).
-          ...(resolvedAttachments !== undefined ? { resolvedAttachments } : {}),
+          // Per-node resolved attachments; depth+1/maxDepth for preamble (#2266).
+          ...(resolvedAttachments !== undefined ? { resolvedAttachments } : {}), ...{ depth: depth + 1, maxDepth },
         };
       }));
 

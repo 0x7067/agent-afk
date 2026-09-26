@@ -9,10 +9,13 @@
  *   - the "no human is reachable" line is emitted only when
  *     `isNonInteractive === true` (the default; a caller may opt a fork back
  *     into elicitation with `isNonInteractive: false`);
- *   - the nesting line is chosen from `depth` / `maxDepth`: at the cap the
- *     `agent` / `skill` executors refuse any further dispatch
- *     (`depth >= maxDepth`, see `tools/subagent-executor.ts` and
- *     `tools/skill-executor.ts`), below it the child may still delegate.
+ *   - the nesting line has three cases: (a) at the cap (`depth >= maxDepth`,
+ *     the agent-tool, skill-fork, and compose/DAG paths all thread depth+1 /
+ *     maxDepth so the executor's refuse gate and this line use the same values);
+ *     (b) depth known and below the cap — the child may still delegate; (c)
+ *     depth unknown (e.g. in-process inline-handler forks that create their
+ *     own SubagentManager) — a conservative note that the runtime cap applies
+ *     is emitted rather than claiming delegation is definitely available.
  *
  * History: before this module a child learned it was a subagent only by
  * inference (the `depth N/M` tag in `# Environment`, the handoff contract's
@@ -31,6 +34,7 @@
  */
 
 import type { AgentConfig } from '../types/config-types.js';
+import { resolveMaxNestingDepth } from '../tools/nesting.js';
 
 /** The resolved facts the preamble is derived from. */
 export interface SubagentIdentityFacts {
@@ -71,14 +75,27 @@ export function renderSubagentIdentityPreamble(facts: SubagentIdentityFacts): st
     );
   }
 
-  const { depth, maxDepth } = facts;
-  if (isFiniteNumber(depth) && isFiniteNumber(maxDepth) && depth >= maxDepth) {
+  // Resolve effective maxDepth: use the threaded value when available, fall
+  // back to resolveMaxNestingDepth() so the cap is always known even when the
+  // caller is an in-process inline handler that did not thread maxDepth.
+  const { depth } = facts;
+  const effectiveMaxDepth = isFiniteNumber(facts.maxDepth)
+    ? facts.maxDepth
+    : resolveMaxNestingDepth();
+
+  if (isFiniteNumber(depth) && depth >= effectiveMaxDepth) {
+    // Case (a): depth is known and at or beyond the cap — forbid dispatch.
     lines.push(
       '',
-      `You are at the maximum nesting depth (${depth}/${maxDepth}), so you cannot dispatch further`,
+      `You are at the maximum nesting depth (${depth}/${effectiveMaxDepth}), so you cannot dispatch further`,
       'subagents. Do the work directly.',
     );
   } else {
+    // Case (b): depth is known and below the cap, OR depth is unknown (in-process
+    // inline-handler path). In both cases emit conditional-delegation guidance —
+    // it is truthful because (b) the child genuinely may delegate, and for the
+    // unknown-depth case the runtime cap is enforced at the executor so any
+    // over-limit dispatch is refused there rather than misdirected here.
     lines.push(
       '',
       'Guidance about coordinating parallel subagents describes the top-level session. Dispatch',
