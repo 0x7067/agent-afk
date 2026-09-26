@@ -135,6 +135,15 @@ export interface TelemetryRecord {
   skipReason?: SessionStartSkipReason;
   /** Human-readable label from ScheduledTaskConfig, if available. */
   name?: string;
+  /**
+   * True when the tick's response self-certified a `Done` terminal state with
+   * NO corroborating evidence (no successful file-write/edit/shell call this
+   * turn). Absent when verification did not run, when the response was
+   * verified, or when the terminal state is not `Done`. Enables post-hoc
+   * review tools to distinguish a verified success from an unverified claim.
+   * The `status` field remains `'success'` for backward compatibility.
+   */
+  doneUnverified?: boolean;
 }
 
 export interface TaskCompletionDetails {
@@ -503,10 +512,12 @@ export class CronScheduler {
     task?: ScheduledTask,
     details?: TaskCompletionDetails,
   ): void {
+    // Persist doneUnverified (#2307): only written when true; absent = not unverified.
+    const persistedRecord: TelemetryRecord = details?.doneUnverified === true ? { ...record, doneUnverified: true } : record;
     try {
-      appendFileSync(this.telemetryPath(), `${JSON.stringify(record)}\n`, 'utf-8');
+      appendFileSync(this.telemetryPath(), `${JSON.stringify(persistedRecord)}\n`, 'utf-8');
       const opts: FireOnTaskCompleteOptions = { onTaskComplete: this.options.onTaskComplete };
-      fireOnTaskComplete(record, opts, task, details);
+      fireOnTaskComplete(persistedRecord, opts, task, details);
     } catch (err) {
       // Telemetry failure must not crash the daemon. Log to stderr and move on.
       const msg = errorMessage(err);

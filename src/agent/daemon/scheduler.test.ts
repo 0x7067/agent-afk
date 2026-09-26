@@ -483,6 +483,57 @@ describe('CronScheduler — "Done" verification (doneUnverified)', () => {
     await scheduler.stop();
     expect(seen).toEqual([['bash', 'read_file']]);
   });
+
+  // ── telemetry persistence (#2307) ──────────────────────────────────────────
+
+  it('unverified Done tick writes doneUnverified:true to the telemetry file', async () => {
+    const scheduler = new CronScheduler({
+      telemetryPath,
+      sessionFactory: () => makeSession({ response: DONE_RESPONSE, metadata: { successfulToolNames: [] } }),
+      onTaskComplete: vi.fn(),
+      doneUnverifiedProbe: probe,
+    });
+    scheduler.register({ taskId: 't', command: 'run', trigger: 'cron', cronExpression: '* * * * *' });
+    await scheduler.tick('t');
+    await scheduler.stop();
+    const line = readFileSync(telemetryPath, 'utf-8').trim();
+    const written = JSON.parse(line) as { status: string; doneUnverified?: boolean };
+    expect(written.status).toBe('success');          // status unchanged (backward compat)
+    expect(written.doneUnverified).toBe(true);       // new field persisted
+  });
+
+  it('verified Done tick (has evidence) omits doneUnverified from the telemetry file', async () => {
+    const scheduler = new CronScheduler({
+      telemetryPath,
+      sessionFactory: () =>
+        makeSession({ response: DONE_RESPONSE, metadata: { successfulToolNames: ['write_file'] } }),
+      onTaskComplete: vi.fn(),
+      doneUnverifiedProbe: probe,
+    });
+    scheduler.register({ taskId: 't', command: 'run', trigger: 'cron', cronExpression: '* * * * *' });
+    await scheduler.tick('t');
+    await scheduler.stop();
+    const line = readFileSync(telemetryPath, 'utf-8').trim();
+    const written = JSON.parse(line) as { status: string; doneUnverified?: boolean };
+    expect(written.status).toBe('success');
+    expect(written.doneUnverified).toBeUndefined();  // absent when verified
+  });
+
+  it('no probe → doneUnverified absent from telemetry (fail-open)', async () => {
+    const scheduler = new CronScheduler({
+      telemetryPath,
+      sessionFactory: () => makeSession({ response: DONE_RESPONSE, metadata: { successfulToolNames: [] } }),
+      onTaskComplete: vi.fn(),
+      // no doneUnverifiedProbe
+    });
+    scheduler.register({ taskId: 't', command: 'run', trigger: 'cron', cronExpression: '* * * * *' });
+    await scheduler.tick('t');
+    await scheduler.stop();
+    const line = readFileSync(telemetryPath, 'utf-8').trim();
+    const written = JSON.parse(line) as { status: string; doneUnverified?: boolean };
+    expect(written.status).toBe('success');
+    expect(written.doneUnverified).toBeUndefined();
+  });
 });
 
 // TaskCompletionDetails is imported implicitly through the scheduler module's
