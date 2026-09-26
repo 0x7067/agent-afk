@@ -54,6 +54,15 @@ export interface BgJobMeta {
    * before this field existed simply lack it (schemaVersion stays 1).
    */
   stopReason?: string;
+  /**
+   * PID of the process that created this job. Written at registration time so
+   * that if the owner crashes or is killed, readers can detect the orphan and
+   * promote it from `running` to `failed` with `reason: 'owner-process-exited'`
+   * instead of leaving it stuck in `running` forever. Optional and additive —
+   * old meta.json files that predate this field are treated as if the owner is
+   * alive (no promotion), preserving backward compatibility.
+   */
+  ownerPid?: number;
   schemaVersion: 1;
 }
 
@@ -212,6 +221,51 @@ export class BgJobLogWriter {
 }
 
 // ---------------------------------------------------------------------------
+// Orphan detection
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns `true` if the process with the given PID is still alive in the
+ * current OS session. Uses `process.kill(pid, 0)` — signal 0 tests
+ * existence without delivering a real signal (same approach as
+ * `wait-for-conditions.ts`). Returns `false` for ESRCH (no such process)
+ * and `true` for EPERM (exists but we lack permission). Returns `true`
+ * on any unexpected error so we never incorrectly promote a live job.
+ */
+export function isPidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true; // did not throw → process exists
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ESRCH') return false; // no such process
+    // EPERM or anything else: process exists or we cannot tell — treat as alive.
+    return true;
+  }
+}
+
+/**
+ * If `meta` is still `running` but its owner PID is no longer alive,
+ * return a copy promoted to `failed` with `reason: 'owner-process-exited'`.
+ * Otherwise return `meta` unchanged.
+ *
+ * This is a pure, synchronous reconciliation — it does NOT write to disk.
+ * Callers that want to persist the correction should call `writeMeta` after
+ * receiving a promoted result.
+ */
+export function reconcileOrphanedMeta(meta: BgJobMeta): BgJobMeta {
+  if (meta.status !== 'running') return meta;
+  if (meta.ownerPid === undefined) return meta; // legacy entry — no PID recorded
+  if (isPidAlive(meta.ownerPid)) return meta;
+  return {
+    ...meta,
+    status: 'failed',
+    endedAt: meta.endedAt ?? Date.now(),
+    stopReason: 'owner-process-exited',
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Reader
 // ---------------------------------------------------------------------------
 
@@ -261,7 +315,8 @@ export class BgJobLogReader {
       const parsed = JSON.parse(raw) as BgJobMeta;
       // Reject files with an unexpected schema version (stale v0, future v2, etc.)
       if (parsed.schemaVersion !== 1) return null;
-      return parsed;
+      // Lazily promote orphaned running entries whose owner PID has died.
+      return reconcileOrphanedMeta(parsed);
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null;
       // Corrupted meta — log and return null

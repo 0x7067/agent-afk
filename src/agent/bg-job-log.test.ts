@@ -10,6 +10,7 @@ import * as os from 'node:os';
 import * as fs from 'node:fs';
 import * as fsp from 'node:fs/promises';
 import * as path from 'node:path';
+import { isPidAlive, reconcileOrphanedMeta } from './bg-job-log.js';
 
 // We need to control the AFK_HOME before importing paths/bg-job-log.
 // Use a unique temp dir per test suite run.
@@ -310,5 +311,149 @@ describe('BgJobLogWriter + BgJobLogReader integration', () => {
     expect(events).toHaveLength(2);
     expect(events[0]?.type).toBe('chunk');
     expect(events[1]?.type).toBe('done');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isPidAlive
+// ---------------------------------------------------------------------------
+
+describe('isPidAlive', () => {
+  it('returns true for the current process PID', () => {
+    expect(isPidAlive(process.pid)).toBe(true);
+  });
+
+  it('returns false for a PID that cannot exist (PID 1 owned by init — use ESRCH path)', () => {
+    // PID 0 is never a valid user process; process.kill(0, 0) sends to the
+    // current process GROUP (not ESRCH). Use a very high synthetic PID that
+    // is extremely unlikely to be alive (max pid_max on Linux is 4194304).
+    // We mock process.kill to control the result deterministically.
+    const origKill = process.kill.bind(process);
+    let killCalled = false;
+    (process as any).kill = (pid: number, sig: number) => {
+      killCalled = true;
+      const err = new Error('ESRCH') as NodeJS.ErrnoException;
+      err.code = 'ESRCH';
+      throw err;
+    };
+    try {
+      const result = isPidAlive(999999999);
+      expect(result).toBe(false);
+      expect(killCalled).toBe(true);
+    } finally {
+      (process as any).kill = origKill;
+    }
+  });
+
+  it('returns true when kill throws EPERM (process exists, no permission)', () => {
+    const origKill = process.kill.bind(process);
+    (process as any).kill = (_pid: number, _sig: number) => {
+      const err = new Error('EPERM') as NodeJS.ErrnoException;
+      err.code = 'EPERM';
+      throw err;
+    };
+    try {
+      expect(isPidAlive(1)).toBe(true);
+    } finally {
+      (process as any).kill = origKill;
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// reconcileOrphanedMeta
+// ---------------------------------------------------------------------------
+
+describe('reconcileOrphanedMeta', () => {
+  it('returns meta unchanged when status is already terminal', () => {
+    const meta = makeMeta('orphan-completed', { status: 'completed', ownerPid: 99999 });
+    expect(reconcileOrphanedMeta(meta)).toBe(meta);
+  });
+
+  it('returns meta unchanged when ownerPid is absent (legacy meta)', () => {
+    const meta = makeMeta('orphan-legacy', { status: 'running' });
+    // No ownerPid set — should not promote
+    const result = reconcileOrphanedMeta(meta);
+    expect(result.status).toBe('running');
+    expect(result).toBe(meta);
+  });
+
+  it('returns meta unchanged when ownerPid is the current process (alive)', () => {
+    const meta = makeMeta('orphan-alive', { status: 'running', ownerPid: process.pid });
+    const result = reconcileOrphanedMeta(meta);
+    expect(result.status).toBe('running');
+  });
+
+  it('promotes running meta to failed when ownerPid is a dead process', () => {
+    const origKill = process.kill.bind(process);
+    (process as any).kill = (_pid: number, _sig: number) => {
+      const err = new Error('ESRCH') as NodeJS.ErrnoException;
+      err.code = 'ESRCH';
+      throw err;
+    };
+    try {
+      const meta = makeMeta('orphan-dead', { status: 'running', ownerPid: 999999999 });
+      const result = reconcileOrphanedMeta(meta);
+      expect(result.status).toBe('failed');
+      expect(result.stopReason).toBe('owner-process-exited');
+      expect(result.endedAt).toBeTypeOf('number');
+      // Other fields preserved
+      expect(result.jobId).toBe(meta.jobId);
+      expect(result.ownerPid).toBe(999999999);
+    } finally {
+      (process as any).kill = origKill;
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// readMeta integrates orphan reconciliation
+// ---------------------------------------------------------------------------
+
+describe('BgJobLogReader.readMeta — orphan reconciliation', () => {
+  it('promotes a running meta with a dead ownerPid to failed on read', async () => {
+    const jobId = `orphan-read-${Date.now()}`;
+    const w = new BgJobLogWriter(jobId);
+    // Write a meta claiming a PID that will appear dead (mocked via kill)
+    await w.writeMeta(makeMeta(jobId, { status: 'running', ownerPid: 999999999 }));
+    await w.close();
+
+    const origKill = process.kill.bind(process);
+    (process as any).kill = (_pid: number, _sig: number) => {
+      const err = new Error('ESRCH') as NodeJS.ErrnoException;
+      err.code = 'ESRCH';
+      throw err;
+    };
+    try {
+      const read = await BgJobLogReader.readMeta(jobId);
+      expect(read).not.toBeNull();
+      expect(read!.status).toBe('failed');
+      expect(read!.stopReason).toBe('owner-process-exited');
+    } finally {
+      (process as any).kill = origKill;
+    }
+  });
+
+  it('leaves a running meta untouched when ownerPid is alive (current process)', async () => {
+    const jobId = `orphan-alive-read-${Date.now()}`;
+    const w = new BgJobLogWriter(jobId);
+    await w.writeMeta(makeMeta(jobId, { status: 'running', ownerPid: process.pid }));
+    await w.close();
+
+    const read = await BgJobLogReader.readMeta(jobId);
+    expect(read).not.toBeNull();
+    expect(read!.status).toBe('running');
+  });
+
+  it('leaves a running meta untouched when ownerPid is absent (legacy meta)', async () => {
+    const jobId = `orphan-legacy-read-${Date.now()}`;
+    const w = new BgJobLogWriter(jobId);
+    // No ownerPid — simulates a meta.json written before this fix
+    await w.writeMeta(makeMeta(jobId, { status: 'running' }));
+    await w.close();
+
+    const read = await BgJobLogReader.readMeta(jobId);
+    expect(read).not.toBeNull();
+    expect(read!.status).toBe('running');
   });
 });
