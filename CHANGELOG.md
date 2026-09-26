@@ -11,6 +11,24 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.257.1] - 2026-09-26
+
+### Fixed
+- pin opus-5.5 alias, update env examples, clarify adaptive-thinking doc (32adcf35)
+- reuse margin var and clip input viewport unconditionally (efa52756)
+
+### Changed
+- Merge pull request #2282 from griffinwork40/afk/iso-agent-tool-2-ooggj4 (4f18deaf)
+- Merge pull request #2286 from griffinwork40/afk/iso-agent-tool-10-eqc3rn (702fd9b4)
+- Merge pull request #2287 from griffinwork40/afk/iso-agent-tool-6-cnewvw (fbac52da)
+- Merge pull request #2283 from griffinwork40/afk/iso-agent-tool-5-4hsys6 (0401dbae)
+- Merge pull request #2285 from griffinwork40/afk/iso-agent-tool-8-pa8nhz (39a19e63)
+- Merge pull request #2281 from griffinwork40/afk/iso-agent-tool-3-0lxtuh (4e7296fc)
+- extract shared makeResult/makeTool into __fixtures__ (aac2ef52)
+- fix mutation count, reword pkgRoot comment, assert labels (ddb48d5d)
+- fix hasBadge boundary checks and stale badge format in tool-lane tests (1a7ad085)
+- fix subagent-attachment-propagation status; skip goal-feature-plan (7839637f)
+
 ## [5.257.0] - 2026-09-26
 
 ### Added
