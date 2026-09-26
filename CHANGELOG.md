@@ -11,6 +11,15 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.257.0] - 2026-09-26
+
+### Added
+- afk whatif and /whatif, a prediction engine for agent context changes (ebd1e518)
+
+### Changed
+- Merge pull request #2274 from griffinwork40/afk/whatif (ba616c06)
+- Merge origin/main into afk/whatif (bfcadd08)
+
 ## [5.256.0] - 2026-09-26
 
 ### Added
