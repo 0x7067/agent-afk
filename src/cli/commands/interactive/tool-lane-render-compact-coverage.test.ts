@@ -12,32 +12,8 @@
 
 import { describe, it, expect } from 'vitest';
 import { stripAnsi } from '../../display.js';
-import { freshToolEntry } from './tool-lane-render.js';
-import type { ToolResultChunk } from '../../../agent/types/message-types.js';
-import type { ToolFailureClass } from '../../../agent/trace/types.js';
 import { ToolLane } from './tool-lane.js';
-
-// ── Shared fixture helpers ─────────────────────────────────────────────────────
-
-function makeResult(
-  content: string,
-  isError = false,
-  failureClass?: ToolFailureClass,
-): ToolResultChunk {
-  return {
-    type: 'tool_result',
-    toolUseId: 'unused',
-    content,
-    isError,
-    ...(failureClass ? { failureClass } : {}),
-  };
-}
-
-function makeTool(toolUseId: string, toolName: string, toolInput: string, result?: ToolResultChunk) {
-  const entry = freshToolEntry(toolUseId, toolName, toolInput, toolName + toolInput);
-  if (result) entry.result = result;
-  return entry;
-}
+import { makeResult, makeTool } from './__fixtures__/tool-lane-render.fixtures.js';
 
 // ── 4. formatAgentChildren compact-path discrimination ─────────────────────────
 
