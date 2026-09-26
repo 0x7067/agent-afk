@@ -597,7 +597,9 @@ export class MemoryStore {
       }
     }
 
-    return rows;
+    // Strip the FTS5 `rank` column — it is a query-time artifact and must not
+    // leak into the public Fact[] return type.
+    return rows.map(({ rank: _rank, ...fact }) => fact as Fact);
   }
 
   // ── Sessions ────────────────────────────────────────────────
