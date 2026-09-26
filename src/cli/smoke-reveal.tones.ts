@@ -18,7 +18,7 @@
 import chalk, { type ChalkInstance } from 'chalk';
 import { getActiveTheme, type ThemeName } from './theme.js';
 
-type Rgb = readonly [number, number, number];
+export type Rgb = readonly [number, number, number];
 
 /** Ramp endpoints per theme: [near-background, near-foreground]. */
 const ENDPOINTS: Record<ThemeName, readonly [Rgb, Rgb]> = {
@@ -58,6 +58,21 @@ export function smokeTone(t: number): ChalkInstance {
   const clamped = Math.min(1, Math.max(0, t));
   const idx = Math.round(clamped * (TONE_STEPS - 1));
   return ramp[idx] ?? ramp[ramp.length - 1] ?? chalk;
+}
+
+/**
+ * Unquantized RGB for ramp position `t` in [0, 1] on the active theme. The
+ * ink fade interpolates from this toward a character's own color, so it needs
+ * the raw endpoint math rather than a cached chalk stop.
+ */
+export function toneRgb(t: number): Rgb {
+  const [from, to] = ENDPOINTS[getActiveTheme()];
+  const c = Math.min(1, Math.max(0, t));
+  return [
+    Math.round(from[0] + (to[0] - from[0]) * c),
+    Math.round(from[1] + (to[1] - from[1]) * c),
+    Math.round(from[2] + (to[2] - from[2]) * c),
+  ];
 }
 
 /** Test seam: drop cached ramps (e.g. after changing `chalk.level`). */

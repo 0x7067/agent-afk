@@ -101,7 +101,10 @@ describe('SmokeReveal organic variation', () => {
     // Past every birth, inside the jittered settle window of the oldest letters.
     c.advance(MAX_LAG_MS + LIFETIME_MS * 0.9);
     const mid = r.apply(text);
-    const styled = (mid.match(/\u001b\[38;2;/g) ?? []).length;
+    // A still-condensing letter carries either an RGB blend or the faint
+    // attribute (its default color is unknown, so it never gets a guessed
+    // tone). The bare `ESC[0m` restore after a cell does not count.
+    const styled = (mid.match(/\u001b\[0(?:;\d+)*;(?:2|38;[\d;]+)my/g) ?? []).length;
     expect(styled).toBeGreaterThan(0);
     expect(styled).toBeLessThan(text.length);
     c.advance(LIFETIME_MS * 0.1 + 1);

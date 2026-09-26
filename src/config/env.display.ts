@@ -63,12 +63,27 @@ export const DISPLAY_ENV_REGISTRY = [
     category: 'display',
   },
   {
+    name: 'AFK_INK_TEXT',
+    description:
+      'Streamed assistant prose in the interactive REPL arrives like ink drying: text is released at a steady, ' +
+      'self-catching-up pace (never more than a fraction of a second behind the model) and the newest letters ' +
+      'rise from near the background into their own color, never brighter. On by default on 256-color or ' +
+      'truecolor terminals. It stays off for NO_COLOR, non-TTY output, AFK_PLAIN_OUTPUT, Telegram, the daemon, ' +
+      'and AFK_REDUCED_MOTION=1. Set AFK_INK_TEXT=0 (or false/no/off) to show text the instant it arrives.',
+    type: 'boolean',
+    required: false,
+    default: '',
+    example: '0',
+    category: 'display',
+  },
+  {
     name: 'AFK_SMOKE_TEXT',
     description:
-      'When set to "1" (or true/yes/on), streamed assistant prose in the interactive REPL condenses out of ' +
-      'faint smoke (speck, then haze, then a dim letter, then the real letter) instead of popping in. ' +
-      'Needs a 256-color or truecolor terminal. It stays off for NO_COLOR, non-TTY output, AFK_PLAIN_OUTPUT, ' +
-      'Telegram, the daemon, and AFK_REDUCED_MOTION=1, and it skips code fences and tables. Default off. Set AFK_SMOKE_TEXT=0 or unset it to disable.',
+      'When set to "1" (or true/yes/on), markdown headings in streamed assistant output condense out of rolling ' +
+      'smoke (braille particles thickening into each letter, with a thin wisp drifting ahead of the front), and ' +
+      'machine-status UI (tool rows, the thought summary) fades in. Body prose keeps the calm AFK_INK_TEXT ' +
+      'reveal, so smoke stays an accent. Needs a 256-color or truecolor terminal. It stays off for NO_COLOR, ' +
+      'non-TTY output, AFK_PLAIN_OUTPUT, Telegram, the daemon, and AFK_REDUCED_MOTION=1. Default off.',
     type: 'boolean',
     required: false,
     default: '',

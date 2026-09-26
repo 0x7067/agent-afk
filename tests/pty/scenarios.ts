@@ -785,28 +785,30 @@ export const SCENARIOS: Record<string, PtyScenario> = {
     },
   },
 
-  // Positive control for the scenario above: prove the mask is actually
+  // Positive control for the scenario above: prove the reveal is actually
   // active through the real compositor, so 'smoke-text-settles' cannot pass
-  // just because the effect silently stayed off. The lead text settles. The
-  // final chunk is snapshotted ~40ms after arrival, while it is still smoke
-  // or not yet revealed, so its marker must not be readable yet.
+  // just because the effect silently stayed off. Body prose is deliberately
+  // legible from its first frame (the ink fade only dims it), so the control
+  // uses the smoke ACCENT: a heading line snapshotted ~40ms after arrival is
+  // still condensing (paced at the accent cadence, drawn as particles), so
+  // its marker cannot be readable yet. With the reveal off it would be.
   'smoke-text-mid-fade': {
-    description: 'AFK_SMOKE_TEXT: text that just arrived is still smoke (the mask is live through the compositor)',
+    description: 'AFK_SMOKE_TEXT: a heading that just arrived is still smoke (the reveal is live through the compositor)',
     cols: 100,
     rows: 24,
     ref: 'src/cli/smoke-reveal.ts',
     async drive(ctx): Promise<void> {
       const md = await streamWithSmoke(ctx, SMOKE_PARA_2);
       await settle(700);
-      md.push(' SMOKETWO_END');
+      md.push('\n## SMOKEHEAD_END');
       await settle(40);
     },
     expect: {
       exactlyOnce: ['SMOKETWO_START'],
-      // Deliberately no positive smoke-glyph assertion: at 40ms the chunk may
-      // still be an unrevealed blank placeholder rather than a glyph, so
-      // requiring a specific glyph races the fade and flaked on CI.
-      absent: ['SMOKETWO_END'],
+      // Deliberately no positive smoke-glyph assertion: at 40ms the heading
+      // may still be held for classification rather than drawn, so requiring
+      // a specific glyph races the reveal and would flake on CI.
+      absent: ['SMOKEHEAD_END'],
     },
   },
 

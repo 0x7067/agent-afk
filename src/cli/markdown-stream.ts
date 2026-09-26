@@ -3,7 +3,8 @@ import type { TerminalCompositor } from './terminal-compositor.js';
 import type { OverlayComposer } from './_lib/overlay-composer.js';
 import { calculateContentWidth, calculateProseContentWidth, formatPendingBuffer, formatBlockForCommit, applyIndent, initLogUpdateModule, accumulateCommitted, scheduleWithThrottle, isInOpenCodeFence, isInOpenTable, pendingRowCap } from './markdown-stream-format.js';
 import { contentMargin } from './render/measure.js';
-import { SmokeReveal, isSmokeTextEnabled } from './smoke-reveal.js';
+import { SmokeReveal, isInkTextEnabled, isSmokeTextEnabled, type RevealStyle } from './smoke-reveal.js';
+import { TextPacer, FINISH_MAX_MS, FLUSH_SETTLE_MAX_MS } from './text-pacer.js';
 import { detectReducedMotion } from './_lib/capture-mode.js';
 import {
   type InputBufferState,
@@ -39,9 +40,10 @@ interface StreamingMarkdownRendererOptions {
   bufferMs?: number;
   indent?: string;
   /**
-   * Suppress the AFK_SMOKE_TEXT prose reveal. Defaults to
-   * `detectReducedMotion()` (AFK_REDUCED_MOTION=1), the same source the
-   * stream renderer uses to gate its tool-row and thought-summary fades.
+   * Suppress the text reveal (the AFK_INK_TEXT pacing + fade and the
+   * AFK_SMOKE_TEXT heading accent). Defaults to `detectReducedMotion()`
+   * (AFK_REDUCED_MOTION=1), the same source the stream renderer uses to gate
+   * its tool-row and thought-summary fades.
    */
   reducedMotion?: boolean;
   /**
@@ -121,8 +123,14 @@ export class StreamingMarkdownRenderer {
   private bufferMs: number;
   private inputState: InputBufferState;
 
-  /** Smoke-text reveal mask (AFK_SMOKE_TEXT). Null when the effect is off. */
+  /** Text reveal mask (ink fade, smoke accent). Null when the reveal is off. */
   private smoke: SmokeReveal | null = null;
+  /**
+   * Steady-rate release of pushed text into the pipeline. Non-null exactly
+   * when `smoke` is. Every path that commits or inspects the buffer drains it
+   * first (see the drain invariant in text-pacer.ts).
+   */
+  private pacer: TextPacer | null = null;
 
   constructor(opts?: StreamingMarkdownRendererOptions) {
     this.out = opts?.out ?? process.stdout;
@@ -140,11 +148,25 @@ export class StreamingMarkdownRenderer {
     if (this.isTTY) {
       this.resizeUnsub = ResizeBus.subscribe(() => this.scheduleRepaint());
       // Read once per renderer, like the other display settings: toggling
-      // AFK_SMOKE_TEXT mid-session applies to the next renderer, not this one.
-      // Reduced motion wins: the smoke reveal is pure motion, so a user who
-      // asked for less of it gets plain text, same as the machine-status fades.
+      // AFK_INK_TEXT / AFK_SMOKE_TEXT mid-session applies to the next renderer.
+      // Reduced motion wins: the reveal is pure motion, so a user who asked
+      // for less of it gets plain text, same as the machine-status fades.
       const reducedMotion = opts?.reducedMotion ?? detectReducedMotion();
-      if (isSmokeTextEnabled() && !reducedMotion) this.smoke = new SmokeReveal(() => this.scheduleRepaint());
+      const accent = isSmokeTextEnabled();
+      if ((isInkTextEnabled() || accent) && !reducedMotion) {
+        // While text is queued the pacer is the frame clock (see onFrame in
+        // text-pacer.ts); the settle driver only runs once the queue is empty.
+        this.smoke = new SmokeReveal(() => {
+          if (!this.pacer?.hasQueued()) this.scheduleRepaint();
+        });
+        this.pacer = new TextPacer({
+          accent,
+          onRelease: (text, style, staggerMs) => this.pushDirect(text, style, staggerMs),
+          onFrame: (released) => {
+            if (!released) this.scheduleRepaint();
+          },
+        });
+      }
     }
   }
 
@@ -235,7 +257,7 @@ export class StreamingMarkdownRenderer {
       !isInOpenTable(this.buffer) &&
       formatted.split('\n').length < pendingRowCap()
     ) {
-      formatted = this.smoke.apply(formatted);
+      formatted = this.smoke.apply(formatted, { maxWidth: contentWidth });
     }
     // Content centering (AFK_CENTER_CONTENT): live pending prose is part of
     // the overlay frame, so it receives the centering margin here (the overlay
@@ -289,16 +311,31 @@ export class StreamingMarkdownRenderer {
   push(chunk: string): void {
     if (this.flushing) return;
     pushChunk(this.inputState, chunk, this.bufferMs, {
-      onBatch: (batched) => this.pushDirect(batched),
+      onBatch: (batched) => this.intake(batched),
     });
+  }
+
+  /** Route micro-buffered input to the pacer when the reveal is on, else straight in. */
+  private intake(batched: string): void {
+    if (this.pacer) this.pacer.enqueue(batched);
+    else this.pushDirect(batched);
+  }
+
+  /**
+   * Make every pushed character part of `this.buffer`: drain the micro-buffer
+   * into the pacer, then release the pacer's queue synchronously.
+   */
+  private drainAll(): void {
+    drainInputBuffer(this.inputState, { onBatch: (b) => this.intake(b) });
+    this.pacer?.drain();
   }
 
   /**
    * Push a chunk directly into the parse pipeline (block detection + repaint).
    */
-  private pushDirect(chunk: string): void {
+  private pushDirect(chunk: string, style: RevealStyle = 'ink', staggerMs?: number): void {
     if (this.flushing) return;
-    this.smoke?.record(chunk);
+    this.smoke?.record(chunk, staggerMs === undefined ? { style } : { style, staggerMs, endAtNow: true });
     this.buffer = runParsePipeline(this.buffer, chunk, {
       onPreCommit: (newBuffer) => {
         this.buffer = newBuffer;
@@ -317,8 +354,17 @@ export class StreamingMarkdownRenderer {
    * and clear the log-update overlay
    */
   async flush(): Promise<void> {
-    // Drain any micro-buffered input before finalizing.
-    drainInputBuffer(this.inputState, { onBatch: (b) => this.pushDirect(b) });
+    // Drain any micro-buffered input before finalizing, then let the pacer's
+    // tail flow out quickly (bounded) instead of popping in all at once.
+    drainInputBuffer(this.inputState, { onBatch: (b) => this.intake(b) });
+    if (this.pacer?.hasQueued()) await this.pacer.finish(FINISH_MAX_MS);
+    // Belt and braces: pushDirect() ignores input once `flushing` is set, so
+    // anything still queued MUST enter the buffer before that flag flips.
+    this.pacer?.drain();
+    // Let the final letters finish drying (bounded) so the commit below does
+    // not snap them solid mid-fade. The settle driver keeps painting meanwhile.
+    const tail = Math.min(FLUSH_SETTLE_MAX_MS, this.smoke?.settleRemaining() ?? 0);
+    if (tail > 0) await new Promise<void>((resolve) => setTimeout(resolve, tail));
 
     // Cancel throttle timer
     if (this.throttleTimer) {
@@ -373,7 +419,7 @@ export class StreamingMarkdownRenderer {
    * O(1), no side effects.
    */
   hasEmitted(): boolean {
-    return this.inputState.inputBuffer.length > 0 || this.buffer.length > 0 || this.committed.length > 0;
+    return this.inputState.inputBuffer.length > 0 || (this.pacer?.hasQueued() ?? false) || this.buffer.length > 0 || this.committed.length > 0;
   }
 
   /**
@@ -382,7 +428,7 @@ export class StreamingMarkdownRenderer {
   getPendingBuffer(): string {
     // Drain the micro-buffer first so the returned string reflects all
     // pushed content — mirrors the pattern in commitPending() and flush().
-    drainInputBuffer(this.inputState, { onBatch: (b) => this.pushDirect(b) });
+    this.drainAll();
     return this.buffer;
   }
 
@@ -394,7 +440,7 @@ export class StreamingMarkdownRenderer {
    * the turn — where it leaks into scrollback every time `commitAbove` repaints.
    */
   commitPending(): void {
-    drainInputBuffer(this.inputState, { onBatch: (b) => this.pushDirect(b) });
+    this.drainAll();
     if (!this.buffer.trim()) return;
     const pending = this.buffer;
     // Empty the buffer and re-compose the overlay (now empty) BEFORE committing,
@@ -426,7 +472,7 @@ export class StreamingMarkdownRenderer {
   stripPendingFrom(offset: number): boolean {
     // Drain the micro-buffer first so the strip sees the full pending
     // content — mirrors the pattern in commitPending() and flush().
-    drainInputBuffer(this.inputState, { onBatch: (b) => this.pushDirect(b) });
+    this.drainAll();
     if (offset < 0 || offset >= this.buffer.length) return false;
     this.buffer = this.buffer.slice(0, offset).trimEnd();
     // The stripped tail's bursts would otherwise remap onto the kept text.
@@ -454,6 +500,7 @@ export class StreamingMarkdownRenderer {
     }
     this.lastPaintTime = 0;
     this.buffer = '';
+    this.pacer?.discard();
     this.smoke?.reset();
     // Clear the live overlay in whichever mode is active — mirror the slot
     // clears in commitPending()/flush() so the discarded text vanishes from
@@ -471,6 +518,7 @@ export class StreamingMarkdownRenderer {
       this.throttleTimer = null;
     }
     this.lastPaintTime = 0;
+    this.pacer?.dispose();
     this.smoke?.dispose();
 
     if (this.resizeUnsub) {
