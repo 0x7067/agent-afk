@@ -40,7 +40,6 @@ import { spawnDaemonSession } from './session-spawn.js';
 import {
   DEFAULT_SESSIONSTART_COOLDOWN_MS,
   evaluateSessionStartGates,
-  type GateDecision,
   type SessionStartSkipReason,
 } from './gates.js';
 import {
@@ -51,6 +50,7 @@ import {
   type FireOnTaskCompleteOptions,
 } from './scheduler.pull-tick.js';
 import { errorMessage } from '../../utils/errors.js';
+import { makeOverlapSkipRecord, makeSessionStartSkipRecord } from './scheduler.overlap-guard.js';
 
 
 export interface SchedulerOptions {
@@ -178,6 +178,8 @@ export class CronScheduler {
   private pullPollTimer: ReturnType<typeof setInterval> | undefined;
   private isDequeuing = false;
   private readonly queueDir: string;
+  /** Per-task in-flight guard: IDs of tasks whose runOnce promise is still pending. */
+  private readonly inFlightTaskIds = new Set<string>();
   // TODO(#337-hook): hook-driven dequeue path will share isDequeuing mutex
 
   constructor(options: SchedulerOptions = {}) {
@@ -255,7 +257,9 @@ export class CronScheduler {
       if (decision.fire) {
         records.push(await this.runOnce(task, 'sessionstart'));
       } else {
-        records.push(this.recordSkip(task, decision));
+        const skipRecord = makeSessionStartSkipRecord(task, decision, this.now());
+        this.writeTelemetry(skipRecord, task);
+        records.push(skipRecord);
       }
     }
     return records;
@@ -301,6 +305,18 @@ export class CronScheduler {
   }
 
   private async runOnce(task: ScheduledTask, trigger: TelemetryTrigger): Promise<TelemetryRecord> {
+    // Overlap guard: skip and record telemetry when this task's previous run is
+    // still in progress. Prevents stacked concurrent sessions on slow ticks
+    // (the in-flight set is released in the agent-path finally block below).
+    // The guard is intentionally checked BEFORE the cwd and executor branches
+    // so it applies uniformly to all executor types.
+    if (this.inFlightTaskIds.has(task.taskId)) {
+      const record = makeOverlapSkipRecord(task, trigger, this.now());
+      this.writeTelemetry(record, task);
+      return record;
+    }
+    this.inFlightTaskIds.add(task.taskId);
+    try {
     // Runtime cwd guard: fail loudly when the pinned directory has vanished
     // rather than silently falling back to $HOME (which would re-introduce the
     // grep/glob timeout regression this feature was designed to fix).
@@ -459,22 +475,9 @@ export class CronScheduler {
       memoryStore?.close();
       stateStore?.close();
     }
-  }
-
-  private recordSkip(task: ScheduledTask, decision: GateDecision): TelemetryRecord {
-    const triggeredAt = new Date(this.now());
-    const record: TelemetryRecord = {
-      taskId: task.taskId,
-      command: task.command,
-      trigger: 'sessionstart',
-      ...(task.cronExpression !== undefined ? { cronExpression: task.cronExpression } : {}),
-      triggeredAt: triggeredAt.toISOString(),
-      durationMs: 0,
-      status: 'skipped',
-      ...(decision.skipReason !== undefined ? { skipReason: decision.skipReason } : {}),
-    };
-    this.writeTelemetry(record, task);
-    return record;
+    } finally {
+      this.inFlightTaskIds.delete(task.taskId);
+    }
   }
 
   private async spawnSession(task: ScheduledTask, trigger: TelemetryTrigger = 'cron'): ReturnType<typeof spawnDaemonSession> {
