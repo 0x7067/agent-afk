@@ -11,6 +11,24 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.255.0] - 2026-09-26
+
+### Added
+- /fast mode via service_tier "priority", incl. ChatGPT OAuth (#2270) (1195093f)
+- per-task working directory for scheduled tasks (482c23a5)
+
+### Fixed
+- send the OAuth billing system prefix so one-shot calls work on non-haiku models (5c624a5d)
+- keep command-hook children ref'd until they settle so chat cannot exit silently (a9010276)
+- validate cwd on daemon POST /tasks; reject empty cwd in web routes (19bffc3f)
+- carry cwd through POST /tasks, TOCTOU guard, and validation fixes (36a78d94)
+
+### Changed
+- Merge pull request #2272 from griffinwork40/afk/fix-chat-silent-exit (aa974e39)
+- Merge pull request #2253 from griffinwork40/afk/iso-agent-tool-1-gxjpro (8a4d20dd)
+- review follow-ups from #2226 (test assertion, resetState, doc, banner-path guard) (#2275) (5ae78ce2)
+- Merge remote-tracking branch 'origin/main' into afk/pr2253-fix (f2764c70)
+
 ## [5.254.4] - 2026-09-26
 
 ### Added
