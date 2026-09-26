@@ -3,15 +3,16 @@
  * AFK_SMOKE_TEXT heading accent).
  *
  * Pins the contracts the reveal must honor inside the renderer:
- *  1. Pacing: pushed text flows in at a steady rate, then the overlay settles
- *     to exactly the reveal-off render with NO further pushes.
+ *  1. Pacing: pushed text is revealed at a steady rate into cells that are
+ *     already laid out, then the overlay settles to exactly the reveal-off
+ *     render with NO further pushes.
  *  2. Prose uses the calm ink fade. Smoke particles only ever appear on
  *     heading lines, and only with AFK_SMOKE_TEXT=1.
- *  3. Committed blocks are never masked, and a paragraph break is held until
- *     the paragraph's last letters have settled (no mid-fade snap).
- *  4. Every path that commits or inspects the buffer sees ALL pushed text
- *     (drain-before-commit), so ordering against tool rows is preserved.
- *  5. With the reveal off, text appears the instant it is pushed.
+ *  3. The reveal paces styling, never text: body blocks commit exactly when
+ *     they would with the reveal off, unmasked. The one exception is the
+ *     smoke accent's heading hold, which every commit/inspect path releases
+ *     synchronously first, so ordering against tool rows is preserved.
+ *  4. With the reveal off, text appears the instant it is pushed.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import chalk from 'chalk';
@@ -88,9 +89,9 @@ describe('StreamingMarkdownRenderer text reveal: ink (default)', () => {
     const baseline = await baselineFor(TEXT);
     const { r, overlays } = makeRenderer();
     r.push(TEXT);
-    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(40);
     const first = stripAnsi(overlays.at(-1) ?? '');
-    expect(first, 'the first frame shows the start of the burst').toContain('The');
+    expect(first, 'an early frame shows the start of the burst').toContain('The');
     expect(first, 'but not the whole burst at once').not.toContain('barn');
 
     await vi.advanceTimersByTimeAsync(100);
@@ -141,11 +142,11 @@ describe('StreamingMarkdownRenderer text reveal: ink (default)', () => {
     await flushNow(r);
   });
 
-  it('holds a paragraph break until the paragraph has settled, then commits it unmasked', async () => {
+  it('never delays or masks a body commit (layout is identical to reveal-off)', async () => {
     const { r, overlays, commits } = makeRenderer();
     r.push('First paragraph lands whole.\n\nSecond');
-    await vi.advanceTimersByTimeAsync(0);
-    expect(commits, 'not committed while its letters are still fading').toHaveLength(0);
+    // Committed synchronously at the \n\n boundary, before any time passes.
+    expect(commits).toHaveLength(1);
     await vi.advanceTimersByTimeAsync(SETTLE_MS);
     expect(commits).toHaveLength(1);
     expect(stripAnsi(commits[0] ?? '')).toContain('First paragraph lands whole.');
@@ -172,7 +173,21 @@ describe('StreamingMarkdownRenderer text reveal: ink (default)', () => {
     await flushNow(r);
   });
 
-  it('commitPending() commits every pushed character, queued or not (drain before commit)', async () => {
+  it('lays out every pushed character at once: unrevealed cells are blank, not missing', async () => {
+    const baseline = await baselineFor(TEXT);
+    const { r, overlays } = makeRenderer();
+    r.push(TEXT);
+    await vi.advanceTimersByTimeAsync(0);
+    const first = overlays.at(-1) ?? '';
+    // Same rows and the same column count per row as the reveal-off render.
+    // Reserved cells are spaces, so compare raw widths; a whitespace-only
+    // trailing line (indent before the final RESET) counts as empty.
+    const shape = (s: string): number[] => stripAnsi(s).replace(/\n {3}$/, '\n').split('\n').map((l) => l.length);
+    expect(shape(first)).toEqual(shape(baseline ?? ''));
+    await flushNow(r);
+  });
+
+  it('commitPending() commits every pushed character', async () => {
     const { r, commits } = makeRenderer();
     r.push(TEXT);
     await vi.advanceTimersByTimeAsync(0);
@@ -208,7 +223,7 @@ describe('StreamingMarkdownRenderer text reveal: ink (default)', () => {
     await flushNow(r);
   });
 
-  it('discardPending() drops queued text too: it never paints after the discard', async () => {
+  it('discardPending() clears the overlay and discarded text never paints again', async () => {
     const { r, overlays } = makeRenderer();
     r.push('DISCARDME ' + 'lorem ipsum dolor sit amet '.repeat(6));
     await vi.advanceTimersByTimeAsync(0);
@@ -330,6 +345,38 @@ describe('StreamingMarkdownRenderer text reveal: smoke accent (AFK_SMOKE_TEXT=1)
     expect(hasSmoke(settled)).toBe(false);
     expect(settled).toContain('The Lighthouse Keeper');
     expect(settled).toContain('For forty years the light kept burning.');
+    await flushNow(r);
+  });
+
+  it('holds a heading block until it has condensed, then commits it (smoke accent only)', async () => {
+    vi.stubEnv('AFK_SMOKE_TEXT', '1');
+    const { r, overlays, commits } = makeRenderer();
+    r.push('## Short Title\n\nBody follows here.');
+    expect(commits, 'the heading is not cut off mid-smoke').toHaveLength(0);
+    expect(stripAnsi(overlays.at(-1) ?? '')).not.toContain('Body');
+    await vi.advanceTimersByTimeAsync(SETTLE_MS);
+    expect(commits).toHaveLength(1);
+    expect(stripAnsi(commits[0] ?? '')).toContain('Short Title');
+    expect(hasSmoke(commits[0] ?? '')).toBe(false);
+    expect(stripAnsi(overlays.at(-1) ?? '')).toContain('Body follows here.');
+    await flushNow(r);
+  });
+
+  it('releases a held heading synchronously before commitPending, preserving order', async () => {
+    vi.stubEnv('AFK_SMOKE_TEXT', '1');
+    const { r, commits } = makeRenderer();
+    r.push('## Title\n\nAfter the title.');
+    expect(r.hasEmitted()).toBe(true);
+    expect(r.getPendingBuffer()).toBe('After the title.');
+    r.commitPending();
+    expect(commits.map((c) => stripAnsi(c).trim())).toEqual(['Title', 'After the title.']);
+    await flushNow(r);
+  });
+
+  it('does not hold heading blocks without the accent', async () => {
+    const { r, commits } = makeRenderer();
+    r.push('## Title\n\nBody');
+    expect(commits).toHaveLength(1);
     await flushNow(r);
   });
 

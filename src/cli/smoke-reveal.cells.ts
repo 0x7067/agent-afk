@@ -116,27 +116,27 @@ export function smokeCell(ch: string, age: number, seed: number, state: SgrState
 }
 
 /**
- * Wisp drawn after the newest smoke character, `WISP_CELLS` columns wide, or
- * '' once it has faded. `frontAge` is the newest character's age; `now` drives
- * the drift. The pattern at cell k and step n equals the pattern at cell k-1
- * and step n-1, so the texture visibly travels rightward while it thins out.
- * Callers must restore their own style afterwards.
+ * One wisp cell `k` columns ahead of a smoke front (k >= 1), or null for an
+ * empty cell, or '' once the wisp has faded. `frontAge` is the front
+ * character's age; `now` drives the drift. The pattern at cell k and step n
+ * equals the pattern at cell k-1 and step n-1, so the texture visibly
+ * travels rightward while it thins out. Callers restore their own style.
  */
+export function wispCell(k: number, frontAge: number, now: number, seed: number): string | null {
+  if (frontAge >= WISP_MS || k < 1 || k > WISP_CELLS) return '';
+  const strength = 1 - Math.max(0, frontAge) / WISP_MS;
+  const u = seedUnit(seed + Math.floor(now / WISP_STEP_MS) - k, WISP_LANE);
+  if (u < 0.22) return null;
+  const level = SMOKE_GLYPH_LEVELS[k === 1 ? 1 : 0] ?? [];
+  const glyph = level[Math.floor(u * 997) % Math.max(1, level.length)] ?? '⠁';
+  const t = (0.2 - 0.045 * k) * strength;
+  return serializeSgr(EMPTY_SGR, tone(Math.max(0.03, t))) + glyph;
+}
+
+/** The whole `WISP_CELLS`-wide wisp (for a front with no reserved cells after it), or '' once faded. */
 export function wispCells(frontAge: number, now: number, seed: number): string {
   if (frontAge >= WISP_MS) return '';
-  const strength = 1 - Math.max(0, frontAge) / WISP_MS;
-  const step = Math.floor(now / WISP_STEP_MS);
   let out = '';
-  for (let k = 1; k <= WISP_CELLS; k++) {
-    const u = seedUnit(seed + step - k, WISP_LANE);
-    if (u < 0.22) {
-      out += ' ';
-      continue;
-    }
-    const level = SMOKE_GLYPH_LEVELS[k === 1 ? 1 : 0] ?? [];
-    const glyph = level[Math.floor(u * 997) % Math.max(1, level.length)] ?? '⠁';
-    const t = (0.2 - 0.045 * k) * strength;
-    out += serializeSgr(EMPTY_SGR, tone(Math.max(0.03, t))) + glyph;
-  }
+  for (let k = 1; k <= WISP_CELLS; k++) out += wispCell(k, frontAge, now, seed) ?? ' ';
   return out;
 }

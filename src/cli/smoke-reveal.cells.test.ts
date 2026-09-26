@@ -161,7 +161,7 @@ describe('wisp', () => {
     let t = 10_000;
     const now = (): number => t;
     const smoke = new SmokeReveal(() => {}, now);
-    smoke.record('Heading', { style: 'smoke', endAtNow: true, staggerMs: 10 });
+    smoke.record('Heading', { style: 'smoke', staggerMs: 0 });
     t += 1;
     const roomy = smoke.apply('Heading', { maxWidth: 40 });
     expect(stringWidth(stripAnsi(roomy))).toBe('Heading'.length + WISP_CELLS);
@@ -171,9 +171,26 @@ describe('wisp', () => {
     smoke.dispose();
 
     const ink = new SmokeReveal(() => {}, now);
-    ink.record('Body', { style: 'ink', endAtNow: true, staggerMs: 10 });
+    ink.record('Body', { style: 'ink', staggerMs: 0 });
     t += 1;
     expect(stringWidth(stripAnsi(ink.apply('Body', { maxWidth: 40 })))).toBe(4);
     ink.dispose();
+  });
+
+  it('drifts into the reserved (not yet born) cells ahead of a smoke front, never changing width', () => {
+    let t = 10_000;
+    const now = (): number => t;
+    const r = new SmokeReveal(() => {}, now);
+    const text = 'Heading text';
+    r.record(text, { style: 'smoke', staggerMs: 40 });
+    let wispSeen = 0;
+    for (let i = 0; i < 12; i++) {
+      t += 20;
+      const out = stripAnsi(r.apply(text));
+      expect(stringWidth(out)).toBe(text.length);
+      if (/[\u2800-\u28ff]/.test(out.slice(Math.floor(i / 2) + 1))) wispSeen++;
+    }
+    expect(wispSeen).toBeGreaterThan(0);
+    r.dispose();
   });
 });

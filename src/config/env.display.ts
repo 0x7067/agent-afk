@@ -65,9 +65,9 @@ export const DISPLAY_ENV_REGISTRY = [
   {
     name: 'AFK_INK_TEXT',
     description:
-      'Streamed assistant prose in the interactive REPL arrives like ink drying: text is released at a steady, ' +
-      'self-catching-up pace (never more than a fraction of a second behind the model) and the newest letters ' +
-      'rise from near the background into their own color, never brighter. On by default on 256-color or ' +
+      'Streamed assistant prose in the interactive REPL arrives like ink drying: letters are revealed at a steady ' +
+      'pace (never more than a quarter second behind the model) and rise from near the background into their own ' +
+      'color, never brighter. Layout and scrollback are identical to having it off. On by default on 256-color or ' +
       'truecolor terminals. It stays off for NO_COLOR, non-TTY output, AFK_PLAIN_OUTPUT, Telegram, the daemon, ' +
       'and AFK_REDUCED_MOTION=1. Set AFK_INK_TEXT=0 (or false/no/off) to show text the instant it arrives.',
     type: 'boolean',
