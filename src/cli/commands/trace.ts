@@ -37,6 +37,7 @@ import {
   resolveLatestSession,
 } from '../../agent/trace/listing.js';
 import { parseJsonlLines } from '../../utils/jsonl.js';
+import { sanitizeForDisplay } from '../../utils/terminal-sanitize.js';
 
 // Re-export for consumers that imported these from this module before the
 // refactor. Maintains backward compatibility with existing CLI code paths.
@@ -191,9 +192,7 @@ async function traceLabelFromLedger(
 function fmtDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
-  const m = Math.floor(ms / 60_000);
-  const s = Math.round((ms % 60_000) / 1000);
-  return `${m}m${s}s`;
+  return `${Math.floor(ms / 60_000)}m${Math.round((ms % 60_000) / 1000)}s`;
 }
 
 function fmtBytes(n: number): string {
@@ -235,6 +234,12 @@ interface RenderContext {
   showAll: boolean;
 }
 
+/** Format a redacted error-head snippet for a completed tool_call line.
+ *  Returns an empty string when the call succeeded or errorHead is absent. */
+function fmtErrorHead(isError: boolean, head: string | undefined): string {
+  return isError && head ? `  "${truncate(sanitizeForDisplay(head), 120)}"` : '';
+}
+
 /**
  * Render one event to a human line, or `null` when the event is filtered
  * out of the default view. The detail text per kind is deliberately terse
@@ -261,10 +266,7 @@ function renderEvent(event: TraceEvent, ctx: RenderContext): string | null {
       const status = p.isError ? 'ERR' : 'ok';
       const trunc = p.truncated ? '  (truncated)' : '';
       const sub = p.subagentId ? `  [${p.subagentId}]` : '';
-      return line(
-        'tool',
-        `${p.name}  ${status}  ${fmtDuration(p.durationMs)}  ${fmtBytes(p.resultBytes)}${trunc}${sub}`,
-      );
+      return line('tool', `${p.name}  ${status}  ${fmtDuration(p.durationMs)}  ${fmtBytes(p.resultBytes)}${trunc}${sub}${fmtErrorHead(p.isError, p.errorHead)}`);
     }
 
     case 'hook_decision': {
