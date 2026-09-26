@@ -22,8 +22,10 @@ const isOpus47Plus = (model: string): boolean => /opus-4-(7|[89])/.test(model);
 /**
  * Models that reject manual `{type:'enabled'}` extended thinking and must be
  * routed to adaptive thinking instead: the opus-4.7+ family plus Claude
- * Sonnet 5 and Claude Opus 5 (adaptive-only per their model cards — "Extended
- * thinking: No / Adaptive thinking: Yes", the same profile as Opus 4.8).
+ * Sonnet 5, Claude Opus 5, and Claude Opus 5.5 (adaptive-only per their model
+ * cards — "Extended thinking: No / Adaptive thinking: Yes", the same profile
+ * as Opus 4.8). Note: `opus-5-5` is matched by the `opus-5` branch of the
+ * regex below.
  */
 const requiresAdaptiveThinking = (model: string): boolean =>
   isOpus47Plus(model) || /(claude-)?(opus|sonnet)-5/.test(model);
