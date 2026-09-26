@@ -1,6 +1,6 @@
 # docs/ — Index
 
-68 documents. One line each, grouped by concern.
+One line per document, grouped by concern.
 
 ---
 
@@ -9,10 +9,10 @@
 - [architecture.md](architecture.md) — Three-layer source structure (`src/`), module map, and key runtime concepts; start here for contributor orientation.
 - [reference.md](reference.md) — Full env-var table, slash-command taxonomy, and plugin/marketplace deep-dive.
 - [development.md](development.md) — Build, test, release mechanics, and codebase conventions for contributors.
-- [env-registry.md](env-registry.md) — Generated registry of all 195 environment variables across 13 categories; do not edit by hand (`pnpm scan:env`).
+- [env-registry.md](env-registry.md) — Generated registry of environment variables by category; do not edit by hand (`pnpm scan:env`).
 - [philosophy/afk-contract.md](philosophy/afk-contract.md) — Foundational thesis: the agent must constrain execution and bear witness to it.
 - [failure-geometry.md](failure-geometry.md) — Design pattern: name the default failure mode, choose a preferred one, add structure that transforms one into the other.
-- [sdk-dependency.md](sdk-dependency.md) — Generated snapshot of SDK dependency versions (2026-09-23).
+- [sdk-dependency.md](sdk-dependency.md) — Generated snapshot of SDK dependency versions and import usage.
 
 ---
 
@@ -20,7 +20,7 @@
 
 - [subagent-steering.md](subagent-steering.md) — Mid-run steering: how an external actor redirects a running subagent between tool-call boundaries.
 - [subagent-tool-budget.md](subagent-tool-budget.md) — Reference for `budget-preamble.ts`: how a forked child's tool-round cap is disclosed to the child itself.
-- [subagent-attachment-propagation.md](subagent-attachment-propagation.md) — Proposal (unimplemented): optionally attach a parent-session image to a dispatched subagent prompt.
+- [subagent-attachment-propagation.md](subagent-attachment-propagation.md) — Implemented design record for optionally attaching parent-session images to dispatched subagent prompts.
 - [skill-load-mode.md](skill-load-mode.md) — Three skill execution modes (`inline` / `fork` / `load`) and the 2026-06 load-by-default amendment.
 - [signal-block.md](signal-block.md) — SIGNAL block convention (v0, passive-observation only): read-only infrastructure, not yet authoritative for routing.
 - [model-slots.md](model-slots.md) — Four capability tiers (`local` / `small` / `medium` / `large`) and how they bind to concrete models.
@@ -113,7 +113,7 @@
 - [specs/day-4d-open-pr-handler.md](specs/day-4d-open-pr-handler.md) — Spec for Day 4d: open-PR handler for the speculative branch farm (replaces a stub).
 - [specs/env-flag-registry.md](specs/env-flag-registry.md) — Spec: centralized env module + generated registry (refactor + feature).
 - [specs/imported-plugin-enabled-state.md](specs/imported-plugin-enabled-state.md) — Spec: honor source enabled/disabled state for imported plugins (behavioral fix + config-shape change).
-- [specs/phase-2-rendering-refactor.md](specs/phase-2-rendering-refactor.md) — Spec: Phase 2 rendering-subsystem refactor + 5 bug fixes; awaiting approval before implementation begins.
+- [specs/phase-2-rendering-refactor.md](specs/phase-2-rendering-refactor.md) — **Superseded.** Historical spec for the Phase 2 rendering refactor and five bug fixes; all five checkpoints have shipped.
 - [specs/provider-agnostic-wire-seam.md](specs/provider-agnostic-wire-seam.md) — Spec: provider-agnostic wire seam; Phases 2C–2D partially implemented.
 - [specs/readline-keybindings-spec.md](specs/readline-keybindings-spec.md) — Spec: readline-style keybindings + multi-line ergonomics (`feat/readline-keybindings`).
 
@@ -122,7 +122,7 @@
 ## Proposals
 
 - [proposals/first-class-worktree-isolation.md](proposals/first-class-worktree-isolation.md) — MVP implemented (2026-07-10): `isolation: "worktree"` for the `agent` tool; design + implementation scope record.
-- [proposals/idle-turn-proposal.md](proposals/idle-turn-proposal.md) — Next-action suggestion at the idle prompt; Tier-3 "ghost" design rejected, superseded by the DECISION section approach.
+- [proposals/idle-turn-proposal.md](proposals/idle-turn-proposal.md) — Rejected idle-prompt designs: both the Tier-3 "ghost" and its successor failed review or measurement; slash-command recency ranking shipped instead.
 - [proposals/subagent-prompt-capture.md](proposals/subagent-prompt-capture.md) — Capture parent→child subagent prompts; **design superseded in part by §8** (2026-08-01); capture seam and trace-event addition changed.
 - [proposals/tui-compositor-rewrite.md](proposals/tui-compositor-rewrite.md) — Unify the compositor commit model to dissolve the scrollback-gap class; Stage 0 validated, Stage 2 core landed in #540.
 
