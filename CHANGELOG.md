@@ -11,6 +11,16 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.256.0] - 2026-09-26
+
+### Added
+- add errorHead to failed tool_call.completed events (#2264) (cd4d86a0)
+- episode mode runtime plumbing for sandboxed what-if runs (ae7169c4)
+
+### Changed
+- Merge pull request #2273 from griffinwork40/afk/whatif-runtime (ff40270a)
+- Merge origin/main into afk/whatif-runtime (92d23d30)
+
 ## [5.255.0] - 2026-09-26
 
 ### Added
