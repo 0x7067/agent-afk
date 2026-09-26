@@ -11,6 +11,30 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.254.4] - 2026-09-26
+
+### Added
+- optional MCP server health-check pre-flight (AFK_MCP_HEALTHCHECK) (2a89587f)
+- activate fact access tracking (e54f371b)
+
+### Fixed
+- clip centered input viewport to prevent column-0 wrap (65f227e9)
+- comment explicit blank-row commits at flushCompletedRoots sites + indent test (12a42e5e)
+
+### Changed
+- Merge pull request #2218 from griffinwork40/afk/iso-agent-tool-2-dscfff (699c04ef)
+- Merge pull request #2223 from griffinwork40/afk/iso-agent-tool-8-f7mzud (d133c58a)
+- Merge pull request #2221 from griffinwork40/feat/1848-access-tracking-v3 (0c40a5fc)
+- Merge pull request #2220 from griffinwork40/afk/iso-agent-tool-5-owts6x (ce1fb454)
+- Merge pull request #2219 from griffinwork40/afk/iso-agent-tool-1-jkox3h (9ff29e66)
+- correct index status summaries (a83c4e4a)
+- harden AFK_SMOKE_TEXT scenarios (check for all smoke glyphs, restore env) (#2271) (4a2ad8b0)
+- cover CLI-restart fallback in tests/ suite + guard spawnSync (#2244) (#2263) (b437cb72)
+- document pnpm 10 postinstall skip behaviour and remedies (#2222) (0a4954e9)
+- add trailing boundary to hasBadge regex in tool-lane batch-start test (#2257) (14743ece)
+- exercise maybeRestartServices default pkgRoot on darwin (#2258) (2d0c96df)
+- add docs/README.md index (85597f55)
+
 ## [5.254.3] - 2026-09-26
 
 ### Added
