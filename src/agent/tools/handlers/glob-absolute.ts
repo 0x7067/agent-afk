@@ -26,11 +26,24 @@ export interface SplitPattern {
 }
 
 function hasGlobMeta(segment: string): boolean {
+  // NOTE: `[` and `]` are intentionally omitted here — `globToRegExp` escapes
+  // bracket characters rather than treating them as character-class syntax.
+  // If bracket/brace support is ever added to `globToRegExp`, extend this
+  // check in lockstep so `splitAbsolutePattern` continues to split at the
+  // first segment that contains a true metacharacter.
   return segment.includes('*') || segment.includes('?');
 }
 
-export function splitAbsolutePattern(rawPattern: string): SplitPattern | null {
-  if (!path.isAbsolute(rawPattern)) return null;
+/**
+ * Optional path module injection — used in tests to exercise the Windows
+ * drive-letter branch on POSIX CI without spawning a separate process.
+ * Callers in production always omit this argument (defaults to `path`).
+ */
+export function splitAbsolutePattern(
+  rawPattern: string,
+  pathModule: Pick<typeof path, 'isAbsolute' | 'normalize'> = path,
+): SplitPattern | null {
+  if (!pathModule.isAbsolute(rawPattern)) return null;
   const normalized = rawPattern.replace(/\\/g, '/');
   const segments = normalized.split('/');
   const firstMeta = segments.findIndex(hasGlobMeta);
@@ -42,5 +55,8 @@ export function splitAbsolutePattern(rawPattern: string): SplitPattern | null {
   // `['', 'tmp', 'x']` -> '/tmp/x'; `['C:', 'x']` -> 'C:/x'; `['']` -> '/'.
   const joined = baseSegments.join('/');
   const base = joined === '' || /^[A-Za-z]:$/.test(joined) ? `${joined}/` : joined;
-  return { base: path.normalize(base), pattern: rest.join('/') };
+  // Use pathModule.normalize so the returned values use the injected
+  // module's separator (the win32 injection in tests exercises the drive-letter
+  // branch; production always gets the platform default `path`).
+  return { base: pathModule.normalize(base), pattern: pathModule.normalize(rest.join('/')) };
 }
