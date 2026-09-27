@@ -11,6 +11,24 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.257.7] - 2026-09-27
+
+### Added
+- dev/test geometry consistency guard at compositor entry points (1361e151)
+
+### Fixed
+- geometry guard reports instead of throwing under AFK_DEBUG_COMPOSITOR (8b336c8e)
+
+### Changed
+- Merge pull request #2336 from griffinwork40/afk/tui-geometry-guard (63cd3db8)
+- remove no-op identity spreads and clarify fork-preamble docs (#2321) (56fc1f62)
+- drop dead SETTLED constant and unused imports in OSC test (#2339) (ba1f7265)
+- bump next from 16.3.5 to 16.3.6 in /website (#2343) (d678c2aa)
+- bump @types/node from 26.6.1 to 26.6.2 in /website (#2342) (98f1124e)
+- seed #2290 content-hug band at a reachable bottom row (e48e0e40)
+- Merge remote-tracking branch 'origin/main' into afk/tui-geometry-guard (82f92b9c)
+- TUI research brief and architecture map (f0611d5c)
+
 ## [5.257.6] - 2026-09-27
 
 ### Fixed
