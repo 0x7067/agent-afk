@@ -168,24 +168,40 @@ describe('SmokeReveal', () => {
     r.dispose();
   });
 
-  it('staggers a burst so its first character appears before its last', () => {
+  it('reveals a burst with a playhead: first letter on arrival, then an accelerating front', () => {
     const c = clockAt();
-    const r = new SmokeReveal(() => {}, c.now);
-    r.record('abcdefghijklmnopqrst');
-    c.advance(5);
-    const plain = stripAnsi(r.apply('abcdefghijklmnopqrst'));
-    // Oldest is already a speck. The youngest are not born yet (held blank).
-    expect(plain[0]).not.toBe(' ');
-    expect(plain.endsWith(' ')).toBe(true);
+    const r = new SmokeReveal(() => {}, c.now, { prose: 'ink' });
+    const text = 'abcdefghijklmnopqrstuvwxyzabcdefghijklmn';
+    r.record(text);
+    const bornAt = (): number => stripAnsi(r.apply(text)).replace(/ +$/, '').length;
+    // Zero first-token latency: the first letter is born the instant it arrives.
+    expect(bornAt()).toBe(1);
+    // The front then eases up to speed instead of stepping at a fixed cadence:
+    // per-frame advances grow over the first frames rather than all being equal.
+    const adv: number[] = [];
+    let prev = 1;
+    for (let i = 0; i < 4; i++) {
+      c.advance(1000 / 60);
+      const n = bornAt();
+      adv.push(n - prev);
+      prev = n;
+    }
+    for (let i = 1; i < adv.length; i++) expect(adv[i] ?? 0).toBeGreaterThanOrEqual(adv[i - 1] ?? 0);
+    expect(adv.at(-1) ?? 0).toBeGreaterThan(adv[0] ?? 0);
+    expect(prev).toBeLessThan(text.length);
     r.dispose();
   });
 
-  it('caps reveal lag: a huge chunk is fully visible (as letters) within MAX_LAG_MS + LIFETIME_MS', () => {
+  it('caps reveal lag: a huge chunk is fully born by MAX_LAG_MS and settled by MAX_LAG_MS + LIFETIME_MS', () => {
     const c = clockAt();
     const r = new SmokeReveal(() => {}, c.now);
     const big = 'x'.repeat(2_000);
     r.record(big);
-    c.advance(MAX_LAG_MS + LIFETIME_MS);
+    c.advance(MAX_LAG_MS - 1);
+    expect(stripAnsi(r.apply(big)).endsWith(' ')).toBe(true);
+    c.advance(1);
+    expect(stripAnsi(r.apply(big))).not.toMatch(/ $/);
+    c.advance(LIFETIME_MS);
     expect(r.apply(big)).toBe(big);
   });
 

@@ -11,11 +11,13 @@
  *
  * How it works:
  *  - `record(chunk)` runs when raw markdown enters the pipeline. It splits
- *    the chunk into heading / other runs and schedules a birth time for each
- *    character: at a steady floor cadence, compressed so the whole backlog is
- *    revealed within `MAX_LAG_MS` (headings: a slower cadence and a longer
- *    cap). A network lump therefore sweeps in quickly instead of landing as
- *    a block, and the reveal never trails the model by more than the cap.
+ *    the chunk into heading / other runs and appends them to a continuous
+ *    playhead (`RevealTimeline`, smoke-reveal.playhead.ts) that births each
+ *    character as it crosses it. The playhead accelerates and decelerates
+ *    smoothly with the backlog, so a network lump sweeps in quickly instead
+ *    of landing as a block, a stall eases to rest over several frames, and
+ *    the reveal never trails the model by more than `MAX_LAG_MS` (headings:
+ *    a slower ceiling and the longer `ACCENT_MAX_LAG_MS`).
  *  - `apply(formatted)` runs on the formatted pending overlay just before it
  *    is painted. It walks the visible characters, tracking the active SGR
  *    style, and restyles the youngest ones by age. Characters not yet born
@@ -66,6 +68,7 @@ import { isExplicitlyDisabled, isExplicitlyEnabled } from '../config/env-helpers
 import { countVisible, segmentAnsi } from './smoke-reveal.ansi.js';
 import { SMOKE_GLYPH_LEVELS } from './smoke-reveal.frame.js';
 import { LineClassifier } from './smoke-reveal.lines.js';
+import { HEADING_MAX_CPS, MAX_CPS, RevealTimeline } from './smoke-reveal.playhead.js';
 import { applySgr, EMPTY_SGR, isSgr, serializeSgr, type SgrState } from './smoke-reveal.sgr.js';
 import {
   INK_MS,
@@ -88,11 +91,11 @@ export { INK_MS } from './smoke-reveal.cells.js';
 export const LIFETIME_MS = SMOKE_MS;
 /** Fraction of the smoke lifetime spent as a particle before the letter shows. */
 export const GLYPH_PHASE = SMOKE_GLYPH_PHASE;
-/** Floor spacing between revealed characters (about 150 characters per second). */
+/** Historical floor spacing between prose characters. The playhead's prose ceiling is `MAX_CPS`. */
 export const STAGGER_MS = 6;
 /** Upper bound on how far a reveal may trail the character's arrival. */
 export const MAX_LAG_MS = 250;
-/** Floor spacing for heading lines: slower, so the smoke has room to roll. */
+/** Minimum spacing for heading lines (`HEADING_MAX_CPS`): slower, so the smoke has room to roll. */
 export const ACCENT_STAGGER_MS = 12;
 /** Reveal-lag cap for heading lines. */
 export const ACCENT_MAX_LAG_MS = 600;
@@ -109,17 +112,14 @@ export const SMOKE_GLYPHS: readonly string[] = SMOKE_GLYPH_LEVELS.flat();
 
 const RESET = '\u001b[0m';
 
-interface Burst {
-  start: number;
-  end: number;
-  count: number;
-  style: RevealStyle;
-}
-
 export interface RecordOptions {
   /** Force one style for the whole chunk (skips heading detection). */
   style?: RevealStyle;
-  /** Floor spacing between this chunk's characters. Default `STAGGER_MS`. */
+  /**
+   * Minimum spacing between this chunk's characters (speed ceiling
+   * `1000 / staggerMs` cps). `0` reveals the chunk instantly. Default: the
+   * playhead's `MAX_CPS` for prose, `HEADING_MAX_CPS` for headings.
+   */
   staggerMs?: number;
 }
 
@@ -170,8 +170,7 @@ interface Front {
 }
 
 export class SmokeReveal {
-  private bursts: Burst[] = [];
-  private nextBirth = 0;
+  private readonly timeline = new RevealTimeline();
   private timer: NodeJS.Timeout | null = null;
   /**
    * Reconciled characters recorded over this instance's life. The character
@@ -207,12 +206,10 @@ export class SmokeReveal {
     for (const run of runs) {
       const count = countVisible(run.text);
       if (count === 0) continue;
-      const floor = opts.staggerMs ?? (run.heading ? ACCENT_STAGGER_MS : STAGGER_MS);
-      const cap = t + (run.heading ? ACCENT_MAX_LAG_MS : MAX_LAG_MS);
-      const start = Math.min(Math.max(t, this.nextBirth), cap);
-      const end = Math.min(start + (count - 1) * floor, cap);
-      this.bursts.push({ start, end, count, style: run.style });
-      this.nextBirth = end + (count > 1 ? (end - start) / (count - 1) : floor);
+      const ceiling = run.heading ? HEADING_MAX_CPS : MAX_CPS;
+      const maxCps = opts.staggerMs === undefined ? ceiling : opts.staggerMs <= 0 ? Infinity : 1000 / opts.staggerMs;
+      const capMs = run.heading ? ACCENT_MAX_LAG_MS : MAX_LAG_MS;
+      this.timeline.record(t, { count, style: run.style, capMs, maxCps });
       this.sinceApply += count;
     }
     this.prune(t);
@@ -221,12 +218,14 @@ export class SmokeReveal {
   /**
    * Milliseconds until the newest characters, if they are smoke, have
    * condensed enough (`SMOKE_HOLD_SHARE` of their life) to be committed
-   * without a visible snap. 0 when the newest burst is not smoke.
+   * without a visible snap. 0 when the newest character is not smoke.
    */
   smokeHoldRemaining(): number {
-    const b = this.bursts[this.bursts.length - 1];
-    if (!b || b.style !== 'smoke') return 0;
-    return Math.max(0, b.end + SMOKE_MS * SMOKE_HOLD_SHARE - this.now());
+    const t = this.now();
+    this.timeline.advance(t);
+    const tl = this.timeline;
+    const birth = tl.styleAt(tl.recorded - 1) === 'smoke' ? tl.newestBirthEstimate(t) : null;
+    return birth === null ? 0 : Math.max(0, birth + SMOKE_MS * SMOKE_HOLD_SHARE - t);
   }
 
   /**
@@ -236,19 +235,20 @@ export class SmokeReveal {
   apply(formatted: string, opts: ApplyOptions = {}): string {
     const t = this.now();
     this.prune(t);
-    if (this.bursts.length === 0 || formatted === '') return formatted;
+    const tl = this.timeline;
+    if (tl.recorded === tl.first || formatted === '') return formatted;
 
     const segs = segmentAnsi(formatted);
     let visible = 0;
     for (const s of segs) if (s.kind === 'char' && !s.ws) visible++;
     this.reconcile(visible);
 
-    // Characters at or beyond the recorded total are settled by definition,
-    // so skip the per-burst walk for them (most of a long paragraph).
-    const recorded = this.recordedCount();
+    // Characters at or beyond the tracked count are settled by definition,
+    // so skip the timeline lookup for them (most of a long paragraph).
+    const recorded = tl.recorded - tl.first;
     // Births are monotonic, so the unborn characters are exactly the newest
     // `unborn`, and the revealed front is the character just before them.
-    const unborn = Math.min(recorded, this.unbornCount(t));
+    const unborn = Math.min(recorded, tl.recorded - tl.bornCount);
     const lead = unborn < recorded ? this.birthOf(unborn) : null;
     // Stable identity of the revealed front: the wisp's texture is seeded from
     // it, so appending text (which moves `serial`) never reshuffles the wisp.
@@ -305,8 +305,7 @@ export class SmokeReveal {
 
   /** Forget all history (e.g. the pending buffer was discarded). */
   reset(): void {
-    this.bursts = [];
-    this.nextBirth = 0;
+    this.timeline.reset();
     this.lines.reset();
     this.lastVisible = null;
     this.sinceApply = 0;
@@ -329,26 +328,6 @@ export class SmokeReveal {
     return wisp ? wisp + RESET : blank;
   }
 
-  /** How many of the newest recorded characters are not yet born at `t`. */
-  private unbornCount(t: number): number {
-    let n = 0;
-    for (let i = this.bursts.length - 1; i >= 0; i--) {
-      const b = this.bursts[i];
-      if (!b) continue;
-      if (b.start > t) {
-        n += b.count;
-        continue;
-      }
-      if (b.end > t && b.count > 1) {
-        const step = (b.end - b.start) / (b.count - 1);
-        const born = Math.min(b.count, Math.floor((t - b.start) / step) + 1);
-        n += b.count - born;
-      }
-      break;
-    }
-    return n;
-  }
-
   /** Splice the drifting wisp after a smoke front at the very end of the text, when the line has room. */
   private insertWisp(parts: string[], front: Front | null, t: number, maxWidth: number | undefined): boolean {
     if (!front || front.style !== 'smoke' || maxWidth === undefined) return false;
@@ -360,7 +339,7 @@ export class SmokeReveal {
   }
 
   /**
-   * Trim raw-count excess (formatter-consumed syntax) from the newest bursts
+   * Trim raw-count excess (formatter-consumed syntax) from the newest runs
    * so their total matches how much the formatted text actually grew. See the
    * "raw vs formatted counts" invariant in the module header.
    */
@@ -370,54 +349,27 @@ export class SmokeReveal {
     this.lastVisible = visible;
     this.serial += this.sinceApply;
     this.sinceApply = 0;
-    for (let i = this.bursts.length - 1; i >= 0 && excess > 0; i--) {
-      const b = this.bursts[i];
-      if (!b) continue;
-      const take = Math.min(excess, b.count);
-      b.count -= take;
-      excess -= take;
-      this.serial -= take;
-      if (b.count === 0) this.bursts.splice(i, 1);
-    }
+    excess = Math.min(Math.max(0, excess), this.timeline.recorded - this.timeline.first);
+    this.timeline.trimNewest(excess);
+    this.serial -= excess;
   }
 
-  /** Total characters across live (not yet pruned) bursts. */
-  private recordedCount(): number {
-    let n = 0;
-    for (const b of this.bursts) n += b.count;
-    return n;
-  }
-
-  /** Birth time and style of the character `d` positions from the end, or null if settled. */
+  /** Birth time and style of the character `d` positions from the end (Infinity = unborn), or null if settled. */
   private birthOf(d: number): { birth: number; style: RevealStyle } | null {
-    let rem = d;
-    for (let i = this.bursts.length - 1; i >= 0; i--) {
-      const b = this.bursts[i];
-      if (!b) continue;
-      if (rem < b.count) {
-        if (b.count === 1) return { birth: b.start, style: b.style };
-        const j = b.count - 1 - rem;
-        return { birth: b.start + ((b.end - b.start) * j) / (b.count - 1), style: b.style };
-      }
-      rem -= b.count;
-    }
-    return null;
+    const i = this.timeline.recorded - 1 - d;
+    const birth = this.timeline.birthAt(i);
+    const style = this.timeline.styleAt(i);
+    return birth === null || style === undefined ? null : { birth, style };
   }
 
   /**
-   * Drop bursts whose every character has settled. They are oldest-first. A
-   * smoke burst's wisp can outlive its letters by `WISP_MS`, but the wisp
-   * only ever follows the NEWEST burst, which prune never touches while its
-   * letters are live.
+   * Advance the playhead to `t` and drop characters that have settled. A
+   * smoke front's wisp can outlive its letter by `WISP_MS`, which is shorter
+   * than any smoke letter's life, so pruning never strands a live wisp.
    */
   private prune(t: number): void {
-    while (this.bursts.length > 0) {
-      const b = this.bursts[0];
-      if (!b) break;
-      const life = b.style === 'ink' ? INK_MS : MAX_LIFETIME_MS;
-      if (b.end + life > t) break;
-      this.bursts.shift();
-    }
+    this.timeline.advance(t);
+    this.timeline.prune(t, (style) => (style === 'ink' ? INK_MS : MAX_LIFETIME_MS));
   }
 
   private armTick(): void {
