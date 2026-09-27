@@ -11,6 +11,21 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.258.0] - 2026-09-27
+
+### Added
+- content-hug+banner — first reply flows under banner (#2229) (27342ddb)
+
+### Fixed
+- scope the content-hug strand exclusion to frames with slack (#2229) (45b775de)
+
+### Changed
+- Merge pull request #2368 from griffinwork40/afk/issue-2229-hug-banner (9c1748f0)
+- assert the kept banner is painted exactly once (#2229) (f39e4133)
+- content-hug boot-warning scenario expects warnings in the viewport (#2229) (b86c788f)
+- note preCommitBannerSync's caller precondition (0627abe7)
+- Merge remote-tracking branch 'origin/main' into afk/issue-2229-hug-banner (c738fe16)
+
 ## [5.257.9] - 2026-09-27
 
 ### Fixed
