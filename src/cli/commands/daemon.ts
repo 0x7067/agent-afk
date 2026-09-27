@@ -140,7 +140,7 @@ export function registerDaemonCommand(program: Command): void {
     .option('--once', 'Fire one tick and exit (for testing)', false)
     .option(
       '--timeout-ms <ms>',
-      'Per-tick session timeout in ms. Overrides AFK_TIMEOUT_MS. Defaults to the session default (120000).',
+      'Per-tick session timeout in ms. Overrides AFK_TIMEOUT_MS. Defaults to no timeout (0 = unlimited) when unset.',
     )
     .option('--thinking <mode>', "Thinking mode: 'adaptive' | 'disabled' | 'max' | 'enabled:<N>'")
     .option('--effort <level>', "Effort level: low|medium|high|xhigh|max")
