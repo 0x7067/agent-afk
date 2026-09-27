@@ -117,6 +117,16 @@ function truncateBytes(text: string, maxBytes: number, jobId: string): string {
 }
 
 /**
+ * Human-readable result body for one settled job (no XML envelope, no
+ * escaping), capped at {@link MAX_INJECTION_BYTES} with the same
+ * `/bgsub:join <jobId>` marker. Used by push surfaces (Telegram) that show
+ * the result to the operator rather than the model.
+ */
+export function formatBgResultBody(job: BackgroundJob): string {
+  return truncateBytes(extractOutput(job), MAX_INJECTION_BYTES, job.jobId);
+}
+
+/**
  * Build the model-injection envelope for one settled job. Wrapped in
  * `<background-subagent-result>` tags — distinct from the `agent` tool's
  * foreground result envelope so the model understands this arrived
