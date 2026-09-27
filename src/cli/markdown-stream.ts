@@ -1,7 +1,8 @@
 import { ResizeBus } from './terminal-size.js';
 import type { TerminalCompositor } from './terminal-compositor.js';
 import type { OverlayComposer } from './_lib/overlay-composer.js';
-import { calculateContentWidth, calculateProseContentWidth, formatPendingBuffer, formatBlockForCommit, applyIndent, initLogUpdateModule, accumulateCommitted, scheduleWithThrottle, isInOpenCodeFence, isInOpenTable, pendingRowCap } from './markdown-stream-format.js';
+import { calculateContentWidth, calculateProseContentWidth, formatBlockForCommit, applyIndent, initLogUpdateModule, accumulateCommitted, scheduleWithThrottle } from './markdown-stream-format.js';
+import { PendingFormatCache } from './markdown-stream.pending-cache.js';
 import { contentMargin } from './render/measure.js';
 import { SmokeReveal, isInkTextEnabled, isSmokeTextEnabled } from './smoke-reveal.js';
 import { splitAtHeadingBoundary } from './markdown-stream.heading-hold.js';
@@ -125,6 +126,8 @@ export class StreamingMarkdownRenderer {
 
   /** Text reveal mask (ink prose, optional smoke headings). Null when the reveal is off. */
   private smoke: SmokeReveal | null = null;
+  /** Memoized pending render: an unchanged buffer is not reformatted on a reveal frame. */
+  private readonly pendingCache = new PendingFormatCache();
   /**
    * Smoke accent heading hold (see markdown-stream.heading-hold.ts): text
    * from the character that would commit a still-condensing heading onward.
@@ -251,25 +254,19 @@ export class StreamingMarkdownRenderer {
    * composer path (via slot) can generate identical output.
    */
   renderPending(): string {
-    const inCode = isInOpenCodeFence(this.buffer);
+    const { inCode } = this.pendingCache.blockState(this.buffer);
     const contentWidth = inCode
       ? calculateContentWidth(this.indent.length)
       : calculateProseContentWidth(this.indent.length);
-    let formatted = formatPendingBuffer(this.buffer, contentWidth, this.isTTY && !this.flushing);
+    const pending = this.pendingCache.render(this.buffer, contentWidth, this.isTTY && !this.flushing);
+    let formatted = pending.formatted;
     // Smoke-text reveal: prose only. Code fences and table previews keep
     // their dimmed live view (the table's box-drawing would otherwise read
     // as the "youngest" characters). A height-truncated render is skipped
     // too: it keeps only the first rows, so its end is NOT the newest text,
     // and the distance-from-end mask would re-smoke settled on-screen text.
-    // The row count is evaluated last so the smoke-off path never pays for
-    // the split.
-    if (
-      this.smoke &&
-      formatted &&
-      !inCode &&
-      !isInOpenTable(this.buffer) &&
-      formatted.split('\n').length < pendingRowCap()
-    ) {
+    // The row count is computed once per render by the pending cache.
+    if (this.smoke && formatted && !inCode && !pending.inTable && pending.rows < pending.rowCap) {
       formatted = this.smoke.apply(formatted, { maxWidth: contentWidth });
     }
     // Content centering (AFK_CENTER_CONTENT): live pending prose is part of

@@ -188,6 +188,9 @@ export class SmokeReveal {
   /** Raw visible characters recorded since the last walked apply(). */
   private sinceApply = 0;
 
+  /** Segmentation of the last formatted string: a frame repaint of unchanged text reuses it. */
+  private segCache: { text: string; segs: ReturnType<typeof segmentAnsi>; visible: number } | null = null;
+
   private readonly lines = new LineClassifier();
   private readonly prose: RevealStyle;
   private readonly headings: RevealStyle;
@@ -244,9 +247,7 @@ export class SmokeReveal {
     const tl = this.timeline;
     if (tl.recorded === tl.first || formatted === '') return formatted;
 
-    const segs = segmentAnsi(formatted);
-    let visible = 0;
-    for (const s of segs) if (s.kind === 'char' && !s.ws) visible++;
+    const { segs, visible } = this.segment(formatted);
     this.reconcile(visible);
 
     // Characters at or beyond the tracked count are settled by definition,
@@ -322,6 +323,7 @@ export class SmokeReveal {
   /** Forget all history (e.g. the pending buffer was discarded). */
   reset(): void {
     this.timeline.reset();
+    this.segCache = null;
     this.lines.reset();
     this.lastVisible = null;
     this.sinceApply = 0;
@@ -368,6 +370,16 @@ export class SmokeReveal {
     excess = Math.min(Math.max(0, excess), this.timeline.recorded - this.timeline.first);
     this.timeline.trimNewest(excess);
     this.serial -= excess;
+  }
+
+  /** `segmentAnsi(formatted)` plus its visible count, memoized on the string. */
+  private segment(text: string): { segs: ReturnType<typeof segmentAnsi>; visible: number } {
+    if (this.segCache?.text === text) return this.segCache;
+    const segs = segmentAnsi(text);
+    let visible = 0;
+    for (const s of segs) if (s.kind === 'char' && !s.ws) visible++;
+    this.segCache = { text, segs, visible };
+    return this.segCache;
   }
 
   /** Birth time and style of the character `d` positions from the end (Infinity = unborn), or null if settled. */
