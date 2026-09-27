@@ -37,6 +37,15 @@ const MAX_INPUT_BYTES = 8192;
 // The prompt prefix ("> ") occupies 2 visible columns.
 const PREFIX_WIDTH = 2;
 
+// DEC private mode sequences for the alternate screen buffer.
+// Teardown constant is declared before setup constant (ordered-sequence rule).
+//
+// Invariant: LEAVE_ALT_SCREEN must be written to stdout BEFORE every
+// compositor.resumeInput() call, or the compositor repaints into the alt
+// buffer and the main screen is never restored.
+const LEAVE_ALT_SCREEN = '\x1b[?1049l';
+const ENTER_ALT_SCREEN = '\x1b[?1049h';
+
 // FIX-1: Reentrancy guard — prevents double-Tab from launching two concurrent
 // task views, each installing their own stdin listener.
 let midTurnViewActive = false;
@@ -50,6 +59,18 @@ export interface MidTurnTaskViewOptions {
   manager: SubagentManager;
   /** The armed TerminalCompositor (for suspend/resume and stdout access). */
   compositor: TerminalCompositor;
+}
+
+/**
+ * Leave the alternate screen and hand the terminal back to the compositor.
+ * Invariant: must be called BEFORE resumeInput/repaint on every exit path,
+ * or the compositor repaints into the alt buffer instead of the main screen.
+ * Teardown helper declared before launchMidTurnTaskView (ordered-sequence rule).
+ */
+function leaveAltScreen(compositor: TerminalCompositor): void {
+  compositor.stdout.write(LEAVE_ALT_SCREEN);
+  compositor.resumeInput();
+  compositor.repaint();
 }
 
 /**
@@ -109,8 +130,8 @@ export async function launchMidTurnTaskView(
   // Item 1: re-enable raw mode after suspending so keystrokes arrive per-byte.
   try { process.stdin.setRawMode?.(true); } catch { /* non-TTY */ }
 
-  // Clear screen and render the task view header.
-  stdout.write('\x1b[2J\x1b[H'); // clear screen + cursor home
+  // Enter the alternate screen buffer, then clear and home within it.
+  stdout.write(ENTER_ALT_SCREEN + '\x1b[2J\x1b[H');
   const status = handle.status ?? 'running';
   stdout.write(clamp(renderTaskViewHeader(id, status, agentType)) + '\n\n');
 
@@ -145,8 +166,7 @@ export async function launchMidTurnTaskView(
     // Item 1: restore cooked mode before resuming compositor.
     try { process.stdin.setRawMode?.(false); } catch { /* non-TTY */ }
     midTurnViewActive = false;
-    compositor.resumeInput();
-    compositor.repaint();
+    leaveAltScreen(compositor);
     return true;
   }
 
@@ -285,8 +305,7 @@ export async function launchMidTurnTaskView(
     try { process.stdin.setRawMode?.(false); } catch { /* non-TTY */ }
     // FIX-1: Clear the reentrancy guard so a subsequent Tab is accepted.
     midTurnViewActive = false;
-    compositor.resumeInput();
-    compositor.repaint();
+    leaveAltScreen(compositor);
   }
 
   return true;

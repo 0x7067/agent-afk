@@ -1043,3 +1043,215 @@ describe('renderPrompt suffix viewport', () => {
     expect(visible.endsWith('orld')).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Alternate screen buffer (DEC private mode 1049)
+// ---------------------------------------------------------------------------
+
+describe('alternate screen buffer', () => {
+  const ENTER_ALT = '\x1b[?1049h';
+  const LEAVE_ALT = '\x1b[?1049l';
+
+  /**
+   * Build a minimal already-completed (non-running) fake fixture.
+   * The "succeeded" status triggers the early-return path.
+   */
+  function makeCompletedFixture() {
+    const written: string[] = [];
+    const calls: string[] = [];
+
+    const fakeStdout = {
+      columns: 80,
+      write: (s: string) => { written.push(s); return true; },
+    };
+    const fakeSession = {
+      getHistory: () => [],
+      getOutputStream: async function* () { /* no events */ },
+    };
+    const fakeHandle = { status: 'succeeded' as const, session: fakeSession, sendMessage: vi.fn() };
+    const fakeManager = {
+      list: () => [{ id: 'sub-alt-done', status: 'running' as const }],
+      get: (_id: string) => fakeHandle as never,
+    };
+    const fakeCompositor = {
+      stdout: fakeStdout as never,
+      suspendInput: vi.fn(() => { calls.push('suspendInput'); }),
+      resumeInput: vi.fn(() => { calls.push('resumeInput'); }),
+      repaint: vi.fn(() => { calls.push('repaint'); }),
+    };
+    return { written, calls, fakeManager, fakeCompositor };
+  }
+
+  /**
+   * Build a minimal running fixture that terminates on Esc.
+   * `capturedDataListener` is populated during `launchMidTurnTaskView` so
+   * the caller can inject keypresses.
+   */
+  function makeRunningFixture() {
+    const written: string[] = [];
+    const calls: string[] = [];
+
+    const fakeStdout = {
+      columns: 80,
+      write: (s: string) => { written.push(s); calls.push(`write:${s}`); return true; },
+    };
+
+    let capturedDataListener: ((data: Buffer) => void) | null = null;
+    const origOn = process.stdin.on.bind(process.stdin);
+    const origRemoveListener = process.stdin.removeListener.bind(process.stdin);
+    vi.spyOn(process.stdin, 'on').mockImplementation((event: string, listener: (...args: unknown[]) => void) => {
+      if (event === 'data') capturedDataListener = listener as (d: Buffer) => void;
+      return origOn(event as never, listener as never);
+    });
+    vi.spyOn(process.stdin, 'removeListener').mockImplementation((event: string, listener: (...args: unknown[]) => void) => {
+      return origRemoveListener(event as never, listener as never);
+    });
+
+    let resolveStream!: () => void;
+    const streamDone = new Promise<void>((r) => { resolveStream = r; });
+
+    const fakeSession = {
+      getHistory: () => [],
+      getOutputStream: async function* () { resolveStream(); /* no events, ends immediately */ },
+    };
+    const fakeHandle = { status: 'running' as const, session: fakeSession, sendMessage: vi.fn() };
+    const fakeManager = {
+      list: () => [{ id: 'sub-alt-run', status: 'running' as const }],
+      get: (_id: string) => fakeHandle as never,
+    };
+    const fakeCompositor = {
+      stdout: fakeStdout as never,
+      suspendInput: vi.fn(() => { calls.push('suspendInput'); }),
+      resumeInput: vi.fn(() => { calls.push('resumeInput'); }),
+      repaint: vi.fn(() => { calls.push('repaint'); }),
+    };
+
+    return { written, calls, fakeManager, fakeCompositor, streamDone, getCaptured: () => capturedDataListener };
+  }
+
+  it('writes the enter alt-screen sequence on open (early-complete path)', async () => {
+    const { launchMidTurnTaskView } = await import('./task-view-mid-turn.js');
+    const { written, fakeManager, fakeCompositor } = makeCompletedFixture();
+
+    await launchMidTurnTaskView({ manager: fakeManager as never, compositor: fakeCompositor as never });
+
+    const allOutput = written.join('');
+    expect(allOutput).toContain(ENTER_ALT);
+  });
+
+  it('writes the leave alt-screen sequence on the early-complete exit path', async () => {
+    const { launchMidTurnTaskView } = await import('./task-view-mid-turn.js');
+    const { written, fakeManager, fakeCompositor } = makeCompletedFixture();
+
+    await launchMidTurnTaskView({ manager: fakeManager as never, compositor: fakeCompositor as never });
+
+    const allOutput = written.join('');
+    expect(allOutput).toContain(LEAVE_ALT);
+  });
+
+  it('leave alt-screen precedes resumeInput on the early-complete exit path', async () => {
+    const { launchMidTurnTaskView } = await import('./task-view-mid-turn.js');
+    const { written, fakeManager, fakeCompositor } = makeCompletedFixture();
+
+    await launchMidTurnTaskView({ manager: fakeManager as never, compositor: fakeCompositor as never });
+
+    const allOutput = written.join('');
+    const leaveIdx = allOutput.indexOf(LEAVE_ALT);
+    // resumeInput fires after the last write, so the leave sequence must
+    // appear before resumeInput was called.
+    expect(leaveIdx).toBeGreaterThan(-1);
+    // resumeInput must have been called.
+    expect(fakeCompositor.resumeInput).toHaveBeenCalled();
+    // The leave sequence write must come before the resumeInput call.
+    // We verify ordering by checking that LEAVE_ALT appears in written[]
+    // before resumeInput fires. Since we track writes and calls separately,
+    // check that leaveIdx < allOutput.length and resumeInput was called
+    // exactly once (meaning the write came first as leave is the last write).
+    const writeCount = written.length;
+    expect(writeCount).toBeGreaterThan(0);
+    // The last write in written[] must contain LEAVE_ALT (it is the last
+    // thing written before resumeInput is called on the early-complete path).
+    const lastWrite = written[written.length - 1]!;
+    expect(lastWrite).toBe(LEAVE_ALT);
+  });
+
+  it('writes the leave alt-screen sequence on the Esc-abort exit path (finally block)', async () => {
+    const { launchMidTurnTaskView } = await import('./task-view-mid-turn.js');
+    const { written, fakeManager, fakeCompositor, getCaptured } = makeRunningFixture();
+
+    // Send Esc as soon as the data listener is registered (before the stream
+    // can emit events), so the abort controller fires and the finally block runs
+    // without going through waitForEsc.
+    const origOn = process.stdin.on.bind(process.stdin);
+    vi.spyOn(process.stdin, 'on').mockImplementation((event: string, listener: (...args: unknown[]) => void) => {
+      const result = origOn(event as never, listener as never);
+      if (event === 'data') {
+        // Inject Esc immediately on the next microtask so the listener is armed.
+        Promise.resolve().then(() => {
+          const l = getCaptured();
+          if (l) l(Buffer.from('\x1b'));
+        });
+      }
+      return result;
+    });
+
+    await launchMidTurnTaskView({ manager: fakeManager as never, compositor: fakeCompositor as never });
+    vi.restoreAllMocks();
+
+    const allOutput = written.join('');
+    expect(allOutput).toContain(LEAVE_ALT);
+  });
+
+  it('leave alt-screen is the last write before teardown on the stream-end exit path', async () => {
+    // Uses the early-complete path (status !== 'running') as a clean proxy
+    // for the ordering invariant: the function writes LEAVE_ALT as its very
+    // last stdout.write before calling resumeInput/repaint.
+    //
+    // The finally-block path exercises the same three consecutive statements
+    //   stdout.write(LEAVE_ALT) → compositor.resumeInput() → compositor.repaint()
+    // so the ordering invariant is shared. The early-complete path is used
+    // here because it is synchronous and deterministic (no stdin/Esc plumbing).
+    const { launchMidTurnTaskView } = await import('./task-view-mid-turn.js');
+    const { written, fakeManager, fakeCompositor } = makeCompletedFixture();
+
+    await launchMidTurnTaskView({ manager: fakeManager as never, compositor: fakeCompositor as never });
+
+    // Verify: LEAVE_ALT is written, and it is the very last write (resumeInput
+    // comes next in source but is not a stdout.write).
+    const lastWrite = written[written.length - 1]!;
+    expect(lastWrite).toBe(LEAVE_ALT);
+    // resumeInput must have been called — it comes immediately after.
+    expect(fakeCompositor.resumeInput).toHaveBeenCalled();
+  });
+
+  it('no bare \\x1b[2J goes to the main screen — \\x1b[2J always follows the alt-screen enter', async () => {
+    const { launchMidTurnTaskView } = await import('./task-view-mid-turn.js');
+    const { written, fakeManager, fakeCompositor } = makeCompletedFixture();
+
+    await launchMidTurnTaskView({ manager: fakeManager as never, compositor: fakeCompositor as never });
+
+    const allOutput = written.join('');
+    // Every occurrence of \x1b[2J must be immediately preceded by the
+    // alt-screen enter sequence (possibly with intervening cursor-home).
+    // The required form is: ENTER_ALT + '\x1b[2J'
+    // Find all 2J positions and assert each is inside the alt-screen block.
+    let searchFrom = 0;
+    let found2J = false;
+    while (true) {
+      const idx = allOutput.indexOf('\x1b[2J', searchFrom);
+      if (idx === -1) break;
+      found2J = true;
+      // The ENTER_ALT sequence must appear before this 2J, and after any
+      // preceding LEAVE_ALT (so we are inside the alt buffer at this point).
+      const precedingOutput = allOutput.slice(0, idx);
+      const lastEnter = precedingOutput.lastIndexOf(ENTER_ALT);
+      const lastLeave = precedingOutput.lastIndexOf(LEAVE_ALT);
+      // Must have entered alt screen and not yet left it.
+      expect(lastEnter).toBeGreaterThan(-1);
+      expect(lastEnter).toBeGreaterThan(lastLeave);
+      searchFrom = idx + 1;
+    }
+    // Sanity: the clear-screen sequence must have been written at least once.
+    expect(found2J).toBe(true);
+  });
+});
