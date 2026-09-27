@@ -18,6 +18,7 @@ import type {
   VerifiedPrediction,
   WhatifReport,
 } from './types.js';
+import { describeChange } from './operators/index.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -263,34 +264,6 @@ export function renderMarkdown(report: WhatifReport): string {
   lines.push(`Run folder: \`${runDir}\`\n`);
 
   return lines.join('\n');
-}
-
-/** One-liner for a Change (used in report). */
-function describeChange(ch: { kind: string; [k: string]: unknown }): string {
-  switch (ch.kind) {
-    case 'append':
-      return `Append text to ${String(ch['target'])}.`;
-    case 'file':
-      return `Replace file at ${String(ch['path'])}.`;
-    case 'hot':
-      return `Replace HOT.md memory.`;
-    case 'memory-add':
-      return `Add memory: "${String(ch['content']).slice(0, 80)}".`;
-    case 'memory-remove':
-      return `Remove memory #${String(ch['id'])}.`;
-    case 'disable-skill':
-      return `Disable skill: ${String(ch['name'])}.`;
-    case 'disable-plugin':
-      return `Disable plugin: ${String(ch['name'])}.`;
-    case 'model':
-      return `Change model to ${String(ch['model'])}.`;
-    case 'effort':
-      return `Change effort to ${String(ch['effort'])}.`;
-    case 'env':
-      return `Set env var ${String(ch['key'])}.`;
-    default:
-      return `Change kind: ${ch.kind}.`;
-  }
 }
 
 // ---------------------------------------------------------------------------
