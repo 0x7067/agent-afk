@@ -5,9 +5,14 @@
  *
  * How it works:
  *  - `record(chunk)` runs when raw markdown arrives. Each burst of new
- *    characters gets staggered birth times, so a 40-character chunk appears
- *    as fast writing rather than a block. Births are monotonic, and a
- *    character is never revealed more than `MAX_LAG_MS` after it arrived.
+ *    characters gets staggered birth times, so a chunk appears as writing
+ *    rather than a block. Births are monotonic, and a character is never
+ *    revealed more than `MAX_LAG_MS` after it arrived.
+ *  - The stagger is PACED to the stream (see `paceStagger`): a chunk's
+ *    letters are spread across the expected gap until the next chunk, so the
+ *    leading edge advances letter by letter instead of jumping a token at a
+ *    time. A fixed tiny stagger would fit a whole word inside one repaint
+ *    frame, which is exactly the "whole words pop in" look.
  *  - `apply(formatted)` runs on the formatted pending overlay string just
  *    before it is painted. It walks the visible characters and styles the
  *    youngest ones by age.
@@ -61,11 +66,22 @@ import {
 } from './smoke-reveal.frame.js';
 
 /** Total time from first speck to fully settled letter. */
-export const LIFETIME_MS = 320;
+export const LIFETIME_MS = 700;
 /** Fraction of the lifetime spent as a smoke glyph before the letter shows. */
 export const GLYPH_PHASE = 0.36;
-/** Spacing between characters revealed from one burst. */
+/** Spacing between characters of a burst before any stream rate is known. */
 export const STAGGER_MS = 6;
+/** Fastest paced spacing: bounds how tightly a dense burst is packed. */
+export const MIN_STAGGER_MS = 2;
+/** Slowest paced spacing (~36 chars/s): a sparse stream still types briskly. */
+export const MAX_STAGGER_MS = 28;
+/**
+ * Inter-chunk gaps longer than this are pauses (thinking, tool calls), not
+ * stream rate, and are left out of the pacing estimate.
+ */
+export const MAX_GAP_SAMPLE_MS = 150;
+/** EMA weight of the newest inter-chunk gap sample. */
+const GAP_EMA_WEIGHT = 0.3;
 /** Upper bound on how far a reveal may trail the character's arrival. */
 export const MAX_LAG_MS = 160;
 /** Settle-driver cadence, which matches the renderer's default throttle. */
@@ -140,6 +156,12 @@ export class SmokeReveal {
   private lastVisible: number | null = null;
   /** Raw visible characters recorded since the last walked apply(). */
   private sinceApply = 0;
+  /** Arrival time of the previous non-whitespace chunk; null = none yet. */
+  private lastRecordAt: number | null = null;
+  /** Smoothed gap between chunk arrivals; null = no rate estimate yet. */
+  private gapEma: number | null = null;
+  /** Smoothed visible characters per chunk; null = no rate estimate yet. */
+  private charEma: number | null = null;
 
   constructor(
     private readonly requestRepaint: () => void,
@@ -151,11 +173,12 @@ export class SmokeReveal {
     const count = countVisible(chunk);
     if (count === 0) return;
     const t = this.now();
+    const stagger = this.paceStagger(t, count);
     const cap = t + MAX_LAG_MS;
     const start = Math.min(Math.max(t, this.nextBirth), cap);
-    const end = Math.min(start + (count - 1) * STAGGER_MS, cap);
+    const end = Math.min(start + (count - 1) * stagger, cap);
     this.bursts.push({ start, end, count });
-    this.nextBirth = end + STAGGER_MS;
+    this.nextBirth = end + stagger;
     this.sinceApply += count;
     this.prune(t);
   }
@@ -220,6 +243,9 @@ export class SmokeReveal {
     this.nextBirth = 0;
     this.lastVisible = null;
     this.sinceApply = 0;
+    this.lastRecordAt = null;
+    this.gapEma = null;
+    this.charEma = null;
     this.clearTick();
   }
 
@@ -256,6 +282,28 @@ export class SmokeReveal {
       this.serial -= take;
       if (b.count === 0) this.bursts.splice(i, 1);
     }
+  }
+
+  /**
+   * Per-character spacing for a burst of `count` characters arriving at `t`:
+   * the smoothed stream RATE (gap per chunk / chars per chunk), so the
+   * leading edge types at one steady speed. Dividing the gap by THIS chunk's
+   * count instead made a lone comma crawl and a long word zip, which reads
+   * as stutter. Clamped to
+   * [MIN_STAGGER_MS, MAX_STAGGER_MS]; `record()` still compresses the burst
+   * under the MAX_LAG_MS cap, so pacing can never add unbounded latency.
+   */
+  private paceStagger(t: number, count: number): number {
+    if (this.lastRecordAt !== null) {
+      const gap = t - this.lastRecordAt;
+      if (gap <= MAX_GAP_SAMPLE_MS) {
+        this.gapEma = this.gapEma === null ? gap : this.gapEma + GAP_EMA_WEIGHT * (gap - this.gapEma);
+      }
+    }
+    this.lastRecordAt = t;
+    this.charEma = this.charEma === null ? count : this.charEma + GAP_EMA_WEIGHT * (count - this.charEma);
+    if (this.gapEma === null) return STAGGER_MS;
+    return Math.min(MAX_STAGGER_MS, Math.max(MIN_STAGGER_MS, this.gapEma / this.charEma));
   }
 
   /** Total characters across live (not yet pruned) bursts. */

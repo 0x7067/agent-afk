@@ -204,6 +204,70 @@ describe('SmokeReveal', () => {
     r.dispose();
   });
 
+  it('paces a steady token stream so a word is revealed letter by letter, not all at once', () => {
+    const c = clockAt();
+    const r = new SmokeReveal(() => {}, c.now);
+    // 5-char tokens every 40ms: the rate estimate settles near 8ms/char.
+    let text = '';
+    for (let i = 0; i < 6; i++) {
+      r.record('wordy');
+      text += 'wordy';
+      r.apply(text);
+      c.advance(40);
+    }
+    r.record('abcde');
+    text += 'abcde';
+    c.advance(1);
+    r.apply(text);
+    // 28ms after the newest token landed (letters born at +0/8/16/24/32ms),
+    // the last letter is still held blank: the word is mid-reveal. A fixed
+    // 6ms stagger would have birthed all five by +24ms, inside one frame.
+    c.advance(27);
+    const tail = stripAnsi(r.apply(text)).slice(-5);
+    expect(tail.trimEnd().length, tail).toBeGreaterThan(0);
+    expect(tail.endsWith(' '), tail).toBe(true);
+    r.dispose();
+  });
+
+  it('types at one steady rate, so a short chunk does not crawl after long ones', () => {
+    const c = clockAt();
+    const r = new SmokeReveal(() => {}, c.now);
+    // 5-char tokens every 10ms: ~2ms/char. Then a lone 2-char chunk.
+    let text = '';
+    for (let i = 0; i < 6; i++) {
+      r.record('wordy');
+      text += 'wordy';
+      r.apply(text);
+      c.advance(10);
+    }
+    c.advance(200); // let the backlog drain so the chunk starts on arrival
+    r.apply(text);
+    r.record('ab');
+    text += 'ab';
+    // Paced by chunk count (10ms / 2 chars = 5ms) or the old per-chunk rule
+    // the second letter would still be blank here; at the stream rate it is born.
+    c.advance(4);
+    const tail = stripAnsi(r.apply(text)).slice(-2);
+    expect(tail, tail).not.toContain(' ');
+    r.dispose();
+  });
+
+  it('keeps long pauses (tool calls, thinking) out of the pacing estimate', () => {
+    const c = clockAt();
+    const r = new SmokeReveal(() => {}, c.now);
+    r.record('aaaaa');
+    c.advance(10);
+    r.record('bbbbb');
+    c.advance(5_000);
+    r.record('ccccc');
+    // Paced from the 10ms gap (2ms/char), not the 5s pause: the whole token is
+    // born well inside one frame instead of dribbling out at MAX_STAGGER_MS.
+    c.advance(FRAME_MS);
+    const tail = stripAnsi(r.apply('aaaaabbbbbccccc')).slice(-5);
+    expect(tail).not.toContain(' ');
+    r.dispose();
+  });
+
   it('drives its own repaints while animating and stops once settled', () => {
     vi.useFakeTimers();
     const repaint = vi.fn();
