@@ -6,9 +6,12 @@
  * entry points (commitAbove, repaint, arm, disarm).
  *
  * ## Gate policy
- * The guard throws ONLY when either:
- *   - `env.VITEST` is set (test runner), OR
- *   - `env.AFK_DEBUG_COMPOSITOR` is set (explicit debug flag).
+ * The guard is active ONLY when either:
+ *   - `env.VITEST` is set (test runner): a violation THROWS, OR
+ *   - `env.AFK_DEBUG_COMPOSITOR` is set (explicit debug flag): a violation is
+ *     written to stderr as a `[geometry-assert]` line, alongside the existing
+ *     `[compositor]` debugLog output. It never throws there, so a developer
+ *     debugging a live REPL is not crashed mid-frame by the guard.
  *
  * It does NOT gate on `NODE_ENV !== 'production'`: NODE_ENV is usually
  * unset for real users running the CLI, which would throw in production.
@@ -22,8 +25,10 @@
  * transient state are OMITTED (with a comment naming the transient state).
  *
  * ## Known findings (existing test suite)
- * None discovered: all invariants checked here pass green against the
- * existing suite.  See FINDINGS section of the commit message for details.
+ * One real bug surfaced and is narrowed out rather than fixed here: a
+ * terminal SHRINK while the compositor is disarmed leaves
+ * `lastMeasuredFrameBottom` describing the old geometry (I3). See the
+ * FINDING comment in the I3 block below.
  */
 
 import { env } from '../config/env.js';
@@ -274,9 +279,9 @@ export function assertGeometryConsistent(
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-function raise(caller: string, code: string, detail: string): never {
-  throw new Error(
-    `[geometry-assert] ${code} violated at ${caller}: ${detail}\n` +
-    'Set neither VITEST nor AFK_DEBUG_COMPOSITOR to suppress (gate is off in production).',
-  );
+function raise(caller: string, code: string, detail: string): void {
+  const message = `[geometry-assert] ${code} violated at ${caller}: ${detail}`;
+  if (env.VITEST) throw new Error(message);
+  // Debug-flag path (AFK_DEBUG_COMPOSITOR without a test runner): report, never throw.
+  process.stderr.write(`${message}\n`);
 }

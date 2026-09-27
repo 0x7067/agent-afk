@@ -294,3 +294,46 @@ describe('guard gating', () => {
     expect(typeof process.env['VITEST']).toBe('string'); // Vitest sets it
   });
 });
+
+// ---------------------------------------------------------------------------
+// Gate behaviour — module re-imported under stubbed env
+// ---------------------------------------------------------------------------
+
+describe('assertGeometryConsistent — gate', () => {
+  const violating = (): GeometryAssertHost => makeHost({ committedBandPaintedRows: -1 });
+
+  async function loadFresh(): Promise<typeof import('./terminal-compositor.geometry-assert.js')> {
+    vi.resetModules();
+    return import('./terminal-compositor.geometry-assert.js');
+  }
+
+  it('is a silent no-op when neither VITEST nor AFK_DEBUG_COMPOSITOR is set (production)', async () => {
+    vi.stubEnv('VITEST', '');
+    vi.stubEnv('AFK_DEBUG_COMPOSITOR', '');
+    const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      const mod = await loadFresh();
+      expect(() => mod.assertGeometryConsistent('repaint', violating())).not.toThrow();
+      expect(write).not.toHaveBeenCalled();
+    } finally {
+      write.mockRestore();
+      vi.unstubAllEnvs();
+      vi.resetModules();
+    }
+  });
+
+  it('reports to stderr but never throws under AFK_DEBUG_COMPOSITOR alone', async () => {
+    vi.stubEnv('VITEST', '');
+    vi.stubEnv('AFK_DEBUG_COMPOSITOR', '1');
+    const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      const mod = await loadFresh();
+      expect(() => mod.assertGeometryConsistent('repaint', violating())).not.toThrow();
+      expect(write).toHaveBeenCalledWith(expect.stringContaining('[geometry-assert]'));
+    } finally {
+      write.mockRestore();
+      vi.unstubAllEnvs();
+      vi.resetModules();
+    }
+  });
+});
