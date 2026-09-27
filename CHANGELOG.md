@@ -11,6 +11,25 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.257.3] - 2026-09-27
+
+### Fixed
+- enforce 2000px many-image limit at request-build time (7f142a65)
+- tighten fast-mode service_tier error latch, add catalog deps injection, trailing-slash normalisation, NoticeKind export, and staleness doc (688b9a99)
+- widen C1 regex, fix truncate code-point safety, update docs/comments (2c3467eb)
+- advisory nits from #2272/#2273 — unref guard, flatMap dead filter, stub type, export, shared helper, trailing blank, mid-file import (a9b34acf)
+
+### Changed
+- Merge pull request #2333 from griffinwork40/afk/fix-many-image-2000px (0617e7b9)
+- Merge pull request #2325 from griffinwork40/afk/iso-agent-tool-5-ykvy1a (b4a5609a)
+- Merge pull request #2326 from griffinwork40/afk/iso-agent-tool-7-avd1is (63d84e43)
+- Merge pull request #2327 from griffinwork40/afk/iso-agent-tool-9-brrvpd (af5b05ee)
+- Merge pull request #2329 from griffinwork40/afk/iso-agent-tool-8-c25noy (6e505c75)
+- Merge pull request #2324 from griffinwork40/afk/iso-agent-tool-3-2ouwtw (ad599bf1)
+- cover web-ui-assets exclusion; merge redundant CI scan step (#2334) (afdbf17c)
+- add content-hug guard test and update banner-path trigger comment (6df2a2d4)
+- correct five doc/help strings that contradicted runtime behavior (3bcbc122)
+
 ## [5.257.2] - 2026-09-26
 
 ### Added
