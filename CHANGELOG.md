@@ -11,6 +11,25 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.257.5] - 2026-09-27
+
+### Fixed
+- move builtin-cwd warning to cwd-validator to satisfy filesize gate (175323e4)
+- prevent double SIGKILL timer and extra/unset bypass; document empty-changes behavior (f5514f6a)
+- align update_schedule cwd schema, null-on-create, error messages (2bf7a94a)
+- remove dead firstCompletedAt, widen timing margin (06ad6ec1)
+- per-call durationMs for parallel tool batches (e9cd3280)
+- advisory review findings — daemon per-task cwd (40cfa944)
+- address advisory findings from #2274 whatif prediction engine (fbb710d9)
+
+### Changed
+- Merge pull request #2330 from griffinwork40/afk/iso-agent-tool-10-grctv3 (bcede334)
+- Merge pull request #2328 from griffinwork40/afk/iso-agent-tool-6-dns1ai (a40d99ea)
+- Merge pull request #2332 from griffinwork40/afk/issue-2249-m4k9 (8ada5643)
+- consolidate shared makeResult/makeError helpers into tool-lane-render.fixtures.ts (#2323) (3737deb2)
+- bump the fumadocs group in /website with 3 updates (#2341) (814ce249)
+- extract emitDispatchedToolOutputs to fix funcsize gate (06049024)
+
 ## [5.257.4] - 2026-09-27
 
 ### Fixed
