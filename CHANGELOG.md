@@ -11,6 +11,17 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.261.1] - 2026-09-27
+
+### Fixed
+- two follow-up defects from #2382 suspend-commit review (e0c69603)
+- treat a suspended frame as top-unknown so suspended commits survive (#2382) (3ade1cba)
+
+### Changed
+- Merge pull request #2390 from griffinwork40/afk/issue-2382-suspend-commit (3058fe66)
+- Merge pull request #2391 from griffinwork40/afk/issue-2389-q7t3 (4ae9896f)
+- pin accumulateStreamJson's deliberate exclusion of thinking chunks (a0da2998)
+
 ## [5.261.0] - 2026-09-27
 
 ### Added
