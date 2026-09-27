@@ -83,6 +83,9 @@ export interface CommittedBandHost {
   anchorRow: number | undefined;
   /** Whether the compositor currently holds raw mode + the keypress listener. */
   armed: boolean;
+  /** True while suspendInput() is in effect: the live frame is erased and
+   *  repaint() no-ops, so the frame top is unknown (commit-geometry.ts). */
+  readonly suspended: boolean;
   /** The single log-update region tracker; null when not armed. */
   logUpdate: LogUpdateFn | null;
   /** DECSTBM scroll-region guard; absent when no status line is active. */
