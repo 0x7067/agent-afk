@@ -153,6 +153,17 @@ describe('buildChildEnv', () => {
     expect(result['AFK_SOMETHING']).toBe('x');
   });
 
+  it('extra cannot re-add a key that launch.unset explicitly removed', () => {
+    vi.stubEnv('AFK_MODEL', 'opus');
+    const result = buildChildEnv(
+      { ...baseEnv, launch: { env: {}, unset: ['AFK_MODEL'] } },
+      { AFK_MODEL: 're-added' },
+    );
+    // launch.unset removed AFK_MODEL; extra must not reverse that removal.
+    expect(result['AFK_MODEL']).toBeUndefined();
+    vi.unstubAllEnvs();
+  });
+
   // Medium fix #2295: extra bypassed the deny list before this fix.
   it('extra cannot re-add a security-deleted var (deny-list applied to extra)', () => {
     const result = buildChildEnv(baseEnv, {

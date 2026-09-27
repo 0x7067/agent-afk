@@ -129,11 +129,15 @@ async function waitForChild(
       sendSigterm();
       // Track the SIGKILL follow-up so settle() can clear it if the child
       // exits after SIGTERM but before SIGKILL_DELAY_MS elapses.
+      clearTimeout(killTimer);
       killTimer = setTimeout(sendSigkill, SIGKILL_DELAY_MS);
     }, timeoutMs);
 
     // AbortSignal support.
     const onAbort = (): void => {
+      // Cancel the SIGTERM deadline timer (or the SIGKILL follow-up, if the
+      // timeout path already fired) so only one SIGKILL timer is ever live.
+      clearTimeout(killTimer);
       sendSigterm();
       killTimer = setTimeout(sendSigkill, SIGKILL_DELAY_MS);
     };

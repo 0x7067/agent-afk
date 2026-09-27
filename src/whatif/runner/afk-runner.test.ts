@@ -229,6 +229,26 @@ describe('createAfkRunner().run()', () => {
     expect(trace.error).toContain('timed out');
   }, 10_000);
 
+  it('cancels SIGTERM kill timer before setting the SIGKILL follow-up on AbortSignal.abort()', async () => {
+    // Uses the infinite-sleep timeoutScript so the process never exits on its own.
+    // We abort immediately after starting run(); the path must resolve cleanly
+    // (no ghost timers, no hang) with an error trace.
+    const runner = createAfkRunner({ cliEntry: { command: process.execPath, args: [timeoutScript] } });
+    const env: Environment = { ...baseEnv, home: sandboxHome, cwd: tmpDir };
+    const controller = new AbortController();
+
+    const tracePromise = runner.run(env, baseEpisode, 0, { ...baseOpts, signal: controller.signal });
+    // Abort immediately — the onAbort handler should clear the pending SIGTERM
+    // deadline timer before arming the SIGKILL follow-up, leaving exactly one
+    // live timer.
+    controller.abort();
+
+    const trace = await tracePromise;
+    expect(trace.error).toBeTruthy();
+    expect(trace.text).toBe('');
+    expect(trace.tools).toEqual([]);
+  }, 10_000);
+
   it('redacts sk-ant credentials in error messages', async () => {
     const scriptWithKey = join(tmpDir, 'fake-key-error.js');
     await writeFile(scriptWithKey,

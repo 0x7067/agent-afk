@@ -94,10 +94,15 @@ export function buildChildEnv(
     if (!denied.has(k)) result[k] = v;
   }
 
+  // Build the set of keys that launch.unset explicitly removed so that extra
+  // cannot silently reverse an explicit unset.
+  const unsetKeys = new Set(env.launch.unset ?? []);
+
   // Apply caller-supplied extras last — filtered through the same deny list so
-  // a caller cannot re-introduce a credential or side-effecting var.
+  // a caller cannot re-introduce a credential or side-effecting var, and
+  // skipping any key that launch.unset explicitly removed.
   for (const [k, v] of Object.entries(extra)) {
-    if (!denied.has(k)) result[k] = v;
+    if (!denied.has(k) && !unsetKeys.has(k)) result[k] = v;
   }
 
   return result;

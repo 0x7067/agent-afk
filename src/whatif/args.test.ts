@@ -80,6 +80,18 @@ describe('parseWhatifArgs defaults', () => {
     expect(r.yes).toBe(false);
     expect(r.json).toBe(false);
   });
+
+  it('empty changes array is accepted (documents current behavior)', () => {
+    // flagChanges defaults to [] when no change flags are supplied.
+    // parseWhatifArgs does not reject an empty change list — callers that
+    // produce no flag changes (e.g. --spec with an empty changes array, or
+    // plain text with no --append/--model/etc.) succeed and return an empty
+    // flagChanges array. This test documents that this is intentional so
+    // future validators do not add a silent rejection for the empty case.
+    const r = parseWhatifArgs(['some text']);
+    if (typeof r === 'string') throw new Error(`expected object, got error: ${r}`);
+    expect(r.flagChanges).toEqual([]);
+  });
 });
 
 // ---------------------------------------------------------------------------
