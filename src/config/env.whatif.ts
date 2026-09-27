@@ -49,7 +49,7 @@ export const WHATIF_ENV_REGISTRY = [
   {
     name: 'AFK_WHATIF_ALLOW_MCP',
     description:
-      'When set to "1" or "true" inside a what-if episode (AFK_WHATIF_EPISODE=1), ' +
+      'When set to a truthy value (1/true/yes/on) inside a what-if episode (AFK_WHATIF_EPISODE=1), ' +
       'keep MCP servers enabled. By default, MCP servers are disabled inside episodes ' +
       'to prevent side effects from spawning external processes. Set this flag only ' +
       'when the change under test specifically concerns MCP server behaviour.',
