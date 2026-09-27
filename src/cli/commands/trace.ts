@@ -211,8 +211,15 @@ function fmtTime(ts: string): string {
   return ts.length >= 19 ? ts.slice(11, 19) : ts;
 }
 
+/**
+ * Truncate `s` to at most `n` Unicode code points (not UTF-16 units), appending
+ * `…` at the cut so an emoji straddling the boundary is never split into a lone
+ * surrogate. ASCII input is unaffected: `s.length` and code-point count agree
+ * for ASCII, so existing callers see identical output for ASCII strings.
+ */
 function truncate(s: string, n: number): string {
-  return s.length > n ? `${s.slice(0, n - 1)}…` : s;
+  const cps = Array.from(s);
+  return cps.length > n ? `${cps.slice(0, n - 1).join('')}…` : s;
 }
 
 /** Fixed label column so event lines align. */
