@@ -99,8 +99,12 @@ export function buildChildEnv(
   const unsetKeys = new Set(env.launch.unset ?? []);
 
   // Apply caller-supplied extras last — filtered through the same deny list so
-  // a caller cannot re-introduce a credential or side-effecting var, and
+  // a caller cannot re-introduce a Telegram or MCP side-effecting var, and
   // skipping any key that launch.unset explicitly removed.
+  // Note: credential keys (ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN, etc.)
+  // are deliberately NOT in the deny list here — the child is a full `afk chat`
+  // invocation that needs them to talk to the model; they arrive via the
+  // process.env inheritance at the top of this function, not through `extra`.
   for (const [k, v] of Object.entries(extra)) {
     if (!denied.has(k) && !unsetKeys.has(k)) result[k] = v;
   }

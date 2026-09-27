@@ -84,9 +84,11 @@ export const ToolCallCompletedPayloadSchema = z.object({
   batchIndex: z.number().int().positive().optional(),
   batchSize: z.number().int().positive().optional(),
   subagentId: z.string().optional(),
-  /** First ≤200 chars of error text (redacted, newlines collapsed). Present
-   *  only when `isError` is true and the content string is non-empty. Old
-   *  traces that lack this field continue to validate. */
+  /** First ≤200 code points of error text (redacted; all C0/DEL/C1 control
+   *  characters collapsed to spaces). Present only when `isError` is true and
+   *  the content string is non-empty. Old traces that lack this field continue
+   *  to validate. See `ERROR_HEAD_CAP` / `buildErrorHead` in
+   *  src/agent/providers/shared/tool-call-trace.ts for the exact build logic. */
   errorHead: z.string().optional(),
 });
 
