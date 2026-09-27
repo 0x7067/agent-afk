@@ -11,6 +11,14 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.257.9] - 2026-09-27
+
+### Fixed
+- honour pinnedRef pin when repo has semver tags (#2358) (#2360) (922f0e3d)
+
+### Changed
+- advisory findings from #2333 — many-image guard hardening (#2352) (3fdaf63f)
+
 ## [5.257.8] - 2026-09-27
 
 ### Fixed
