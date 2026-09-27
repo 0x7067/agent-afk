@@ -55,6 +55,14 @@ export interface CommitModeInput {
    * outside content-hug, where it defaults to `frameTop` / `prevTopRow`.
    */
   roomTop?: number;
+  /**
+   * content-hug placement mode: when true, the frame grows DOWNWARD (the
+   * content-hug anchor rises as the band grows) rather than upward — so the
+   * `overlayTallEnoughToStrand` check, which protects against upward frame
+   * growth that would eagerly archive band rows and leave a void on collapse,
+   * does not apply. Omit (or false) for bottom-pinned / cursor-follow mode.
+   */
+  contentHug?: boolean;
 }
 
 /** The routing decision + the geometry the caller's phases consume. */
@@ -162,6 +170,7 @@ export function decideCommitMode(input: CommitModeInput): CommitMode {
     committedBandPaintedRows,
     geometryStale,
     roomTop,
+    contentHug,
   } = input;
   const effPrevTop = roomTop ?? prevTopRow;
   const effRoomTop = roomTop ?? frameTop;
@@ -230,7 +239,16 @@ export function decideCommitMode(input: CommitModeInput): CommitMode {
   // the visible viewport. Route through band-hold so rows accumulate in the
   // model and paint contiguously on collapse. The single-copy optimization is
   // preserved when room >= maxBandModel (frame at or near minimum height).
-  const overlayTallEnoughToStrand = fitsAboveFrame && room < maxBandModel;
+  // Contract: skip when contentHug=true — see note below.
+  const overlayTallEnoughToStrand = !contentHug && fitsAboveFrame && room < maxBandModel;
+  // Contract (content-hug strand exclusion, issue #2229): in content-hug mode
+  // the frame grows DOWNWARD (the hug anchor rises as the band grows), not
+  // upward over band content. The stranding scenario — upward frame growth that
+  // eagerly archives band rows it later exposes on collapse — cannot occur
+  // because frame.position.ts bounds the frame bottom at absoluteBottom. With
+  // the check enabled, a first commit under a banner routes to band-hold
+  // (room < maxBandModel because the frame starts at the cursor-follow position,
+  // not the viewport floor) and drops prior-band rows from the merge.
   const useBandHold =
     overflowHasPending ||
     (!fitsAboveFrame && maxBandModel > 0) ||
