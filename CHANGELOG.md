@@ -11,6 +11,14 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.258.2] - 2026-09-27
+
+### Added
+- Claude Code matcher and timeout compatibility (#2377) (#2379) (7ec0269f)
+
+### Fixed
+- include tool_input in PostToolUse and PostToolUseFailure command-hook payloads (#2378) (506125c0)
+
 ## [5.258.1] - 2026-09-27
 
 ### Fixed
