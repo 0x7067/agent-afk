@@ -179,8 +179,150 @@ function assertCommittedOnce(vs: VirtualScreen, frameTopRow: number, labels: str
   }
 }
 
+/** Assert every label in `labels` appears exactly once across scrollback+viewport. */
+function assertEachExactlyOnce(vs: VirtualScreen, labels: string[], tag: string): void {
+  const all = [...vs.scrollbackLines(), ...vs.visibleLines()];
+  const dump = dumpScreen(vs);
+  for (const l of labels) {
+    const count = all.filter((r) => r.trim() === l).length;
+    expect(count, `[${tag}] "${l}" must appear exactly once (found ${count}):\n${dump}`).toBe(1);
+  }
+}
+
 describe('commitAbove during suspendInput (issue #2382)', () => {
   for (const s of SCENARIOS) {
+    // Regression #2382 defect 1: disarm() while suspended must not duplicate
+    // prior-painted band rows. erasedFramePriorBandErase() erases the painted
+    // suffix before the band-hold commit marks everything pending; flushPending
+    // in disarm() then archives only what was never on screen.
+    it(`disarm while suspended: each block appears exactly once — ${s.name}`, async () => {
+      const { c, vs } = await makeRig(s);
+      c.setSpinner({ enabled: true });
+      const labels: string[] = [];
+      for (let i = 0; i < s.fill; i++) {
+        const label = `FILL-${String(i).padStart(2, '0')}`;
+        labels.push(label);
+        c.commitAbove(`${label}\n`);
+        (c as any).repaint();
+      }
+      c.commitAbove('BLOCK-A\n');
+      c.commitAbove('BLOCK-B\n');
+      c.suspendInput();
+      c.commitAbove('BLOCK-SUSPENDED\n');
+      labels.push('BLOCK-A', 'BLOCK-B', 'BLOCK-SUSPENDED');
+      c.disarm();
+      assertEachExactlyOnce(vs, labels, `${s.name} (disarm-while-suspended)`);
+    });
+
+    // Regression #2382 defect 2: owesRows — a band-hold commit stores
+    // committedBandPaintedRows=0 (everything pending). On resume the idle
+    // repaint must materialize the owed rows even when `moved=false` (the frame
+    // lands at the same position as before suspend). Without the owesRows check,
+    // repositionCommittedBand would return early and leave the band invisible.
+    it(`idle repaint after resume materializes owed rows — ${s.name}`, async () => {
+      const { c, vs, internals } = await makeRig(s);
+      const labels: string[] = [];
+      for (let i = 0; i < s.fill; i++) {
+        const label = `FILL-${String(i).padStart(2, '0')}`;
+        labels.push(label);
+        c.commitAbove(`${label}\n`);
+        internals.repaint();
+      }
+      c.commitAbove('BLOCK-A\n');
+      c.commitAbove('BLOCK-B\n');
+      internals.repaint();
+      c.suspendInput();
+      c.commitAbove('BLOCK-SUSPENDED\n');
+      c.resumeInput();
+      labels.push('BLOCK-A', 'BLOCK-B', 'BLOCK-SUSPENDED');
+      // resumeInput() calls repaint() internally; no explicit repaint needed.
+      assertCommittedOnce(vs, internals.frameTop(), labels, `${s.name} (idle)`);
+      c.disarm();
+    });
+
+    // Regression #2382 defect 1+2: endTurn after resume. Ensures the full
+    // flush path (suspend → commit → resume → repaint → endTurn → disarm) is
+    // duplication-free, exercising erasedFramePriorBandErase + owesRows together.
+    it(`endTurn after resume: each block appears exactly once — ${s.name}`, async () => {
+      const { c, vs } = await makeRig(s);
+      const labels: string[] = [];
+      for (let i = 0; i < s.fill; i++) {
+        const label = `FILL-${String(i).padStart(2, '0')}`;
+        labels.push(label);
+        c.commitAbove(`${label}\n`);
+        (c as any).repaint();
+      }
+      c.commitAbove('BLOCK-A\n');
+      c.commitAbove('BLOCK-B\n');
+      (c as any).repaint();
+      c.suspendInput();
+      c.commitAbove('BLOCK-SUSPENDED\n');
+      c.resumeInput();
+      labels.push('BLOCK-A', 'BLOCK-B', 'BLOCK-SUSPENDED');
+      c.endTurn();
+      c.disarm();
+      assertEachExactlyOnce(vs, labels, `${s.name} (endTurn-after-resume)`);
+    });
+
+    // Regression #2382 overflow: a commit taller than the viewport while
+    // suspended uses the band-hold overflow path. All rows must appear exactly
+    // once after resume (overflow rows to scrollback, remaining rows to viewport).
+    it(`overflow commit while suspended: all rows appear exactly once — ${s.name}`, async () => {
+      const { c, vs, internals } = await makeRig(s);
+      c.setSpinner({ enabled: true });
+      const labels: string[] = [];
+      for (let i = 0; i < s.fill; i++) {
+        const label = `FILL-${String(i).padStart(2, '0')}`;
+        labels.push(label);
+        c.commitAbove(`${label}\n`);
+        internals.repaint();
+      }
+      c.commitAbove('BLOCK-A\n');
+      c.commitAbove('BLOCK-B\n');
+      c.suspendInput();
+      const bigLabels: string[] = [];
+      for (let i = 0; i < ROWS + 5; i++) bigLabels.push(`BIG-${String(i).padStart(2, '0')}`);
+      c.commitAbove(bigLabels.join('\n') + '\n');
+      c.resumeInput();
+      labels.push('BLOCK-A', 'BLOCK-B', ...bigLabels);
+      assertEachExactlyOnce(vs, labels, `${s.name} (overflow)`);
+      c.disarm();
+    });
+
+    // Codex P2: non-scrolling external write during suspension must not cause
+    // duplication. A newline-free write moves the cursor but does not scroll the
+    // terminal, so committed rows stay in the viewport. The compositor must still
+    // paint the suspended commit exactly once after resume.
+    // Invariant (Codex P2 limit): if the external write causes a terminal scroll
+    // (e.g., `answer\r\n`), committed rows may enter native scrollback while the
+    // model still marks them pending. The compositor cannot observe external
+    // scrolls, so it cannot prevent the duplicate in that case. Callers that must
+    // guarantee no duplicate after a scroll-causing external write must not commit
+    // during suspension, or must clear the band via clearCommittedBand() before
+    // resumeInput(). The test below uses a non-scrolling write only.
+    it(`non-scrolling external write during suspension: no duplicate — ${s.name}`, async () => {
+      const { c, vs, internals } = await makeRig(s);
+      const stdout = (c as any).stdout as NodeJS.WriteStream;
+      const labels: string[] = [];
+      for (let i = 0; i < s.fill; i++) {
+        const label = `FILL-${String(i).padStart(2, '0')}`;
+        labels.push(label);
+        c.commitAbove(`${label}\n`);
+        internals.repaint();
+      }
+      c.commitAbove('BLOCK-A\n');
+      c.commitAbove('BLOCK-B\n');
+      internals.repaint();
+      c.suspendInput();
+      // Non-scrolling external write: moves cursor but does not emit \n.
+      stdout.write('PROMPT? ');
+      c.commitAbove('BLOCK-SUSPENDED\n');
+      c.resumeInput();
+      labels.push('BLOCK-A', 'BLOCK-B', 'BLOCK-SUSPENDED');
+      assertCommittedOnce(vs, internals.frameTop(), labels, `${s.name} (ext-write)`);
+      c.disarm();
+    });
+
     it(`suspended commit is shown exactly once after resume — ${s.name}`, async () => {
       const { c, vs, internals } = await makeRig(s);
       c.setSpinner({ enabled: true });
@@ -209,7 +351,7 @@ describe('commitAbove during suspendInput (issue #2382)', () => {
 
       assertCommittedOnce(vs, internals.frameTop(), labels, s.name);
       c.disarm();
-    }, 15_000);
+    });
 
     it(`suspended commit is visible on resume, before any later commit — ${s.name}`, async () => {
       const { c, vs, internals } = await makeRig(s);
@@ -230,6 +372,6 @@ describe('commitAbove during suspendInput (issue #2382)', () => {
 
       assertCommittedOnce(vs, internals.frameTop(), labels, `${s.name} (on resume)`);
       c.disarm();
-    }, 15_000);
+    });
   }
 });
