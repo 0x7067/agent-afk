@@ -793,4 +793,3 @@ export function getWhatifDir(): string {
   return join(getAfkStateDir(), 'whatif');
 }
 
-

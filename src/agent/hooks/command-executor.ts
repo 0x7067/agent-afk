@@ -183,11 +183,11 @@ export async function executeCommand(
     let settled = false;
 
     function settle(result: CommandExecutorResult): void {
+      // unref unconditionally so a future caller that sets settled=true before
+      // calling settle() cannot skip unref() and pin the event loop.
+      proc.unref();
       if (settled) return;
       settled = true;
-      // unref only once settled: an unref'd child whose stdio already hit EOF leaves no ref'd
-      // handle while its 'exit' is pending, so with no other handles the loop drained mid-hook.
-      proc.unref();
       resolve(result);
     }
 
