@@ -296,6 +296,25 @@ describe('TelegramBgResultNotifier', () => {
     replacement.dispose();
     expect(drainBgInjections('777')).toBe('');
   });
+
+  // ── #2380: dispose() must markDelivered for buffered-but-undrained jobs ────
+
+  it('calls markDelivered for buffered jobs when dispose() is called without draining', () => {
+    const markDelivered = vi.spyOn(registry, 'markDelivered');
+
+    const { handle, fireTerminal } = makeBgHandle();
+    const job = registry.register({ handle, prompt: 'undrained task', model: 'sonnet' });
+
+    // Push the job into pendingInjections by firing a non-cancelled settle.
+    fireTerminal(succeed(job.jobId, 'result that will never be drained'));
+
+    // Do NOT call drainInjections() — simulate session teardown where drain
+    // is never reached.
+    notifier.dispose();
+
+    // dispose() must account for the buffered job via markDelivered.
+    expect(markDelivered).toHaveBeenCalledWith(job.jobId);
+  });
 });
 
 describe('prependToContent', () => {

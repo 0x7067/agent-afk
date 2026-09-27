@@ -130,6 +130,10 @@ export class TelegramBgResultNotifier {
   dispose(): void {
     this.registry.off('settled', this.onSettled);
     if (this.routeKey !== undefined) unregisterBgInjectionSource(this.routeKey, this);
+    // Mark any buffered-but-undrained jobs delivered so the witness trace
+    // accounts for them. dispose() is called at session teardown — drainInjections()
+    // will not be called afterward, so this is the only accounting opportunity.
+    for (const job of this.pendingInjections) this.registry.markDelivered(job.jobId);
     this.pendingInjections = [];
   }
 }
