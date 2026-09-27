@@ -11,6 +11,17 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.260.0] - 2026-09-27
+
+### Added
+- A/B framework prompt edits and capture inter-tool narration (c7614ff8)
+
+### Fixed
+- address review feedback (36ba1f07)
+
+### Changed
+- Merge pull request #2374 from griffinwork40/afk/whatif-framework-prompt (0bd4e4be)
+
 ## [5.259.2] - 2026-09-27
 
 ### Fixed
