@@ -11,6 +11,14 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.261.2] - 2026-09-27
+
+### Fixed
+- correct overlayTallEnoughToStrand analysis after adversarial review (d64cce8c)
+
+### Changed
+- Merge pull request #2384 from griffinwork40/afk/issue-2369-correction (4965ae74)
+
 ## [5.261.1] - 2026-09-27
 
 ### Fixed
