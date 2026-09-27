@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.258.1] - 2026-09-27
+
+### Fixed
+- surface active shell in tool description; PowerShell syntax guidance on Windows fallback (#2346) (b13ab6b4)
+
 ## [5.258.0] - 2026-09-27
 
 ### Added
