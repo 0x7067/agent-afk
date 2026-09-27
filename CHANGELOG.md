@@ -11,6 +11,14 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.259.0] - 2026-09-27
+
+### Added
+- light narration on interactive surfaces (#2375) (a497294f)
+
+### Changed
+- compositor-level regression for tall-overlay strand gap (#2369) (#2381) (52d00e30)
+
 ## [5.258.2] - 2026-09-27
 
 ### Added
