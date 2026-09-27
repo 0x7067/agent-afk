@@ -11,6 +11,14 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.257.6] - 2026-09-27
+
+### Fixed
+- show child-failure badge on completed nested agent rows (cfb66840)
+
+### Changed
+- Merge pull request #2335 from griffinwork40/afk/issue-2239-ekdo (61bdc5a6)
+
 ## [5.257.5] - 2026-09-27
 
 ### Fixed
