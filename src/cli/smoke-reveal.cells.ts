@@ -31,7 +31,7 @@ import { getTerminalColors } from './terminal-colors.js';
 export type RevealStyle = 'ink' | 'smoke';
 
 /** Ink fade duration. Long enough to read as a soft trailing edge, short enough to never feel slow. */
-export const INK_MS = 200;
+export const INK_MS = 340;
 /**
  * Width of the ink trailing edge in characters. A letter is settled once it
  * is `INK_MS` old OR this many characters behind the front, whichever comes
@@ -40,7 +40,7 @@ export const INK_MS = 200;
  * it bright: a block again. Capping by distance keeps a narrow, constant
  * band while text flows; time still settles the tail when the flow stops.
  */
-export const INK_TRAIL_CHARS = 20;
+export const INK_TRAIL_CHARS = 30;
 /** Ramp position a fresh ink letter starts from: a whisper above the background. */
 export const INK_FLOOR = 0.06;
 /**
@@ -53,7 +53,7 @@ export const INK_DIM = 0.22;
 export const INK_SPECK_PHASE = 0.3;
 
 /** Smoke accent lifetime (base; per-letter jitter only shortens it). */
-export const SMOKE_MS = 520;
+export const SMOKE_MS = 780;
 /** Share of the smoke lifetime spent as a particle before the letter appears. */
 export const SMOKE_GLYPH_PHASE = 0.42;
 /** Ramp position of the densest particle, and where the letter phase starts. */
@@ -62,16 +62,16 @@ const SMOKE_PEAK = 0.36;
 /** Cells of wisp drawn ahead of a smoke front. */
 export const WISP_CELLS = 3;
 /** How long the wisp lingers after the front stops advancing. */
-export const WISP_MS = 280;
+export const WISP_MS = 400;
 /** Wisp drift cadence: the pattern shifts one cell right per step. */
-const WISP_STEP_MS = 70;
+export const WISP_STEP_MS = 100;
 const WISP_LANE = 97;
 /**
  * Period of the brightness wave that rolls through the wisp. Its tone is
  * recomputed every frame from this, so the wisp moves continuously even
  * though its dot texture only shifts every `WISP_STEP_MS`.
  */
-const WISP_WAVE_MS = 420;
+const WISP_WAVE_MS = 620;
 /** Depth of that wave (share of the wisp's tone that swells and ebbs). */
 const WISP_WAVE_DEPTH = 0.35;
 

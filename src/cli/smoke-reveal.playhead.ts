@@ -30,15 +30,15 @@
 import type { RevealStyle } from './smoke-reveal.cells.js';
 
 /** Steady-state reveal lag: the playhead trails a steady stream by about this much. */
-export const TARGET_LAG_MS = 120;
+export const TARGET_LAG_MS = 170;
 /** Velocity relaxation time. `TARGET_LAG_MS / 4` is the critical-damping point. */
 export const TAU_MS = TARGET_LAG_MS / 4;
 /** Slowest the front crawls while any character is waiting (keeps the last letter prompt). */
 export const MIN_CPS = 30;
 /** Fastest comfortable prose reveal. Faster arrival grows the backlog until the lag cap takes over. */
-export const MAX_CPS = 360;
-/** Fastest heading reveal: the historical 12 ms heading cadence, so smoke has room to roll. */
-export const HEADING_MAX_CPS = 1000 / 12;
+export const MAX_CPS = 240;
+/** Fastest heading reveal: an 18 ms heading cadence, so smoke has room to roll. */
+export const HEADING_MAX_CPS = 1000 / 18;
 /** Fixed integration step. Births are interpolated inside it. */
 export const SUBSTEP_MS = 1;
 

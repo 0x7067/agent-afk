@@ -98,11 +98,11 @@ export const GLYPH_PHASE = SMOKE_GLYPH_PHASE;
 /** Historical floor spacing between prose characters. The playhead's prose ceiling is `MAX_CPS`. */
 export const STAGGER_MS = 6;
 /** Upper bound on how far a reveal may trail the character's arrival. */
-export const MAX_LAG_MS = 250;
+export const MAX_LAG_MS = 350;
 /** Minimum spacing for heading lines (`HEADING_MAX_CPS`): slower, so the smoke has room to roll. */
-export const ACCENT_STAGGER_MS = 12;
+export const ACCENT_STAGGER_MS = 18;
 /** Reveal-lag cap for heading lines. */
-export const ACCENT_MAX_LAG_MS = 600;
+export const ACCENT_MAX_LAG_MS = 900;
 /** Share of a smoke letter's life a held heading waits for before it may commit (eased: nearly solid). */
 export const SMOKE_HOLD_SHARE = 0.75;
 /** Settle-driver cadence: the frame clock's 60 fps period. */

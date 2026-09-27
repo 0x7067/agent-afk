@@ -207,7 +207,7 @@ describe('SmokeReveal', () => {
 
   it('keeps births monotonic when a second burst arrives mid-stagger', () => {
     const c = clockAt();
-    const r = new SmokeReveal(() => {}, c.now);
+    const r = new SmokeReveal(() => {}, c.now, { prose: 'ink' });
     r.record('aaaaaaaaaa');
     c.advance(10);
     r.record('bbbbbbbbbb');

@@ -8,8 +8,8 @@ import {
   type RunSpec,
 } from './smoke-reveal.playhead.js';
 
-const MAX_LAG_MS = 250;
-const ACCENT_MAX_LAG_MS = 600;
+const MAX_LAG_MS = 350;
+const ACCENT_MAX_LAG_MS = 900;
 const FRAME = 1000 / 60;
 
 const prose = (count: number): RunSpec => ({ count, style: 'ink', capMs: MAX_LAG_MS, maxCps: MAX_CPS });
@@ -97,7 +97,7 @@ describe('RevealTimeline', () => {
     // Steady 200 cps for 400 ms, then silence.
     for (let t = 0; t <= 400; t += 20) tl.record(t, prose(4));
     const speeds: number[] = [];
-    for (let c = 400; c <= 400 + 20 * FRAME; c += FRAME) {
+    for (let c = 400; c <= 400 + 8 * TARGET_LAG_MS; c += FRAME) {
       tl.advance(c);
       speeds.push(tl.cps);
     }

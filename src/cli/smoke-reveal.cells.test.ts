@@ -14,6 +14,7 @@ import {
   SMOKE_MS,
   WISP_CELLS,
   WISP_MS,
+  WISP_STEP_MS,
   inkCell,
   smokeCell,
   wispCells,
@@ -149,8 +150,8 @@ describe('wisp', () => {
     const cellsAt = (now: number): string[] => [...stripAnsi(wispCells(0, now, 42))];
     let shifted = 0;
     for (let step = 0; step < 40; step++) {
-      const a = cellsAt(step * 70);
-      const b = cellsAt((step + 1) * 70);
+      const a = cellsAt(step * WISP_STEP_MS);
+      const b = cellsAt((step + 1) * WISP_STEP_MS);
       // Same glyph set (level) at cells 2..3, so the pattern carries over there.
       if (a[1] === b[2] || (a[1] === ' ' && b[2] === ' ')) shifted++;
     }
