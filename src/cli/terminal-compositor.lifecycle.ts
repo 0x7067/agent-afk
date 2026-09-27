@@ -97,6 +97,10 @@ export interface LifecycleHost {
   // repaint once repositionCommittedBand re-establishes real geometry. See the
   // field doc on the class (terminal-compositor.ts).
   bandGeometryStale: boolean;
+  // Real frame top/bottom from the last repaint (0 = no frame measured).
+  // suspendInput() zeroes both: the frame it erases is no longer on screen.
+  lastMeasuredFrameTop: number;
+  lastMeasuredFrameBottom: number;
   // Stale-guard for endTurnFlush: set true when committed-band state changes
   // (a commit arrives); cleared by clearCommittedBand() after the flush so
   // a redundant call to endTurnFlush on an already-flushed band is a no-op.
@@ -123,6 +127,15 @@ export function suspendInput(self: LifecycleHost): void {
   if (self.logUpdate) {
     try { self.logUpdate.clear(self.scrollRegion?.getExtraRows() ?? 0); self.logUpdate.done(); } catch { /* noop */ }
   }
+  // Invariant (#2382): the frame is now erased and repaint() no-ops until
+  // resumeInput(), so there is NO measured frame on screen. Zero the measured
+  // geometry rather than let it describe a frame that no longer exists: a
+  // stale frame top misroutes a suspended commitAbove onto the fits path and
+  // makes resumeInput()'s repaint read a band stored against the collapsed
+  // frame as overlapping the erased one (geometry-guard I5). The resume
+  // repaint re-measures both fields.
+  self.lastMeasuredFrameTop = 0;
+  self.lastMeasuredFrameBottom = 0;
   if (self.handleKeypress) {
     self.stdin.removeListener('keypress', self.handleKeypress);
   }

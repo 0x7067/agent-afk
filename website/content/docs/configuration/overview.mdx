@@ -125,7 +125,7 @@ optional; unset fields fall through to env vars or built-in defaults.
 | `maxTokens` | `number` | `4096` | **Deprecated / inert** — not read by the generation path. Use `AFK_MAX_OUTPUT_TOKENS` / `--max-output-tokens` to cap per-response output. |
 | `temperature` | `number` | `1.0` | Sampling temperature. Env override: `AFK_TEMPERATURE`. |
 | `systemPrompt` | `string` | — | Operator overlay appended to the framework base prompt (tier 2). When set, `AFK.md` is not loaded. Env override: `AFK_SYSTEM_PROMPT` (tier 1, wins over this). |
-| `updatePolicy` | `"notify" \| "auto" \| "off"` | `"notify"` | Controls how AFK handles available CLI updates. `notify` prints a message; `auto` applies automatically; `off` disables checks. |
+| `updatePolicy` | `"notify" \| "auto" \| "off"` | `"notify"` | Controls how AFK handles available CLI updates. `notify` prints a message; `auto` applies minor and patch updates automatically but never crosses a major version (upgrade to a new major by hand); `off` disables checks. |
 | `autoResumeOnUsageLimit` | `boolean` | `true` | When `true`, AFK pauses and retries automatically when your API subscription hits its hourly limit, instead of showing a 429 error. |
 | `bgSummaries` | `boolean` | `false` | When `true`, the REPL summarizes running background jobs and shows them in `/bgsub:list`. **Caution:** this sends transcript data to the Anthropic API — don't enable it in air-gapped or sensitive environments. |
 | `maxSummaryCallsPerSession` | `number` | `200` | Session-wide budget for background summarizer LLM calls. Clamped to `[1, 500]`. Has no effect unless `bgSummaries` is `true`. |

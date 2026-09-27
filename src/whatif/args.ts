@@ -43,6 +43,7 @@
 
 import { readFileSync } from 'node:fs';
 import type { Change, ChangeSpec } from './types.js';
+import { AnyChangeSchema, SpecOutputSchema } from './compile.js';
 export { WHATIF_USAGE } from './args.usage.js';
 
 // ---------------------------------------------------------------------------
@@ -434,13 +435,41 @@ export function buildFlagSpecTitle(flagChanges: Change[], text?: string): string
 }
 
 /**
- * Parse a ChangeSpec JSON file from disk.
- * Throws on I/O or JSON parse error.
+ * Parse and validate a ChangeSpec JSON file from disk.
+ * Applies the same SpecOutputSchema + per-entry AnyChangeSchema validation
+ * that compileChangeSpec uses, so malformed spec files are rejected early.
+ * Throws on I/O, JSON parse error, or schema validation failure.
  */
 export function loadSpecFile(filePath: string): ChangeSpec {
   let raw: string;
   try { raw = readFileSync(filePath, 'utf8'); }
   catch { throw new Error(`whatif: cannot read spec file: ${filePath}`); }
-  try { return JSON.parse(raw) as ChangeSpec; }
+
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); }
   catch { throw new Error(`whatif: spec file is not valid JSON: ${filePath}`); }
+
+  // Validate top-level shape.
+  const outer = SpecOutputSchema.safeParse(parsed);
+  if (!outer.success) {
+    throw new Error(
+      `whatif: spec file has invalid structure: ${filePath}\n` +
+        outer.error.issues.map((i) => `  ${i.path.join('.')}: ${i.message}`).join('\n'),
+    );
+  }
+
+  // Validate each change entry; drop invalid ones (matching compile path).
+  const valid: Change[] = [];
+  for (const entry of outer.data.changes) {
+    const result = AnyChangeSchema.safeParse(entry);
+    if (result.success) valid.push(result.data);
+  }
+
+  if (valid.length === 0 && outer.data.changes.length > 0) {
+    throw new Error(
+      `whatif: spec file contains no valid changes (${outer.data.changes.length} entries failed schema validation): ${filePath}`,
+    );
+  }
+
+  return { title: outer.data.title, changes: valid };
 }

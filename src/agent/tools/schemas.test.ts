@@ -6,6 +6,7 @@ import {
   clipboardWriteTool,
   clipboardReadTool,
 } from './schemas.js';
+import { updateScheduleTool } from './schemas.schedule.js';
 import { cancelBackgroundJobTool, sendMessageToAgentTool, getBackgroundJobHealthTool } from './schemas.orchestration.js';
 
 describe('builtinToolSchemas', () => {
@@ -242,5 +243,15 @@ describe('getBackgroundJobHealthTool', () => {
 
   it('is included in BUILTIN_TOOL_NAMES', () => {
     expect(BUILTIN_TOOL_NAMES).toContain('get_background_job_health');
+  });
+});
+
+describe('updateScheduleTool', () => {
+  it('cwd field type is an array containing both "string" and "null" so null is schema-valid', () => {
+    const props = updateScheduleTool.input_schema.properties as Record<string, { type: unknown }>;
+    const cwdType = props['cwd']?.type;
+    expect(Array.isArray(cwdType)).toBe(true);
+    expect(cwdType).toContain('string');
+    expect(cwdType).toContain('null');
   });
 });

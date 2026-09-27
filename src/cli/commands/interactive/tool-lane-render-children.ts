@@ -115,7 +115,7 @@ function pushCompletedChildRows(
   // that formatOutcome embeds.
   const headLine = lead + child.prefix + palette.dim(' — ') + doneGlyph(result.isError, result.failureClass) + ' ';
   const outcomeBudget = Math.max(20, cols - displayWidth(stripAnsi(headLine)));
-  pushOutcomeLines(lines, headLine, formatOutcome(result, undefined, outcomeBudget, child.toolName), continuationIndent, cols);
+  pushOutcomeLines(lines, headLine, formatOutcome(result, undefined, outcomeBudget, child.toolName), continuationIndent, cols, childFailureBadge(child.failedChildCount));
   if (child.diff && !result.isError) {
     // Clamp each diff body line to terminal width. Diff lines are
     // model-controlled (file content) and routinely exceed `cols`;
@@ -330,7 +330,7 @@ function renderOverlayChildren(
           // Pre-execution diff preview for nested edit_file. formatPreviewDiffBlock
           // renders ⟳ Proposed and applies the AFK_SHOW_DIFFS=0 opt-out.
           const previewIndent = indentColored + (isLast ? g.spineClosed : palette.dim(g.spine)) + '  ';
-          for (const line of formatPreviewDiffBlock(child.previewDiff, previewIndent)) {
+          for (const line of formatPreviewDiffBlock(child.previewDiff, previewIndent, cols)) {
             lines.push(clampLineToTerminal(line, cols));
           }
         }

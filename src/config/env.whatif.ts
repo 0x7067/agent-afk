@@ -49,7 +49,7 @@ export const WHATIF_ENV_REGISTRY = [
   {
     name: 'AFK_WHATIF_ALLOW_MCP',
     description:
-      'When set to "1" or "true" inside a what-if episode (AFK_WHATIF_EPISODE=1), ' +
+      'When set to a truthy value (1/true/yes/on) inside a what-if episode (AFK_WHATIF_EPISODE=1), ' +
       'keep MCP servers enabled. By default, MCP servers are disabled inside episodes ' +
       'to prevent side effects from spawning external processes. Set this flag only ' +
       'when the change under test specifically concerns MCP server behaviour.',
@@ -57,6 +57,20 @@ export const WHATIF_ENV_REGISTRY = [
     required: false,
     default: '',
     example: '1',
+    category: 'misc',
+  },
+  {
+    name: 'AFK_FRAMEWORK_PROMPT_FILE',
+    description:
+      'Absolute path to a replacement for the framework base system prompt ' +
+      '(`system-prompt.md`). When set, `loadSystemPrompt()` reads this file instead ' +
+      'of the bundled `system-prompt.md`. Unset = byte-identical default behaviour. ' +
+      'An unreadable path throws at prompt load (hard error, no fallback). Use with ' +
+      '`afk whatif --env AFK_FRAMEWORK_PROMPT_FILE=<path>` to A/B test framework ' +
+      'prompt changes without modifying `system-prompt.md`.',
+    type: 'string',
+    required: false,
+    example: '/tmp/whatif-narration/system-prompt.narrate.md',
     category: 'misc',
   },
 ] as const satisfies readonly EnvVarMeta[];

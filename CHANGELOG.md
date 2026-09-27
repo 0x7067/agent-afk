@@ -11,6 +11,170 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.261.3] - 2026-09-27
+
+### Fixed
+- regenerate env-registry docs after AFK_WHATIF_ALLOW_MCP description update (9c1aa0b1)
+
+### Changed
+- Merge pull request #2356 from griffinwork40/afk/issue-2349-q8x3 (919975c8)
+- fix stale comments and tighten tests from #2324–#2333 triage batch (d237819c)
+
+## [5.261.2] - 2026-09-27
+
+### Fixed
+- correct overlayTallEnoughToStrand analysis after adversarial review (d64cce8c)
+
+### Changed
+- Merge pull request #2384 from griffinwork40/afk/issue-2369-correction (4965ae74)
+
+## [5.261.1] - 2026-09-27
+
+### Fixed
+- two follow-up defects from #2382 suspend-commit review (e0c69603)
+- treat a suspended frame as top-unknown so suspended commits survive (#2382) (3ade1cba)
+
+### Changed
+- Merge pull request #2390 from griffinwork40/afk/issue-2382-suspend-commit (3058fe66)
+- Merge pull request #2391 from griffinwork40/afk/issue-2389-q7t3 (4ae9896f)
+- pin accumulateStreamJson's deliberate exclusion of thinking chunks (a0da2998)
+
+## [5.261.0] - 2026-09-27
+
+### Added
+- gate major versions behind a manual dispatch; auto-update never crosses a major (2b54bd1c)
+
+### Changed
+- Merge pull request #2385 from griffinwork40/afk/major-release-gate (bb9e16c3)
+- Merge pull request #2370 from griffinwork40/afk/issue-2363-l7jj (a26af363)
+- show the full high-risk command in approval prompts (head+tail preview, no 256-char form cap) (554513af)
+
+## [5.260.0] - 2026-09-27
+
+### Added
+- A/B framework prompt edits and capture inter-tool narration (c7614ff8)
+
+### Fixed
+- address review feedback (36ba1f07)
+
+### Changed
+- Merge pull request #2374 from griffinwork40/afk/whatif-framework-prompt (0bd4e4be)
+
+## [5.259.2] - 2026-09-27
+
+### Fixed
+- wire AFK risk gate for daemon ticks and afk chat (#2315) (9ee45429)
+
+## [5.259.1] - 2026-09-27
+
+### Fixed
+- flag empty-output success and mark truncated response excerpt (#2383) (69b2f986)
+
+## [5.259.0] - 2026-09-27
+
+### Added
+- light narration on interactive surfaces (#2375) (a497294f)
+
+### Changed
+- compositor-level regression for tall-overlay strand gap (#2369) (#2381) (52d00e30)
+
+## [5.258.2] - 2026-09-27
+
+### Added
+- Claude Code matcher and timeout compatibility (#2377) (#2379) (7ec0269f)
+
+### Fixed
+- include tool_input in PostToolUse and PostToolUseFailure command-hook payloads (#2378) (506125c0)
+
+## [5.258.1] - 2026-09-27
+
+### Fixed
+- surface active shell in tool description; PowerShell syntax guidance on Windows fallback (#2346) (b13ab6b4)
+
+## [5.258.0] - 2026-09-27
+
+### Added
+- content-hug+banner — first reply flows under banner (#2229) (27342ddb)
+
+### Fixed
+- scope the content-hug strand exclusion to frames with slack (#2229) (45b775de)
+
+### Changed
+- Merge pull request #2368 from griffinwork40/afk/issue-2229-hug-banner (9c1748f0)
+- assert the kept banner is painted exactly once (#2229) (f39e4133)
+- content-hug boot-warning scenario expects warnings in the viewport (#2229) (b86c788f)
+- note preCommitBannerSync's caller precondition (0627abe7)
+- Merge remote-tracking branch 'origin/main' into afk/issue-2229-hug-banner (c738fe16)
+
+## [5.257.9] - 2026-09-27
+
+### Fixed
+- honour pinnedRef pin when repo has semver tags (#2358) (#2360) (922f0e3d)
+
+### Changed
+- advisory findings from #2333 — many-image guard hardening (#2352) (3fdaf63f)
+
+## [5.257.8] - 2026-09-27
+
+### Fixed
+- resolve remote-only branch names before git checkout --detach (#2361) (645af141)
+- size the diff preview box from the tool-lane row budget (#1619) (0fd9d2bd)
+
+### Changed
+- Merge pull request #2359 from griffinwork40/afk/issue-1619-diff-width (639a84ec)
+
+## [5.257.7] - 2026-09-27
+
+### Added
+- dev/test geometry consistency guard at compositor entry points (1361e151)
+
+### Fixed
+- geometry guard reports instead of throwing under AFK_DEBUG_COMPOSITOR (8b336c8e)
+
+### Changed
+- Merge pull request #2336 from griffinwork40/afk/tui-geometry-guard (63cd3db8)
+- remove no-op identity spreads and clarify fork-preamble docs (#2321) (56fc1f62)
+- drop dead SETTLED constant and unused imports in OSC test (#2339) (ba1f7265)
+- bump next from 16.3.5 to 16.3.6 in /website (#2343) (d678c2aa)
+- bump @types/node from 26.6.1 to 26.6.2 in /website (#2342) (98f1124e)
+- seed #2290 content-hug band at a reachable bottom row (e48e0e40)
+- Merge remote-tracking branch 'origin/main' into afk/tui-geometry-guard (82f92b9c)
+- TUI research brief and architecture map (f0611d5c)
+
+## [5.257.6] - 2026-09-27
+
+### Fixed
+- show child-failure badge on completed nested agent rows (cfb66840)
+
+### Changed
+- Merge pull request #2335 from griffinwork40/afk/issue-2239-ekdo (61bdc5a6)
+
+## [5.257.5] - 2026-09-27
+
+### Fixed
+- move builtin-cwd warning to cwd-validator to satisfy filesize gate (175323e4)
+- prevent double SIGKILL timer and extra/unset bypass; document empty-changes behavior (f5514f6a)
+- align update_schedule cwd schema, null-on-create, error messages (2bf7a94a)
+- remove dead firstCompletedAt, widen timing margin (06ad6ec1)
+- per-call durationMs for parallel tool batches (e9cd3280)
+- advisory review findings — daemon per-task cwd (40cfa944)
+- address advisory findings from #2274 whatif prediction engine (fbb710d9)
+
+### Changed
+- Merge pull request #2330 from griffinwork40/afk/iso-agent-tool-10-grctv3 (bcede334)
+- Merge pull request #2328 from griffinwork40/afk/iso-agent-tool-6-dns1ai (a40d99ea)
+- Merge pull request #2332 from griffinwork40/afk/issue-2249-m4k9 (8ada5643)
+- consolidate shared makeResult/makeError helpers into tool-lane-render.fixtures.ts (#2323) (3737deb2)
+- bump the fumadocs group in /website with 3 updates (#2341) (814ce249)
+- extract emitDispatchedToolOutputs to fix funcsize gate (06049024)
+
+## [5.257.4] - 2026-09-27
+
+### Fixed
+- tighten --allow-growth/--reason arg guards and fix bootstrap JSDoc (#2279) (f3ca1a61)
+- child hot-write guard follow-ups from #2093 review (#2338) (8b92fc85)
+- address #2245 advisory findings for session_id_assigned (#2340) (a2da7450)
+
 ## [5.257.3] - 2026-09-27
 
 ### Fixed
