@@ -226,7 +226,12 @@ export async function* dispatchAndAppendToolCalls({
       // so both providers construct this event identically. Fire-and-forget
       // to keep the loop iteration cheap.
       const startedAt = startTimes.get(call.id);
-      const durationMs = typeof startedAt === 'number' ? Date.now() - startedAt : 0;
+      // Use the per-call completedAt stamped by the dispatcher when the call's
+      // own promise settled (not the batch's end time). Falls back to Date.now()
+      // for calls that bypassed the dispatcher (aborted, hook-blocked, etc.).
+      // See issue #2249.
+      const completedAt = result.completedAt ?? Date.now();
+      const durationMs = typeof startedAt === 'number' ? completedAt - startedAt : 0;
       const truncated = result.truncated === true || result.content.includes('[output truncated');
       void emitToolCall(
         traceWriter,
