@@ -320,7 +320,7 @@ export class StreamingMarkdownRenderer {
       this.held += chunk;
       return;
     }
-    const split = this.accent && !noHold ? splitAtHeadingBoundary(this.buffer, chunk) : null;
+    const split = this.accent && !noHold ? splitAtHeadingBoundary(this.buffer, chunk, this.committed === '') : null;
     if (split) {
       this.feed(split.now);
       const wait = this.smoke?.smokeHoldRemaining() ?? 0;

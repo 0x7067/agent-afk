@@ -37,13 +37,16 @@ const BOLD_TITLE_RE = /^\*{1,2}\S/;
  * either a markdown heading or a bold-only single-line block (no interior
  * newlines after trimming, so we only hold single-row bold blocks).
  */
-function looksLikeTitle(block: string): boolean {
+function looksLikeTitle(block: string, isFirstBlock: boolean): boolean {
   const lastLine = block.slice(block.lastIndexOf('\n') + 1);
   if (HEADING_LINE_RE.test(lastLine)) return true;
   // Bold-only title: the whole block is one line starting with ** or *.
   // We conservatively require no interior newlines to avoid holding long
   // multi-line blocks that happen to start bold.
-  return !block.includes('\n') && BOLD_TITLE_RE.test(block.trimStart());
+  // Only the response's first block can be a bold title, matching the
+  // LineClassifier's first-line window; a later one-line bold paragraph would
+  // otherwise be held for the smoke dwell with no smoke drawn.
+  return isFirstBlock && !block.includes('\n') && BOLD_TITLE_RE.test(block.trimStart());
 }
 
 /**
@@ -52,13 +55,17 @@ function looksLikeTitle(block: string): boolean {
  * not including, the character that completes the boundary) and the rest to
  * hold. Otherwise null.
  */
-export function splitAtHeadingBoundary(buffer: string, chunk: string): { now: string; held: string } | null {
+export function splitAtHeadingBoundary(
+  buffer: string,
+  chunk: string,
+  isFirstBlock = true,
+): { now: string; held: string } | null {
   const combined = buffer + chunk;
   const boundary = findBlockBoundary(combined);
   // The completing character must be in THIS chunk (index >= buffer.length).
   if (boundary === -1 || boundary - 1 < buffer.length) return null;
   const block = combined.slice(0, boundary).trimEnd();
-  if (!looksLikeTitle(block)) return null;
+  if (!looksLikeTitle(block, isFirstBlock)) return null;
   const cut = boundary - 1 - buffer.length;
   return { now: chunk.slice(0, cut), held: chunk.slice(cut) };
 }

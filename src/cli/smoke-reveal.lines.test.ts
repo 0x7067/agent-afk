@@ -84,6 +84,14 @@ describe('splitAtHeadingBoundary', () => {
     expect(splitAtHeadingBoundary('', '**Summary**\n\nBody')).toEqual({ now: '**Summary**\n', held: '\nBody' });
   });
 
+  it('holds a bold title only as the first block, never a later bold paragraph', () => {
+    // A later one-line bold block gets no smoke (LineClassifier's first-line
+    // window), so holding it would be a pause with no visible effect.
+    expect(splitAtHeadingBoundary('', '**Done**\n\nNext', false)).toBeNull();
+    // Real `#` headings are held anywhere in the response.
+    expect(splitAtHeadingBoundary('', '## Later\n\nBody', false)).toEqual({ now: '## Later\n', held: '\nBody' });
+  });
+
   it('does not hold a multi-line bold block', () => {
     // Multi-line block starting with bold: only single-row bold titles are held.
     expect(splitAtHeadingBoundary('', '**Line one**\nLine two\n\nBody')).toBeNull();
