@@ -2,7 +2,7 @@
 
 Generated from `src/config/env.ts`. Do not edit by hand — run `pnpm scan:env` after changing the registry source.
 
-**200 vars** across 13 categories. Every `process.env[...]` read in `src/` outside `src/config/env.ts` is a CI failure (enforced by `pnpm audit:env:check`).
+**201 vars** across 13 categories. Every `process.env[...]` read in `src/` outside `src/config/env.ts` is a CI failure (enforced by `pnpm audit:env:check`).
 
 To add a var: edit `src/config/env.ts` (add a getter on `env` + an entry in `ENV_REGISTRY`), then run `pnpm scan:env`.
 
@@ -242,6 +242,7 @@ To add a var: edit `src/config/env.ts` (add a getter on `env` + an entry in `ENV
 | `AFK_DIFF_LINES` | number |  |  | `50` | Maximum number of diff lines shown in the inline diff render during write_file tool calls. Set to 0 for no cap. Non-integer values are silently ignored and the default applies. |
 | `AFK_DISABLE_SPINE_UPDATE` | boolean |  | `0` | `1` | Disable the SPINE.md SessionEnd hook when set to 1. The hook runs a single LLM call at the end of each top-level session to classify architectural signals in the git diff against SPINE.md. Set to 1 to opt out globally (useful in CI or when the LLM call is unwanted). |
 | `AFK_EVAL_STALENESS_DAYS` | number |  | `7` | `14` | Number of days without a completed eval-run before the ground-state pre-flight surfaces a staleness warning. The guard reads the most recent timestamp from the eval-runs index ($AFK_HOME/agent-framework/improve/eval-runs/.index.jsonl) and emits a warning finding when the gap exceeds this threshold. Default: 7. Set to 0 to disable the guard. |
+| `AFK_FRAMEWORK_PROMPT_FILE` | string |  |  | `/tmp/whatif-narration/system-prompt.narrate.md` | Absolute path to a replacement for the framework base system prompt (`system-prompt.md`). When set, `loadSystemPrompt()` reads this file instead of the bundled `system-prompt.md`. Unset = byte-identical default behaviour. An unreadable path throws at prompt load (hard error, no fallback). Use with `afk whatif --env AFK_FRAMEWORK_PROMPT_FILE=<path>` to A/B test framework prompt changes without modifying `system-prompt.md`. |
 | `AFK_GOBLIN_MASCOT` | boolean |  |  | `1` | Reacting goblin mini-sprite in the reserved footer band while the agent runs tools (3 rows, animated). 1 = on, unset/0 = off (default). Claims terminal rows, so it is opt-in. |
 | `AFK_GOBLIN_SPINNER` | boolean |  |  | `0` | Goblin-themed working spinner (olive frames + goblin verbs) while the agent runs tools. 1 = on (default), 0 = classic dim spinner. |
 | `AFK_IMAGE_ALLOW_DAEMON` | string |  |  |  | Set to "1" to allow image_generate in daemon/cron sessions. Blocked by default to prevent unattended API spend. |

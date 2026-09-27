@@ -250,6 +250,38 @@ and registering in `src/whatif/operators/index.ts`.
 subprocesses. A generic OpenAI-messages runner (model + endpoint + system prompt
 + tools file) is planned for later.
 
+### Testing framework prompt changes
+
+Use `AFK_FRAMEWORK_PROMPT_FILE` with `--env` to A/B test a modified
+`system-prompt.md` without touching the checked-in file:
+
+```bash
+# Create your modified prompt
+cp system-prompt.md /tmp/whatif-narration/system-prompt.narrate.md
+# Edit /tmp/whatif-narration/system-prompt.narrate.md as needed
+
+# Run whatif — level 0+1 only (no episodes, near-zero cost)
+afk whatif --env AFK_FRAMEWORK_PROMPT_FILE=/tmp/whatif-narration/system-prompt.narrate.md --yes
+
+# Run with full verification
+afk whatif --env AFK_FRAMEWORK_PROMPT_FILE=/tmp/whatif-narration/system-prompt.narrate.md --verify --yes
+```
+
+The structural snapshot in the report (`level 0`) shows the system-prompt diff
+between the bundled prompt and your modified file. Level 1 predictions are
+derived from that diff; Level 2 episodes run the agent with the modified prompt
+in the candidate sandbox.
+
+**Error behaviour**: if `AFK_FRAMEWORK_PROMPT_FILE` points to an unreadable
+path, `loadSystemPrompt()` throws and the episode fails loudly. It never falls
+back to the bundled prompt, since that would silently turn the A/B run into
+an A/A run.
+
+**Episode text**: episodes run `afk chat --format stream-json`, so the text
+the judge grades is every assistant text segment in order, with a
+`[tool: <name>]` marker at each tool call. Narration written between tool
+calls is therefore visible to the judge, not just the final reply.
+
 ### Key env vars
 
 | Var | Set by | Meaning |
@@ -257,6 +289,7 @@ subprocesses. A generic OpenAI-messages runner (model + endpoint + system prompt
 | `AFK_WHATIF_EPISODE` | engine | `1` = this process is a sandboxed episode |
 | `AFK_WHATIF_TOOL_LOG` | engine | Absolute path for the episode tool-call log |
 | `AFK_WHATIF_ALLOW_MCP` | user (opt-in) | `1` = allow MCP in episodes |
+| `AFK_FRAMEWORK_PROMPT_FILE` | user (opt-in) | Replacement for bundled `system-prompt.md` |
 
 **Episode gate rules**: when `AFK_WHATIF_EPISODE=1`, the PreToolUse hook
 classifies every tool call as `'executed'` (read-only) or `'recorded'`

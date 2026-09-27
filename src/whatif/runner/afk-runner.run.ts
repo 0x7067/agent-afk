@@ -2,8 +2,16 @@
  * Episode child-process execution for the AFK runner.
  *
  * Extracted from `afk-runner.ts` to keep that file within the 350-line
- * ceiling. Owns spawn, stdout capture, stdout JSON parsing, timeout/signal
+ * ceiling. Owns spawn, stdout capture, NDJSON parsing, timeout/signal
  * enforcement, and stderr tail collection.
+ *
+ * Output format: `afk chat --format stream-json` (NDJSON, one OutputEvent per
+ * line). This gives the judge ALL assistant text — including narration written
+ * between tool calls — not just the final message. Text segments are joined
+ * with lightweight `[tool: <name>]` markers where tool calls occurred so the
+ * judge can see the full reasoning flow in order.
+ *
+ * The `done` event carries cumulative cost/token metadata across all turns.
  *
  * @module whatif/runner/afk-runner.run
  */
@@ -36,34 +44,105 @@ function redactSecrets(text: string): string {
   return text.replace(SK_ANT_PATTERN, '[REDACTED]');
 }
 
+// ---------------------------------------------------------------------------
+// NDJSON stream accumulator
+// ---------------------------------------------------------------------------
+
 /**
- * Extract the LAST top-level JSON object from stdout.
- *
- * `afk chat --format json` prints a pretty-printed JSON object as its last
- * output line, but may emit other text before it (spinners, warnings written
- * to stdout by mistake). We scan for the last `{…}` block.
+ * Parsed metadata from the stream-json `done` event.
  */
-function extractLastJson(stdout: string): unknown | null {
-  // Find all positions of top-level '{' and match their closing '}'.
-  let last: unknown = null;
-  let depth = 0;
-  let start = -1;
-  for (let i = 0; i < stdout.length; i++) {
-    const ch = stdout[i];
-    if (ch === '{') {
-      if (depth === 0) start = i;
-      depth++;
-    } else if (ch === '}') {
-      if (depth > 0) {
-        depth--;
-        if (depth === 0 && start !== -1) {
-          const candidate = stdout.slice(start, i + 1);
-          try { last = JSON.parse(candidate); } catch { /* skip */ }
+interface StreamDoneMeta {
+  costUsd: number;
+  inputTokens: number;
+  outputTokens: number;
+  durationMs?: number;
+}
+
+/**
+ * Parse the NDJSON stdout of `afk chat --format stream-json` into:
+ *   - `text`: all assistant text segments joined, with `[tool: <name>]`
+ *     markers inserted where tool calls occurred (in document order).
+ *   - `meta`: cost and token counts from the terminal `done` event.
+ *
+ * Design: track whether a tool-use detail chunk was seen since the last
+ * text segment so we only emit one marker per tool boundary, not one per
+ * chunk. Text segments AFTER a tool boundary are appended after the marker.
+ *
+ * Robustness: malformed lines are skipped; missing `done` → zero meta.
+ *
+ * Exported for unit testing.
+ */
+export function accumulateStreamJson(stdout: string): { text: string; meta: StreamDoneMeta } {
+  const lines = stdout.split('\n');
+  const textParts: string[] = [];
+  let pendingToolMarker: string | null = null;
+  let meta: StreamDoneMeta = { costUsd: 0, inputTokens: 0, outputTokens: 0 };
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    let event: Record<string, unknown>;
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed === null || typeof parsed !== 'object') continue;
+      event = parsed as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+
+    const type = event['type'];
+
+    if (type === 'chunk') {
+      const chunk = event['chunk'];
+      if (chunk === null || typeof chunk !== 'object') continue;
+      const c = chunk as Record<string, unknown>;
+      const chunkType = c['type'];
+
+      if (chunkType === 'content' && typeof c['content'] === 'string') {
+        // Flush any pending tool marker before the next text segment.
+        if (pendingToolMarker !== null) {
+          textParts.push(pendingToolMarker);
+          pendingToolMarker = null;
         }
+        textParts.push(c['content'] as string);
+      } else if (chunkType === 'tool_use_detail' && typeof c['toolName'] === 'string') {
+        // One marker per tool call — overwrite so only the last pending name
+        // shows if somehow two arrive without intervening text.
+        pendingToolMarker = `[tool: ${c['toolName'] as string}]`;
+      } else if (chunkType === 'tool_use' && typeof c['content'] === 'string') {
+        // Fallback: tool_use summary chunk (no toolName field).
+        if (pendingToolMarker === null) {
+          pendingToolMarker = `[tool: ${c['content'] as string}]`;
+        }
+      }
+    } else if (type === 'done') {
+      const rawMeta = event['metadata'];
+      if (rawMeta !== null && typeof rawMeta === 'object') {
+        const m = rawMeta as Record<string, unknown>;
+        const usage = m['usage'];
+        let inputTokens = 0;
+        let outputTokens = 0;
+        if (usage !== null && typeof usage === 'object') {
+          const u = usage as Record<string, unknown>;
+          inputTokens = typeof u['input_tokens'] === 'number' ? u['input_tokens'] : 0;
+          outputTokens = typeof u['output_tokens'] === 'number' ? u['output_tokens'] : 0;
+        }
+        meta = {
+          costUsd: typeof m['totalCostUsd'] === 'number' ? m['totalCostUsd'] : 0,
+          inputTokens,
+          outputTokens,
+          durationMs: typeof m['durationMs'] === 'number' ? m['durationMs'] : undefined,
+        };
       }
     }
   }
-  return last;
+
+  // Any trailing tool marker with no follow-on text is still appended.
+  if (pendingToolMarker !== null) {
+    textParts.push(pendingToolMarker);
+  }
+
+  return { text: textParts.join(''), meta };
 }
 
 // ---------------------------------------------------------------------------
@@ -167,11 +246,15 @@ async function waitForChild(
 // ---------------------------------------------------------------------------
 
 /**
- * Spawn the chat child, wait for it to finish, and parse the result into an
- * {@link EpisodeTrace}.
+ * Spawn the chat child (using `--format stream-json`), wait for it to finish,
+ * and parse the NDJSON output into an {@link EpisodeTrace}.
  *
- * On timeout, nonzero exit, or unparsable output the returned trace has
- * `error` set instead of throwing.
+ * `EpisodeTrace.text` contains ALL assistant text in document order, with
+ * lightweight `[tool: <name>]` markers inserted where tool calls occurred.
+ * This gives the judge full narration, not just the final assistant message.
+ *
+ * On timeout, nonzero exit, or completely unparsable output the returned
+ * trace has `error` set instead of throwing.
  */
 export async function runEpisodeChild(args: RunEpisodeChildArgs): Promise<EpisodeTrace> {
   const { command, spawnArgs, spawnOptions, spawnImpl, episodeId, envLabel, sample, timeoutMs, signal } = args;
@@ -196,12 +279,7 @@ export async function runEpisodeChild(args: RunEpisodeChildArgs): Promise<Episod
     };
   }
 
-  const parsed = extractLastJson(stdout);
-
-  if (exitCode !== 0 || parsed === null || typeof parsed !== 'object') {
-    const errMsg = exitCode !== 0
-      ? `afk chat exited ${exitCode}. stderr: ${redactSecrets(stderrTail)}`
-      : `afk chat output did not contain a JSON object. stderr: ${redactSecrets(stderrTail)}`;
+  if (exitCode !== 0) {
     return {
       episodeId,
       env: envLabel,
@@ -212,20 +290,21 @@ export async function runEpisodeChild(args: RunEpisodeChildArgs): Promise<Episod
       inputTokens: 0,
       outputTokens: 0,
       durationMs,
-      error: errMsg,
+      error: `afk chat exited ${exitCode}. stderr: ${redactSecrets(stderrTail)}`,
     };
   }
 
-  const obj = parsed as Record<string, unknown>;
+  const { text, meta } = accumulateStreamJson(stdout);
+
   return {
     episodeId,
     env: envLabel,
     sample,
-    text: typeof obj['message'] === 'string' ? obj['message'] : '',
+    text,
     tools: [],
-    costUsd: typeof obj['costUsd'] === 'number' ? obj['costUsd'] : 0,
-    inputTokens: typeof obj['inputTokens'] === 'number' ? obj['inputTokens'] : 0,
-    outputTokens: typeof obj['outputTokens'] === 'number' ? obj['outputTokens'] : 0,
-    durationMs: typeof obj['durationMs'] === 'number' ? obj['durationMs'] : durationMs,
+    costUsd: meta.costUsd,
+    inputTokens: meta.inputTokens,
+    outputTokens: meta.outputTokens,
+    durationMs: meta.durationMs ?? durationMs,
   };
 }
