@@ -120,6 +120,10 @@ export interface CommittedBandHost {
  * (zero above-frame room, frame already at anchorFloor). Flipping to
  * 'content-hug' and calling repaint() updates lastMeasuredFrameBottom so
  * contentHugSlack correctly reports the room below the banner.
+ *
+ * Precondition: called only from commitAbove, after its
+ * `if (!self.armed || !self.logUpdate) return;` guard, which is what makes
+ * the `logUpdate!` / `anchorRow!` assertions below safe.
  */
 function preCommitBannerSync(self: CommittedBandHost, rows: number): void {
   if (self.contentHug) {
