@@ -1053,6 +1053,15 @@
       "category": "model"
     },
     {
+      "name": "AFK_TERM_COLOR_QUERY",
+      "description": "At interactive REPL startup, AFK asks the terminal for its real text, background, and 16-color palette (OSC 10/11/4, answered in well under 150ms by modern terminals and tmux) so the ink and smoke reveal can fade each letter exactly into the color it will settle on. Only runs when a reveal is enabled on a TTY. Set AFK_TERM_COLOR_QUERY=0 (or false/no/off) to skip the query and use the theme's built-in colors.",
+      "type": "boolean",
+      "required": false,
+      "default": "",
+      "example": "0",
+      "category": "display"
+    },
+    {
       "name": "AFK_TERM_TITLE",
       "description": "Set the terminal/tab title (OSC 2) to reflect afk state — \"afk — <cwd> · running\" during a turn, \"afk — <cwd>\" when idle, cleared on exit. 1 = on (default when stdout is a TTY), 0 = leave the title alone. TTY-only.",
       "type": "boolean",

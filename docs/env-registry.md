@@ -2,7 +2,7 @@
 
 Generated from `src/config/env.ts`. Do not edit by hand — run `pnpm scan:env` after changing the registry source.
 
-**201 vars** across 13 categories. Every `process.env[...]` read in `src/` outside `src/config/env.ts` is a CI failure (enforced by `pnpm audit:env:check`).
+**202 vars** across 13 categories. Every `process.env[...]` read in `src/` outside `src/config/env.ts` is a CI failure (enforced by `pnpm audit:env:check`).
 
 To add a var: edit `src/config/env.ts` (add a getter on `env` + an entry in `ENV_REGISTRY`), then run `pnpm scan:env`.
 
@@ -170,6 +170,7 @@ To add a var: edit `src/config/env.ts` (add a getter on `env` + an entry in `ENV
 | `AFK_INK_TEXT` | boolean |  |  | `0` | Streamed assistant prose in the interactive REPL arrives like ink drying: letters are revealed at a steady pace (never more than a quarter second behind the model) and rise from near the background into their own color, never brighter. Layout and scrollback are identical to having it off. On by default on 256-color or truecolor terminals. It stays off for NO_COLOR, non-TTY output, AFK_PLAIN_OUTPUT, Telegram, the daemon, and AFK_REDUCED_MOTION=1. Set AFK_INK_TEXT=0 (or false/no/off) to show text the instant it arrives. |
 | `AFK_SMOKE_TEXT` | boolean |  |  | `1` | When set to "1" (or true/yes/on), markdown headings in streamed assistant output condense out of rolling smoke (braille particles thickening into each letter, with a thin wisp drifting ahead of the front), and machine-status UI (tool rows, the thought summary) fades in. Body prose keeps the calm AFK_INK_TEXT reveal, so smoke stays an accent. Needs a 256-color or truecolor terminal. It stays off for NO_COLOR, non-TTY output, AFK_PLAIN_OUTPUT, Telegram, the daemon, and AFK_REDUCED_MOTION=1. Default off. |
 | `AFK_STREAM_BUFFER_MS` | number |  | `0` | `16` | Input buffer window for TUI streaming in milliseconds. When set to a positive value, incoming tokens are micro-batched before parsing and rendering, producing smoother visual output. The first token after idle always passes through immediately (leading-edge). 0 = disabled (every token is parsed individually). Reasonable range: 8-50. |
+| `AFK_TERM_COLOR_QUERY` | boolean |  |  | `0` | At interactive REPL startup, AFK asks the terminal for its real text, background, and 16-color palette (OSC 10/11/4, answered in well under 150ms by modern terminals and tmux) so the ink and smoke reveal can fade each letter exactly into the color it will settle on. Only runs when a reveal is enabled on a TTY. Set AFK_TERM_COLOR_QUERY=0 (or false/no/off) to skip the query and use the theme's built-in colors. |
 
 ## Debug
 

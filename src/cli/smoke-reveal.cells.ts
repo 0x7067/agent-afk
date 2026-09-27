@@ -22,9 +22,11 @@
  */
 
 import stringWidth from 'string-width';
-import { SMOKE_GLYPH_LEVELS, charLifetime, easeOutCubic, seedUnit, smokeGlyph, smokeToneOffset } from './smoke-reveal.frame.js';
-import { toneRgb } from './smoke-reveal.tones.js';
-import { EMPTY_SGR, fgParams, isBasicWhite, knownFgRgb, mixRgb, serializeSgr, type SgrState } from './smoke-reveal.sgr.js';
+import { SMOKE_GLYPH_LEVELS, charLifetime, seedUnit, smokeGlyph, smokeToneOffset, smoothstep } from './smoke-reveal.frame.js';
+import { mixOklab } from './smoke-reveal.oklab.js';
+import { toneRgb, type Rgb } from './smoke-reveal.tones.js';
+import { EMPTY_SGR, fgParams, isBasicWhite, knownFgRgb, paletteIndex, serializeSgr, type SgrState } from './smoke-reveal.sgr.js';
+import { getTerminalColors } from './terminal-colors.js';
 
 export type RevealStyle = 'ink' | 'smoke';
 
@@ -41,9 +43,13 @@ export const INK_MS = 200;
 export const INK_TRAIL_CHARS = 20;
 /** Ramp position a fresh ink letter starts from: a whisper above the background. */
 export const INK_FLOOR = 0.06;
-/** Ramp position where an unknown-color letter hands over to its faint real color. */
+/**
+ * Former hand-over point of the unknown-color ramp. No longer used by the
+ * fade (the ramp could climb past the terminal's own faint level and then
+ * darken); kept exported for compatibility.
+ */
 export const INK_DIM = 0.22;
-/** Share of the ink fade spent on the low ramp before the faint stage (unknown colors only). */
+/** Share of the ink fade spent as a floor speck before the faint stage (unknown colors only). */
 export const INK_SPECK_PHASE = 0.3;
 
 /** Smoke accent lifetime (base; per-letter jitter only shortens it). */
@@ -60,6 +66,14 @@ export const WISP_MS = 280;
 /** Wisp drift cadence: the pattern shifts one cell right per step. */
 const WISP_STEP_MS = 70;
 const WISP_LANE = 97;
+/**
+ * Period of the brightness wave that rolls through the wisp. Its tone is
+ * recomputed every frame from this, so the wisp moves continuously even
+ * though its dot texture only shifts every `WISP_STEP_MS`.
+ */
+const WISP_WAVE_MS = 420;
+/** Depth of that wave (share of the wisp's tone that swells and ebbs). */
+const WISP_WAVE_DEPTH = 0.35;
 
 /** Lifetime of a character revealed with `style`. */
 export function lifetimeOf(style: RevealStyle, seed: number): number {
@@ -74,19 +88,41 @@ function tone(t: number): string {
 }
 
 /**
+ * The color `state` will settle on, when it can be known: an exact truecolor
+ * or 256-color fg, a basic color looked up in the terminal's discovered
+ * palette, or the discovered default fg for plain text. Basic white without
+ * a discovered palette falls back to the ramp's bright end, which sits at or
+ * below it. Null means unknowable (e.g. inverse, or nothing discovered).
+ */
+export function settledRgb(state: SgrState): Rgb | null {
+  if (state.inverse) return null;
+  const exact = knownFgRgb(state);
+  if (exact) return exact;
+  const found = getTerminalColors();
+  const idx = paletteIndex(state);
+  if (idx !== null) return found?.palette.get(idx) ?? (isBasicWhite(state) ? toneRgb(1) : null);
+  if (state.fg === null) return found?.fg ?? null;
+  return null;
+}
+
+/**
  * The letter itself at blend `p` in [0, 1] from ramp position `from` toward
- * its settled look. Exact colors blend continuously; palette colors climb the
- * ramp to `INK_DIM` and then show faint-real, so neither ever overshoots.
+ * its settled look. A known target blends continuously through OKLab on a
+ * smoothstep curve (first frame barely moves; lands with no corner). An
+ * unknowable target cannot be blended, so it holds a faint speck (only for
+ * the ink floor, which sits below any readable text) and then shows its real
+ * color with the faint attribute: both steps only ever get brighter. The
+ * previous ramp climb could pass the terminal's own faint level on a dim
+ * theme and then visibly darken at the hand-off.
  */
 function letter(ch: string, state: SgrState, from: number, p: number): string {
-  const target = knownFgRgb(state) ?? (isBasicWhite(state) ? toneRgb(1) : null);
+  const target = settledRgb(state);
   if (target) {
-    const rgb = mixRgb(toneRgb(from), target, easeOutCubic(p));
+    const rgb = mixOklab(toneRgb(from), target, smoothstep(p));
     return serializeSgr(state, fgParams(rgb)) + ch;
   }
-  if (p < INK_SPECK_PHASE) {
-    const t = from + (Math.max(from, INK_DIM) - from) * (p / INK_SPECK_PHASE);
-    return serializeSgr({ ...state, faint: false }, tone(t)) + ch;
+  if (p < INK_SPECK_PHASE && from <= INK_FLOOR) {
+    return serializeSgr({ ...state, faint: false }, tone(from)) + ch;
   }
   return serializeSgr({ ...state, faint: true }) + ch;
 }
@@ -129,8 +165,9 @@ export function wispCell(k: number, frontAge: number, now: number, seed: number)
   if (u < 0.22) return null;
   const level = SMOKE_GLYPH_LEVELS[k === 1 ? 1 : 0] ?? [];
   const glyph = level[Math.floor(u * 997) % Math.max(1, level.length)] ?? '⠁';
-  const t = (0.2 - 0.045 * k) * strength;
-  return serializeSgr(EMPTY_SGR, tone(Math.max(0.03, t))) + glyph;
+  const wave = 1 - WISP_WAVE_DEPTH * (0.5 + 0.5 * Math.sin(2 * Math.PI * (now / WISP_WAVE_MS - k / WISP_CELLS)));
+  const t = (0.2 - 0.045 * k) * strength * wave;
+  return serializeSgr(EMPTY_SGR, fgParams(toneRgb(Math.max(0.03, t)))) + glyph;
 }
 
 /** The whole `WISP_CELLS`-wide wisp (for a front with no reserved cells after it), or '' once faded. */

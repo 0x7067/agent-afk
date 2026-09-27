@@ -16,6 +16,7 @@
  */
 
 import chalk, { type ChalkInstance } from 'chalk';
+import { getTerminalColors } from './terminal-colors.js';
 import { getActiveTheme, type ThemeName } from './theme.js';
 
 export type Rgb = readonly [number, number, number];
@@ -31,10 +32,20 @@ const ENDPOINTS: Record<ThemeName, readonly [Rgb, Rgb]> = {
 /** Number of quantized stops. Enough for a smooth fade, small enough to cache. */
 export const TONE_STEPS = 16;
 
-const cache = new Map<ThemeName, ChalkInstance[]>();
+const cache = new Map<string, ChalkInstance[]>();
 
-function buildRamp(theme: ThemeName): ChalkInstance[] {
-  const [from, to] = ENDPOINTS[theme];
+/**
+ * Ramp endpoints in use: the terminal's own background and foreground when
+ * they were discovered (see terminal-colors.ts), else the theme table. The
+ * real pair is what makes a fade land exactly on the settled color.
+ */
+export function rampEndpoints(): readonly [Rgb, Rgb] {
+  const found = getTerminalColors();
+  const [from, to] = ENDPOINTS[getActiveTheme()];
+  return [found?.bg ?? from, found?.fg ?? to];
+}
+
+function buildRamp([from, to]: readonly [Rgb, Rgb]): ChalkInstance[] {
   const stops: ChalkInstance[] = [];
   for (let i = 0; i < TONE_STEPS; i++) {
     const t = i / (TONE_STEPS - 1);
@@ -49,11 +60,14 @@ function buildRamp(theme: ThemeName): ChalkInstance[] {
  * Out-of-range input is clamped.
  */
 export function smokeTone(t: number): ChalkInstance {
-  const theme = getActiveTheme();
-  let ramp = cache.get(theme);
+  const ends = rampEndpoints();
+  // Keyed by the endpoints themselves, so discovery (or a theme switch)
+  // after the first paint can never leave a stale ramp in place.
+  const key = ends.flat().join(',');
+  let ramp = cache.get(key);
   if (!ramp) {
-    ramp = buildRamp(theme);
-    cache.set(theme, ramp);
+    ramp = buildRamp(ends);
+    cache.set(key, ramp);
   }
   const clamped = Math.min(1, Math.max(0, t));
   const idx = Math.round(clamped * (TONE_STEPS - 1));
@@ -66,7 +80,7 @@ export function smokeTone(t: number): ChalkInstance {
  * the raw endpoint math rather than a cached chalk stop.
  */
 export function toneRgb(t: number): Rgb {
-  const [from, to] = ENDPOINTS[getActiveTheme()];
+  const [from, to] = rampEndpoints();
   const c = Math.min(1, Math.max(0, t));
   return [
     Math.round(from[0] + (to[0] - from[0]) * c),

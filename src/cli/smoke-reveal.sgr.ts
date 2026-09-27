@@ -12,8 +12,9 @@
  * (always starting from a reset, so it is correct regardless of what came
  * before), and `knownFgRgb` reports the foreground as RGB when, and only
  * when, it is exact. Basic 16-color and default foregrounds depend on the
- * terminal's palette, so they report `null` and the caller uses a
- * palette-independent fade instead of guessing a color.
+ * terminal's palette, so they report `null` and the caller uses the
+ * discovered palette (terminal-colors.ts) or a palette-independent fade
+ * instead of guessing a color.
  *
  * @module cli/smoke-reveal.sgr
  */
@@ -166,6 +167,24 @@ export function knownFgRgb(state: SgrState): Rgb | null {
 export function isBasicWhite(state: SgrState): boolean {
   if (state.inverse || !state.fg || state.fg.length !== 1) return false;
   return state.fg[0] === '37' || state.fg[0] === '97';
+}
+
+/**
+ * Palette index (0-15) of a basic foreground (30-37, 90-97, or 38;5;n with
+ * n < 16), or null. Its RGB belongs to the terminal, so callers look it up in
+ * the discovered palette (terminal-colors.ts) rather than guessing.
+ */
+export function paletteIndex(state: SgrState): number | null {
+  if (state.inverse || !state.fg) return null;
+  const [head, mode, n] = state.fg;
+  if (state.fg.length === 1) {
+    const code = Number(head);
+    if (code >= 30 && code <= 37) return code - 30;
+    if (code >= 90 && code <= 97) return code - 90 + 8;
+    return null;
+  }
+  if (head === '38' && mode === '5' && Number(n) < 16) return Number(n);
+  return null;
 }
 
 /** Nearest xterm-256 index for an RGB color (same mapping chalk uses). */

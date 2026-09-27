@@ -90,4 +90,17 @@ export const DISPLAY_ENV_REGISTRY = [
     example: '1',
     category: 'display',
   },
+  {
+    name: 'AFK_TERM_COLOR_QUERY',
+    description:
+      'At interactive REPL startup, AFK asks the terminal for its real text, background, and 16-color palette ' +
+      '(OSC 10/11/4, answered in well under 150ms by modern terminals and tmux) so the ink and smoke reveal can ' +
+      'fade each letter exactly into the color it will settle on. Only runs when a reveal is enabled on a TTY. ' +
+      'Set AFK_TERM_COLOR_QUERY=0 (or false/no/off) to skip the query and use the theme\'s built-in colors.',
+    type: 'boolean',
+    required: false,
+    default: '',
+    example: '0',
+    category: 'display',
+  },
 ] as const satisfies readonly EnvVarMeta[];
