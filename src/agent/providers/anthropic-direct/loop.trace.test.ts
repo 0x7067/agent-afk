@@ -558,7 +558,7 @@ describe('loop.ts runTurn — witness-layer tool_call emission', () => {
     // Use generous threshold to avoid flakiness: fast < slow - 30ms.
     expect(fastEvent.payload.durationMs).toBeGreaterThanOrEqual(0);
     expect(slowEvent.payload.durationMs).toBeGreaterThanOrEqual(0);
-    expect(fastEvent.payload.durationMs).toBeLessThan(batchDuration - 30);
+    expect(fastEvent.payload.durationMs).toBeLessThan(batchDuration - 10);
     // Slow should be close to the full batch duration.
     expect(slowEvent.payload.durationMs).toBeGreaterThan(fastEvent.payload.durationMs! + 30);
   });

@@ -1352,7 +1352,6 @@ describe('SessionToolDispatcher', () => {
     it('stamps completedAt on sequential batch calls', async () => {
       // Sequential (unsafe) calls run one-after-another; each must still
       // have its own completedAt stamp. Use bash (sequential tool) directly.
-      let firstCompletedAt: number | undefined;
       const firstHandler: ToolHandler = async () => {
         await new Promise((r) => setTimeout(r, 5));
         const result = { content: 'first' };
@@ -1376,8 +1375,6 @@ describe('SessionToolDispatcher', () => {
         makeBatchCall('bash', 'seq-1'),
         makeBatchCall('write_file', 'seq-2'),
       ]);
-      void firstCompletedAt;
-
       expect(results[0]!.content).toBe('first');
       expect(results[1]!.content).toBe('second');
       expect(typeof results[0]!.completedAt).toBe('number');
