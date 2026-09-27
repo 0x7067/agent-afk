@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.259.1] - 2026-09-27
+
+### Fixed
+- flag empty-output success and mark truncated response excerpt (#2383) (69b2f986)
+
 ## [5.259.0] - 2026-09-27
 
 ### Added
