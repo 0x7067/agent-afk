@@ -94,9 +94,10 @@ export function buildChildEnv(
     if (!denied.has(k)) result[k] = v;
   }
 
-  // Apply caller-supplied extras last — they win over everything else.
+  // Apply caller-supplied extras last — filtered through the same deny list so
+  // a caller cannot re-introduce a credential or side-effecting var.
   for (const [k, v] of Object.entries(extra)) {
-    result[k] = v;
+    if (!denied.has(k)) result[k] = v;
   }
 
   return result;

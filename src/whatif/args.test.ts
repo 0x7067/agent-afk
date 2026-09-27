@@ -2,8 +2,11 @@
  * Tests for parseWhatifArgs and tokenizeSlashArgs.
  */
 
-import { describe, it, expect, vi, afterEach } from 'vitest';
-import { parseWhatifArgs, tokenizeSlashArgs } from './args.js';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+import { writeFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { parseWhatifArgs, tokenizeSlashArgs, loadSpecFile } from './args.js';
 
 // ---------------------------------------------------------------------------
 // tokenizeSlashArgs
@@ -399,5 +402,75 @@ describe('tokenizeSlashArgs + parseWhatifArgs integration', () => {
     expect(r.flagChanges[0]).toMatchObject({ text: 'Always ask.', target: 'user-afk-md' });
     expect(r.options.judge).toBe('jev');
     expect(r.yes).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// loadSpecFile — schema validation (Medium fix #2295)
+// ---------------------------------------------------------------------------
+
+describe('loadSpecFile', () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'whatif-loadspecfile-'));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('accepts a well-formed spec and returns a validated ChangeSpec', () => {
+    const p = join(dir, 'spec.json');
+    writeFileSync(p, JSON.stringify({
+      title: 'Disable auto-routing',
+      changes: [{ kind: 'env', key: 'AFK_AUTO_ROUTING', value: 'false' }],
+    }));
+    const spec = loadSpecFile(p);
+    expect(spec.title).toBe('Disable auto-routing');
+    expect(spec.changes).toHaveLength(1);
+    expect(spec.changes[0]).toMatchObject({ kind: 'env', key: 'AFK_AUTO_ROUTING' });
+  });
+
+  it('throws on malformed JSON', () => {
+    const p = join(dir, 'bad.json');
+    writeFileSync(p, 'not valid json {{{');
+    expect(() => loadSpecFile(p)).toThrow(/not valid JSON/);
+  });
+
+  it('throws when the top-level shape is invalid (missing title)', () => {
+    const p = join(dir, 'bad-shape.json');
+    writeFileSync(p, JSON.stringify({ changes: [] }));
+    expect(() => loadSpecFile(p)).toThrow(/invalid structure/);
+  });
+
+  it('throws when all change entries fail schema validation', () => {
+    const p = join(dir, 'bad-entries.json');
+    writeFileSync(p, JSON.stringify({
+      title: 'Bad changes',
+      changes: [
+        { kind: 'unknown-kind', foo: 'bar' },
+        { notAChange: true },
+      ],
+    }));
+    expect(() => loadSpecFile(p)).toThrow(/no valid changes/);
+  });
+
+  it('silently drops invalid change entries and returns the valid ones', () => {
+    const p = join(dir, 'mixed.json');
+    writeFileSync(p, JSON.stringify({
+      title: 'Mixed',
+      changes: [
+        { kind: 'model', model: 'claude-opus-4-5' },
+        { kind: 'unknown-kind', foo: 'bar' },
+      ],
+    }));
+    const spec = loadSpecFile(p);
+    expect(spec.changes).toHaveLength(1);
+    expect(spec.changes[0]).toMatchObject({ kind: 'model', model: 'claude-opus-4-5' });
+  });
+
+  it('throws when the file does not exist', () => {
+    expect(() => loadSpecFile(join(dir, 'no-such-file.json'))).toThrow(/cannot read/);
   });
 });

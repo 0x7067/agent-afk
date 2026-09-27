@@ -152,4 +152,16 @@ describe('buildChildEnv', () => {
     expect(result['AFK_ALLOW_PROJECT_MCP']).toBeUndefined();
     expect(result['AFK_SOMETHING']).toBe('x');
   });
+
+  // Medium fix #2295: extra bypassed the deny list before this fix.
+  it('extra cannot re-add a security-deleted var (deny-list applied to extra)', () => {
+    const result = buildChildEnv(baseEnv, {
+      TELEGRAM_BOT_TOKEN: 'should-be-filtered',
+      AFK_TELEGRAM_BOT_TOKEN: 'also-filtered',
+      ANTHROPIC_BASE_URL: 'http://127.0.0.1:9999', // safe — not on deny list
+    });
+    expect(result['TELEGRAM_BOT_TOKEN']).toBeUndefined();
+    expect(result['AFK_TELEGRAM_BOT_TOKEN']).toBeUndefined();
+    expect(result['ANTHROPIC_BASE_URL']).toBe('http://127.0.0.1:9999');
+  });
 });

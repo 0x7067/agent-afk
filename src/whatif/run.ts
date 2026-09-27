@@ -249,7 +249,10 @@ export async function runWhatif(
 
     // Resolve judge BEFORE preflight estimate (so we know if it's external)
     const resolvedJudge = await deps.makeJudge(options.judge);
-    const crossCheckJudge = await deps.makeCrossCheckJudge().catch(() => undefined);
+    const crossCheckJudge = await deps.makeCrossCheckJudge().catch((err: unknown) => {
+      console.warn(`[whatif/run] cross-check judge unavailable: ${err instanceof Error ? err.message : String(err)}`);
+      return undefined;
+    });
 
     // Preflight cost estimate
     const estimate = estimateVerifyCost({

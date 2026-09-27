@@ -102,6 +102,11 @@ async function waitForChild(
     let timedOut = false;
     let settled = false;
 
+    // killTimer tracks whichever timer is currently live: initially the SIGTERM
+    // deadline; reassigned to the SIGKILL follow-up once SIGTERM fires so that
+    // settle() always clears the right timer regardless of when the child exits.
+    let killTimer: ReturnType<typeof setTimeout>;
+
     const settle = (exitCode: number): void => {
       if (settled) return;
       settled = true;
@@ -120,19 +125,17 @@ async function waitForChild(
       try { child.kill('SIGKILL'); } catch { /* already exited */ }
     };
 
-    const timeoutTimer = setTimeout(() => {
+    killTimer = setTimeout(() => {
       sendSigterm();
-      // Give the process a chance to clean up before SIGKILL.
-      setTimeout(sendSigkill, SIGKILL_DELAY_MS);
+      // Track the SIGKILL follow-up so settle() can clear it if the child
+      // exits after SIGTERM but before SIGKILL_DELAY_MS elapses.
+      killTimer = setTimeout(sendSigkill, SIGKILL_DELAY_MS);
     }, timeoutMs);
-
-    // Separate kill timer ref for cleanup; reuse the same handle.
-    let killTimer: ReturnType<typeof setTimeout> = timeoutTimer;
 
     // AbortSignal support.
     const onAbort = (): void => {
       sendSigterm();
-      setTimeout(sendSigkill, SIGKILL_DELAY_MS);
+      killTimer = setTimeout(sendSigkill, SIGKILL_DELAY_MS);
     };
     signal?.addEventListener('abort', onAbort, { once: true });
 
@@ -145,19 +148,13 @@ async function waitForChild(
     });
 
     child.on('close', (code) => {
-      clearTimeout(timeoutTimer);
       signal?.removeEventListener('abort', onAbort);
       settle(code ?? 1);
     });
     child.on('error', () => {
-      clearTimeout(timeoutTimer);
       signal?.removeEventListener('abort', onAbort);
       settle(1);
     });
-
-    // Suppress the unused-variable warning; killTimer is assigned but only
-    // referenced inside settle().
-    void killTimer;
   });
 }
 

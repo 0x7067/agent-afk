@@ -59,6 +59,17 @@ setTimeout(() => {}, 60000);
 `;
 
 /**
+ * A fake script that exits cleanly on SIGTERM (simulates a well-behaved child
+ * that exits before the SIGKILL follow-up timer fires).
+ * Medium fix #2295: verifies the SIGKILL timer is cleared by settle() so the
+ * test resolves quickly instead of hanging for SIGKILL_DELAY_MS (5 s).
+ */
+const FAKE_SIGTERM_EXITS_SCRIPT = `
+process.on('SIGTERM', () => { process.exit(0); });
+setTimeout(() => {}, 60000);
+`;
+
+/**
  * A fake "afk chat" script for snapshot that:
  *   - POSTs a fake Anthropic request to $ANTHROPIC_BASE_URL/v1/messages.
  *   - Then prints some output and exits.
@@ -103,6 +114,7 @@ let tmpDir: string;
 let runScript: string;
 let errorScript: string;
 let timeoutScript: string;
+let sigtermExitsScript: string;
 let snapshotScript: string;
 let sandboxHome: string;
 
@@ -137,6 +149,8 @@ beforeAll(async () => {
   await writeFile(runScript, FAKE_RUN_SCRIPT, 'utf-8');
   await writeFile(errorScript, FAKE_ERROR_SCRIPT, 'utf-8');
   await writeFile(timeoutScript, FAKE_TIMEOUT_SCRIPT, 'utf-8');
+  sigtermExitsScript = join(tmpDir, 'fake-sigterm-exits.js');
+  await writeFile(sigtermExitsScript, FAKE_SIGTERM_EXITS_SCRIPT, 'utf-8');
   await writeFile(snapshotScript, FAKE_SNAPSHOT_SCRIPT, 'utf-8');
 });
 
@@ -196,6 +210,24 @@ describe('createAfkRunner().run()', () => {
     expect(trace.error).toBeDefined();
     expect(trace.error).toContain('timed out');
   }, 15_000);
+
+  it('resolves quickly when child exits on SIGTERM (SIGKILL timer cleared by settle)', async () => {
+    // Medium fix #2295: before the fix, the SIGKILL setTimeout was not tracked in
+    // killTimer, so settle() never cleared it — the timer fired 5 s later
+    // (SIGKILL_DELAY_MS) on an already-exited process.  The process completing
+    // in well under 5 s is the observable signal that the timer was cleared.
+    const runner = createAfkRunner({ cliEntry: { command: process.execPath, args: [sigtermExitsScript] } });
+    const env: Environment = { ...baseEnv, home: sandboxHome, cwd: tmpDir };
+
+    const start = Date.now();
+    const trace = await runner.run(env, baseEpisode, 0, { ...baseOpts, timeoutMs: 300 });
+    const elapsed = Date.now() - start;
+
+    // Child should exit on SIGTERM well before SIGKILL_DELAY_MS (5000 ms).
+    expect(elapsed).toBeLessThan(3_000);
+    expect(trace.error).toBeDefined();
+    expect(trace.error).toContain('timed out');
+  }, 10_000);
 
   it('redacts sk-ant credentials in error messages', async () => {
     const scriptWithKey = join(tmpDir, 'fake-key-error.js');
