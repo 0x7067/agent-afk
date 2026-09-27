@@ -11,6 +11,16 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.261.0] - 2026-09-27
+
+### Added
+- gate major versions behind a manual dispatch; auto-update never crosses a major (2b54bd1c)
+
+### Changed
+- Merge pull request #2385 from griffinwork40/afk/major-release-gate (bb9e16c3)
+- Merge pull request #2370 from griffinwork40/afk/issue-2363-l7jj (a26af363)
+- show the full high-risk command in approval prompts (head+tail preview, no 256-char form cap) (554513af)
+
 ## [5.260.0] - 2026-09-27
 
 ### Added
