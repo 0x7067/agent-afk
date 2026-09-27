@@ -11,6 +11,15 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.257.8] - 2026-09-27
+
+### Fixed
+- resolve remote-only branch names before git checkout --detach (#2361) (645af141)
+- size the diff preview box from the tool-lane row budget (#1619) (0fd9d2bd)
+
+### Changed
+- Merge pull request #2359 from griffinwork40/afk/issue-1619-diff-width (639a84ec)
+
 ## [5.257.7] - 2026-09-27
 
 ### Added
