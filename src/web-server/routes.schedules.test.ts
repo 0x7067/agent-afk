@@ -246,9 +246,36 @@ describe('routes.schedules', () => {
       expect(vi.mocked(updateSchedule)).not.toHaveBeenCalled();
     });
 
-    it('update: rejects an empty cwd with 400', async () => {
+    it('update: cwd: "" clears a previously-pinned cwd (null semantics)', async () => {
       const { res, json } = makeRes();
       await handleUpdateSchedule(res, 'nightly-forge', { cwd: '' });
+      expect(json().status).toBe(200);
+      expect(vi.mocked(updateSchedule)).toHaveBeenCalledWith(
+        'nightly-forge',
+        expect.objectContaining({ cwd: null }),
+      );
+    });
+
+    it('update: cwd: null clears a previously-pinned cwd', async () => {
+      const { res, json } = makeRes();
+      await handleUpdateSchedule(res, 'nightly-forge', { cwd: null });
+      expect(json().status).toBe(200);
+      expect(vi.mocked(updateSchedule)).toHaveBeenCalledWith(
+        'nightly-forge',
+        expect.objectContaining({ cwd: null }),
+      );
+    });
+
+    it('create: rejects a numeric cwd with 400', async () => {
+      const { res, json } = makeRes();
+      await handleCreateSchedule(res, { ...base, cwd: 123 });
+      expect(json().status).toBe(400);
+      expect(vi.mocked(addSchedule)).not.toHaveBeenCalled();
+    });
+
+    it('update: rejects a numeric cwd with 400', async () => {
+      const { res, json } = makeRes();
+      await handleUpdateSchedule(res, 'nightly-forge', { cwd: 123 });
       expect(json().status).toBe(400);
       expect(vi.mocked(updateSchedule)).not.toHaveBeenCalled();
     });

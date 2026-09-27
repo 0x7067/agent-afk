@@ -38,9 +38,10 @@ export function expandCwd(rawCwd: string): string {
  * Returns `{ ok: true; resolved: string }` on success or
  * `{ ok: false; error: string }` on failure — never throws.
  *
- * The resolved (absolute) path is what gets persisted to schedules.json,
- * so tilde entries stored in an older file are transparently normalised
- * when any surface touches them.
+ * The resolved (absolute) path is what gets persisted to schedules.json.
+ * Any hand-edited tilde entries that bypass this validator are expanded at
+ * runtime by `toScheduledTask` (via `expandCwd`) before the daemon checks them,
+ * so legacy `~/repo` entries do not cause spurious runtime errors.
  */
 export function validateScheduleCwd(
   rawCwd: string,

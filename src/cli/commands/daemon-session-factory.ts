@@ -97,6 +97,10 @@ export function buildDaemonSessionFactory(
       // task's working directory — the core requirement for fixing grep/glob
       // timeouts in cron tasks that pin to a repo.
       // Precedence (already resolved by session-spawn.ts): task.cwd ?? AFK_DAEMON_CWD ?? process.cwd().
+      // Note: the opts.cwd fallback branch is unreachable in production because
+      // session-spawn.ts always sets config.cwd (line 179). It is retained as a
+      // test-only escape hatch for unit tests that call buildDaemonSessionFactory
+      // directly without going through spawnDaemonSession.
       ...(config.cwd !== undefined ? { cwd: config.cwd, nestedCwd: config.cwd } : (opts.cwd !== undefined ? { cwd: opts.cwd, nestedCwd: opts.cwd } : {})),
       ...(config.traceWriter !== undefined
         ? { traceWriter: config.traceWriter, skillTraceWriter: config.traceWriter }

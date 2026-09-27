@@ -140,7 +140,8 @@ export const updateScheduleTool: AnthropicToolDef = {
         description:
           'New per-task working directory (absolute path or ~/…). ' +
           'Must be an existing directory. Tilde (~) is expanded at save time. ' +
-          'Omit to leave unchanged.',
+          'Omit to leave unchanged. Pass null or "" to clear a previously-set ' +
+          'cwd and fall back to the daemon-wide AFK_DAEMON_CWD default.',
       },
     },
     required: ['taskId'],
