@@ -217,6 +217,20 @@ describe('accumulateStreamJson — text', () => {
     const stdout = ndjson([noId('read_file'), noId('bash'), doneEvent({})]);
     expect(accumulateStreamJson(stdout).text).toBe('[tool: read_file][tool: bash]');
   });
+
+  it('excludes thinking chunks: private reasoning is not narration', () => {
+    // Deliberate: extended-thinking output is the model's private reasoning.
+    // Folding it into the episode text would contaminate narration measurements.
+    const stdout = ndjson([
+      contentChunk('Before. '),
+      { type: 'chunk', chunk: { type: 'thinking', content: 'SECRET REASONING' } },
+      contentChunk('After.'),
+      doneEvent({}),
+    ]);
+    const { text } = accumulateStreamJson(stdout);
+    expect(text).toBe('Before. After.');
+    expect(text).not.toContain('SECRET REASONING');
+  });
 });
 
 // ---------------------------------------------------------------------------

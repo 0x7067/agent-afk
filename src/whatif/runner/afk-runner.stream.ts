@@ -27,6 +27,11 @@
  * twins mark again. Tool-marker dedup is scoped to one round for the same
  * reason.
  *
+ * `thinking` chunks (extended-thinking output) are excluded on purpose: they
+ * carry the model's private reasoning, not narration, and every other stream
+ * consumer (chat's text output, the REPL) keeps them separate too. Folding
+ * them in would contaminate the narration whatif measures.
+ *
  * @module whatif/runner/afk-runner.stream
  */
 
