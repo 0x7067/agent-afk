@@ -47,10 +47,13 @@
  * baseline whenever text leaves the FRONT of the overlay; the first frame
  * after a commit is left unreconciled, which is harmless.
  *
- * Invariant (settle driver): pending-overlay repaints are content-driven.
- * While any character is still settling, `apply()` arms ONE timer that calls
- * the owner's throttled `scheduleRepaint()`. There is no second paint path,
- * and the timer stops as soon as everything has settled.
+ * Invariant (settle driver): while any character is still settling,
+ * `apply()` marks ONE steady 60 fps `FrameClock` dirty
+ * (markdown-stream.frame-clock.ts), which calls the owner's `paint` callback
+ * once per period on a drift-corrected grid. While `animating`, the owner
+ * routes its own repaint requests into `markDirty()` instead of painting, so
+ * content pushes never add a second paint in a period. The clock stops (its
+ * one timer is released) on the first frame where nothing is settling.
  *
  * Contract: this module never delays a block commit. Committed blocks render
  * through `formatBlockForCommit`, untouched by the mask, so a paragraph's
@@ -68,6 +71,7 @@ import { isExplicitlyDisabled, isExplicitlyEnabled } from '../config/env-helpers
 import { countVisible, segmentAnsi } from './smoke-reveal.ansi.js';
 import { SMOKE_GLYPH_LEVELS } from './smoke-reveal.frame.js';
 import { LineClassifier } from './smoke-reveal.lines.js';
+import { FRAME_PERIOD_MS, FrameClock } from './markdown-stream.frame-clock.js';
 import { HEADING_MAX_CPS, MAX_CPS, RevealTimeline } from './smoke-reveal.playhead.js';
 import { applySgr, EMPTY_SGR, isSgr, serializeSgr, type SgrState } from './smoke-reveal.sgr.js';
 import {
@@ -101,8 +105,8 @@ export const ACCENT_STAGGER_MS = 12;
 export const ACCENT_MAX_LAG_MS = 600;
 /** Share of a smoke letter's life a held heading waits for before it may commit (eased: nearly solid). */
 export const SMOKE_HOLD_SHARE = 0.75;
-/** Settle-driver cadence, which matches the renderer's default throttle. */
-export const FRAME_MS = 33;
+/** Settle-driver cadence: the frame clock's 60 fps period. */
+export const FRAME_MS = FRAME_PERIOD_MS;
 /**
  * Every smoke glyph the reveal can draw, faintest density level first (see
  * `SMOKE_GLYPH_LEVELS` in smoke-reveal.frame.ts for the narrow-width
@@ -171,7 +175,7 @@ interface Front {
 
 export class SmokeReveal {
   private readonly timeline = new RevealTimeline();
-  private timer: NodeJS.Timeout | null = null;
+  private readonly clock: FrameClock;
   /**
    * Reconciled characters recorded over this instance's life. The character
    * `d` positions from the end has the stable identity `serial - 1 - d`: new
@@ -188,11 +192,13 @@ export class SmokeReveal {
   private readonly prose: RevealStyle;
   private readonly headings: RevealStyle;
 
+  /** `paint` must paint immediately (unthrottled): the frame clock already paces it. */
   constructor(
-    private readonly requestRepaint: () => void,
+    paint: () => void,
     private readonly now: () => number = Date.now,
     styles: RevealStyles = {},
   ) {
+    this.clock = new FrameClock(paint);
     this.prose = styles.prose ?? 'smoke';
     this.headings = styles.headings ?? this.prose;
   }
@@ -294,8 +300,18 @@ export class SmokeReveal {
     }
     if (front && front.lineWidth === null) front.lineWidth = col;
     if (this.insertWisp(parts, front, t, opts.maxWidth)) animating = true;
-    if (animating) this.armTick();
+    if (animating) this.clock.markDirty();
     return animating ? parts.join('') + RESET : formatted;
+  }
+
+  /** True while the frame clock is driving repaints (some character is still settling). */
+  get animating(): boolean {
+    return this.clock.running;
+  }
+
+  /** Ask the frame clock for a paint on its next tick (owner repaint requests while `animating`). */
+  markDirty(): void {
+    this.clock.markDirty();
   }
 
   /** Text just left the FRONT of the overlay (a block commit). */
@@ -309,7 +325,7 @@ export class SmokeReveal {
     this.lines.reset();
     this.lastVisible = null;
     this.sinceApply = 0;
-    this.clearTick();
+    this.clock.stop();
   }
 
   /** Stop the settle driver and clear all history. Safe to call repeatedly. */
@@ -370,22 +386,6 @@ export class SmokeReveal {
   private prune(t: number): void {
     this.timeline.advance(t);
     this.timeline.prune(t, (style) => (style === 'ink' ? INK_MS : MAX_LIFETIME_MS));
-  }
-
-  private armTick(): void {
-    if (this.timer) return;
-    this.timer = setTimeout(() => {
-      this.timer = null;
-      this.requestRepaint();
-    }, FRAME_MS);
-    this.timer.unref?.();
-  }
-
-  private clearTick(): void {
-    if (this.timer) {
-      clearTimeout(this.timer);
-      this.timer = null;
-    }
   }
 }
 

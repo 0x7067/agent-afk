@@ -158,7 +158,7 @@ export class StreamingMarkdownRenderer {
       const accent = isSmokeTextEnabled();
       if ((isInkTextEnabled() || accent) && !reducedMotion) {
         this.accent = accent;
-        this.smoke = new SmokeReveal(() => this.scheduleRepaint(), Date.now, {
+        this.smoke = new SmokeReveal(() => this.paintFrame(), Date.now, {
           prose: 'ink',
           headings: accent ? 'smoke' : 'ink',
         });
@@ -209,10 +209,19 @@ export class StreamingMarkdownRenderer {
     if (!this.isTTY || this.flushing) {
       return; // Skip repaints for non-TTY streams or during flush
     }
+    // While the reveal animates, its 60 fps frame clock owns the paint
+    // cadence: a request only marks the next frame dirty, so pushes can never
+    // delay a frame or paint twice in one period. See markdown-stream.frame-clock.ts.
+    if (this.smoke?.animating) {
+      this.smoke.markDirty();
+      return;
+    }
 
     const result = scheduleWithThrottle(
       () => {
         this.throttleTimer = null;
+        // A trailing paint armed just before the animation started defers to the clock.
+        if (this.smoke?.animating) return this.smoke.markDirty();
         this.lastPaintTime = Date.now();
         void this.repaint();
       },
@@ -222,6 +231,14 @@ export class StreamingMarkdownRenderer {
     );
     this.throttleTimer = result.timer;
     this.lastPaintTime = result.paintTime;
+  }
+
+  /** One frame-clock paint: unthrottled, and it supersedes any trailing throttle paint. */
+  private paintFrame(): void {
+    if (this.throttleTimer) clearTimeout(this.throttleTimer);
+    this.throttleTimer = null;
+    this.lastPaintTime = Date.now();
+    void this.repaint();
   }
 
   /**
