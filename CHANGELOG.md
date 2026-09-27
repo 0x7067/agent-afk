@@ -11,6 +11,13 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.257.4] - 2026-09-27
+
+### Fixed
+- tighten --allow-growth/--reason arg guards and fix bootstrap JSDoc (#2279) (f3ca1a61)
+- child hot-write guard follow-ups from #2093 review (#2338) (8b92fc85)
+- address #2245 advisory findings for session_id_assigned (#2340) (a2da7450)
+
 ## [5.257.3] - 2026-09-27
 
 ### Fixed
