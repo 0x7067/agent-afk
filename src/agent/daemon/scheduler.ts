@@ -33,7 +33,7 @@ import { redactInlineSecrets } from '../session/prompt-dump.js';
 import { ScheduledTask, validateScheduledTask } from './triggers.js';
 import { runBuiltinTask } from './builtin-task.js';
 import { runShellTask } from './shell-task.js';
-import { checkTaskCwdAtRuntime } from './cwd-validator.js';
+import { checkTaskCwdAtRuntime, warnIfBuiltinHasCwd } from './cwd-validator.js';
 export { resolveWorktreePruneRoot } from './worktree-prune-task.js';
 export { daemonTraceLabel } from './session-spawn.js';
 import { spawnDaemonSession } from './session-spawn.js';
@@ -307,13 +307,9 @@ export class CronScheduler {
     const executor = task.executor
       ?? (isLegacySentinel ? 'builtin' as const : 'agent' as const);
     if (executor === 'builtin') {
+      warnIfBuiltinHasCwd(task);
       // Normalize the legacy sentinel to the canonical builtin name here --
       // the single compat point -- so runBuiltinTask only sees canonical names.
-      if (task.cwd !== undefined) {
-        process.stderr.write(
-          `agent-afk [daemon]: task "${task.taskId}" has cwd set but executor is builtin — cwd is ignored by builtin tasks\n`,
-        );
-      }
       const normalizedTask = isLegacySentinel
         ? { ...task, command: 'worktree-prune' }
         : task;

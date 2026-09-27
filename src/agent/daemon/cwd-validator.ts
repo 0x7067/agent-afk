@@ -103,3 +103,14 @@ export function checkTaskCwdAtRuntime(cwd: string): string | undefined {
     return `per-task cwd does not exist: ${cwd}`;
   }
 }
+
+/**
+ * Builtin tasks ignore `cwd` entirely, so a `cwd` on one is a misconfiguration.
+ * Surface it as a warning rather than failing the run, since the task can still
+ * execute correctly. Kept here (not inline in scheduler.ts) to keep all
+ * per-task cwd policy in one module.
+ */
+export function warnIfBuiltinHasCwd(task: { taskId: string; cwd?: string | undefined }): void {
+  if (task.cwd === undefined) return;
+  console.error(`[daemon] task "${task.taskId}": cwd is ignored by builtin tasks`);
+}
