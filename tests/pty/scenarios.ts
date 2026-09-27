@@ -768,7 +768,8 @@ export const SCENARIOS: Record<string, PtyScenario> = {
     hugExpect: {
       absent: ['PRECLEAR_LINE_0', 'PRECLEAR_LINE_29'],
       inViewport: ['POSTCLEAR_BANNER_0', 'SHADOWWARN', 'MCPWARN', 'FIRST_TURN_OUTPUT'],
-      exactlyOnce: ['SHADOWWARN', 'MCPWARN', 'FIRST_TURN_OUTPUT'],
+      // The banner too: keeping it on screen must never duplicate it.
+      exactlyOnce: ['POSTCLEAR_BANNER_0', 'POSTCLEAR_BANNER_9', 'SHADOWWARN', 'MCPWARN', 'FIRST_TURN_OUTPUT'],
       order: [
         ['POSTCLEAR_BANNER_9', 'SHADOWWARN'],
         ['SHADOWWARN', 'MCPWARN'],
