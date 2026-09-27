@@ -19,6 +19,7 @@ import {
   extractChatCompletionsServiceTier,
   makeFastModeMismatchWarning,
 } from './fast-mode.js';
+import type { CatalogReaderDeps } from '../models-catalog.js';
 
 // ── snapshotFastDecision ──────────────────────────────────────────────────────
 
@@ -65,6 +66,39 @@ describe('snapshotFastDecision', () => {
     const d = snapshotFastDecision(ctrl, 'gpt-5.5', false);
     expect(d?.effective).toBe(true);
   });
+
+  it('catalog-override path: catalog eligible=true overrides the fallback for a non-regex model', () => {
+    resetCatalogCache();
+    const ctrl = new FastModeController('on');
+    // gpt-4o is NOT in the fallback regex (would return unsupported-model).
+    // Inject a catalog that marks it as priority-eligible.
+    const fakeCatalog = JSON.stringify({
+      models: [{ slug: 'gpt-4o', service_tiers: [{ id: 'priority' }] }],
+    });
+    const deps: CatalogReaderDeps = {
+      homedir: () => '/fake-home',
+      readFile: () => fakeCatalog,
+    };
+    const d = snapshotFastDecision(ctrl, 'gpt-4o', false, deps);
+    expect(d?.effective).toBe(true);
+  });
+
+  it('catalog-override path: catalog eligible=false overrides the fallback for a regex-matching model', () => {
+    resetCatalogCache();
+    const ctrl = new FastModeController('on');
+    // gpt-5.5 IS in the fallback regex (would return effective=true without catalog).
+    // Inject a catalog that explicitly marks it as NOT priority-eligible.
+    const fakeCatalog = JSON.stringify({
+      models: [{ slug: 'gpt-5.5', service_tiers: [{ id: 'default' }] }],
+    });
+    const deps: CatalogReaderDeps = {
+      homedir: () => '/fake-home',
+      readFile: () => fakeCatalog,
+    };
+    const d = snapshotFastDecision(ctrl, 'gpt-5.5', false, deps);
+    expect(d?.effective).toBe(false);
+    expect(d?.reason).toBe('unsupported-model');
+  });
 });
 
 // ── isFastModeServiceTierError ────────────────────────────────────────────────
@@ -75,9 +109,11 @@ describe('isFastModeServiceTierError', () => {
     expect(isFastModeServiceTierError(err)).toBe(true);
   });
 
-  it('returns true for HTTP 400 mentioning priority (case-insensitive)', () => {
+  it('returns false for HTTP 400 mentioning "priority" but NOT service_tier', () => {
+    // A 400 about an unrelated "priority" field must NOT trigger the fast-mode latch.
+    // Only an explicit service_tier mention indicates the right rejection.
     const err = { status: 400, message: 'Field "priority" is not supported' };
-    expect(isFastModeServiceTierError(err)).toBe(true);
+    expect(isFastModeServiceTierError(err)).toBe(false);
   });
 
   it('returns false for HTTP 400 NOT mentioning service_tier/priority', () => {
