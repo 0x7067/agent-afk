@@ -35,7 +35,9 @@ describe('loadSystemPrompt() — AFK_FRAMEWORK_PROMPT_FILE override', () => {
     await writeFile(overridePath, 'Custom framework prompt content.', 'utf-8');
     process.env['AFK_FRAMEWORK_PROMPT_FILE'] = overridePath;
 
-    // Re-import to pick up the new env value (lazy getter re-reads process.env)
+    // This dynamic import returns the cached module, not a fresh one. The new
+    // value is still seen because loadSystemPrompt() reads the env getter
+    // lazily on every call.
     const { loadSystemPrompt } = await import('./system-prompt.js');
     const result = loadSystemPrompt();
     expect(result).toBe('Custom framework prompt content.');
@@ -58,5 +60,13 @@ describe('loadSystemPrompt() — AFK_FRAMEWORK_PROMPT_FILE override', () => {
     process.env['AFK_FRAMEWORK_PROMPT_FILE'] = '   ';
     const { loadSystemPrompt, loadBundledSystemPrompt } = await import('./system-prompt.js');
     expect(loadSystemPrompt()).toBe(loadBundledSystemPrompt());
+  });
+
+  it('throws when AFK_FRAMEWORK_PROMPT_FILE is a relative path (not absolute)', async () => {
+    process.env['AFK_FRAMEWORK_PROMPT_FILE'] = 'relative/path/prompt.md';
+    const { loadSystemPrompt } = await import('./system-prompt.js');
+    expect(() => loadSystemPrompt()).toThrow(
+      /AFK_FRAMEWORK_PROMPT_FILE="relative\/path\/prompt\.md" must be an absolute path/,
+    );
   });
 });

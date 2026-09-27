@@ -1,5 +1,5 @@
 import { readFileSync, existsSync } from 'fs';
-import { dirname, resolve } from 'path';
+import { dirname, isAbsolute, resolve } from 'path';
 import { fileURLToPath } from 'url';
 
 import { env } from '../config/env.js';
@@ -21,6 +21,13 @@ import { loadConfig } from './config.js';
 export function loadSystemPrompt(): string | undefined {
   const override = env.AFK_FRAMEWORK_PROMPT_FILE?.trim();
   if (override) {
+    // path.isAbsolute, not a leading-slash check, so Windows absolute paths
+    // such as C:\prompts\x.md are accepted on Windows CI and hosts.
+    if (!isAbsolute(override)) {
+      throw new Error(
+        `AFK_FRAMEWORK_PROMPT_FILE="${override}" must be an absolute path (got a relative path).`,
+      );
+    }
     try {
       return readFileSync(override, 'utf-8');
     } catch (err) {

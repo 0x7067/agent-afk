@@ -11,9 +11,10 @@ agent's behaviour — **before you commit to it**.
 You describe a proposed change in plain English or with explicit flags. The
 engine:
 
-1. **Analyses the structural diff** (free, no model calls): shows the exact
-   system-prompt diff, which tools were added or removed, token-count delta, and
-   per-turn cost delta.
+1. **Analyses the structural diff** (free, no model calls): captures a one-turn
+   snapshot for each environment, then shows the diff between the system prompt
+   that each environment sent to the model, which tools were added or removed,
+   token-count delta, and per-turn cost delta.
 
 2. **Predicts up to 8 behaviour changes** (~1 cent): an analyst model studies
    the diff and produces a labelled list of predicted shifts (added / removed /
@@ -57,7 +58,7 @@ afk whatif --spec my-change.json
 
 | Level | What happens | Cost |
 |-------|-------------|------|
-| 0 Structural | System-prompt diff, tool list diff, token/cost delta | Free |
+| 0 Structural | Diff of the system prompts captured from each env's one-turn snapshot request, tool list diff, token/cost delta | Free |
 | 1 Predict | Analyst model produces labelled behaviour predictions | ~$0.01 |
 | 2 Verify | Episodes in sandboxes; rates measured; predictions tested | ~$0.50–$5 |
 | 3 Calibrate | Predictions + outcomes written to calibration ledger | Free |
@@ -268,14 +269,15 @@ afk whatif --env AFK_FRAMEWORK_PROMPT_FILE=/tmp/whatif-narration/system-prompt.n
 ```
 
 The structural snapshot in the report (`level 0`) shows the system-prompt diff
-between the bundled prompt and your modified file. Level 1 predictions are
+between the system prompt captured from the first API request of the baseline
+snapshot run versus the candidate snapshot run. Level 1 predictions are
 derived from that diff; Level 2 episodes run the agent with the modified prompt
 in the candidate sandbox.
 
-**Error behaviour**: if `AFK_FRAMEWORK_PROMPT_FILE` points to an unreadable
-path, `loadSystemPrompt()` throws and the episode fails loudly. It never falls
-back to the bundled prompt, since that would silently turn the A/B run into
-an A/A run.
+**Error behaviour**: if `AFK_FRAMEWORK_PROMPT_FILE` is a relative path or
+points to an unreadable file, `loadSystemPrompt()` throws and the episode
+fails loudly. It never falls back to the bundled prompt, since that would
+silently turn the A/B run into an A/A run.
 
 **Episode text**: episodes run `afk chat --format stream-json`, so the text
 the judge grades is every assistant text segment in order, with a
