@@ -314,15 +314,8 @@ export class OpenAICompatibleProvider implements ModelProvider {
     // write below must receive the SAME id. The Telegram watcher resolves a
     // session's ledger path from the id in its presence file, so a mismatch
     // makes auto-subscribe tail a ledger that does not exist.
-    //
-    // This provider previously hand-duplicated the anthropic-direct gate,
-    // including its `config.sessionId` bug: that field is set only under
-    // --resume, so a fresh session wrote no presence file at all. Both providers
-    // now call the one shared helper so they cannot drift again. The dispatcher
-    // half of that bug survived here (it read `config.sessionId`, so a fresh or
-    // post-/clear session handed tools no id and `image_generate` failed closed)
-    // after anthropic-direct fixed its copy in #2188; parity is now pinned by
-    // `shared/dispatcher-session-id.test.ts`.
+    // History: both providers shared a config.sessionId bug fixed via the
+    // shared helper; parity is pinned by shared/dispatcher-session-id.test.ts.
     const resolvedSession = resolveTopLevelSessionId({
       sessionId: config.sessionId,
       resume: config.resume,
