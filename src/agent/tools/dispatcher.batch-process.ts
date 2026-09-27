@@ -186,7 +186,10 @@ async function executeCallUnit(
   activity?.enter(call.id);
   try {
     const result = await executeCore(call);
-    return { result, originalIndex };
+    // Stamp per-call completion time before the batch settles so the trace
+    // event carries THIS call's elapsed duration, not the batch's. See #2249.
+    const completedAt = Date.now();
+    return { result: { ...result, completedAt }, originalIndex };
   } finally {
     activity?.leave(call.id);
   }
@@ -404,7 +407,10 @@ export async function runSequentialBatch(
       results[originalIndex] = refusal;
       continue;
     }
-    const result = await deps.executeCore(call);
+    const coreResult = await deps.executeCore(call);
+    // Stamp per-call completion time before batch-wide emit so the trace
+    // event carries THIS call's elapsed duration, not the batch's. See #2249.
+    const result = { ...coreResult, completedAt: Date.now() };
     results[originalIndex] = result;
     deps.repeatFailureGuard.note(call, result);
   }
