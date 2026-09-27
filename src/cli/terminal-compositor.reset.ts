@@ -59,6 +59,8 @@ export interface ResetStateHost {
   resizeUnsub: (() => void) | null;
   resizeImmediateUnsub: (() => void) | null;
   disarmRows: number;
+  /** Queue-and-replay buffer for commitAbove calls deferred while suspended. */
+  suspendCommitQueue: string[];
 }
 
 export function resetState(self: ResetStateHost): void {
@@ -143,6 +145,10 @@ export function resetState(self: ResetStateHost): void {
   // Reset shared autocomplete state so stale dropdown chrome from this
   // agent turn does not leak into the next user-turn read.
   self.autocompleteState?.reset();
+  // Clear any uncommitted queued blocks — they were deferred during suspension
+  // and must not outlive the arm cycle. resumeInput() and disarm() drain them
+  // first; this is defence-in-depth for any path that bypasses that drain.
+  self.suspendCommitQueue.length = 0;
   if (self.resizeUnsub) {
     self.resizeUnsub();
     self.resizeUnsub = null;

@@ -285,6 +285,14 @@ export class TerminalCompositor {
   armed = false;
   /** @internal Relaxed from `private` for the frame module (FrameHost). */
   suspended = false;  // true while suspendInput() is in effect
+  /**
+   * Queue-and-replay buffer for commitAbove calls that arrive while the
+   * compositor is suspended. commitAbove appends; resumeInput drains through
+   * the normal commit path; disarm while suspended archives directly to
+   * scrollback. Cleared by resetState() as defence-in-depth.
+   * @internal Relaxed from `private` for the committed-band and lifecycle modules.
+   */
+  suspendCommitQueue: string[] = [];
   /** @internal Relaxed from `private` for the input-dispatch module (KeyDispatchHost). */
   canceled = false;
   /** @internal Relaxed from `private` for the input-dispatch module (KeyDispatchHost). */
@@ -938,6 +946,8 @@ export class TerminalCompositor {
   clearCommittedBand(): void {
     CommittedBand.clearCommittedBand(this);
   }
+
+
 
   /**
    * Physically erase the pre-resize on-screen footprint snapshotted by the

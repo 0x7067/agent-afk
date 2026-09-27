@@ -30,7 +30,9 @@ import * as InputDispatch from './terminal-compositor.input-dispatch.js';
 import type { KeyDispatchHost } from './terminal-compositor.input-dispatch.js';
 import { handleResizeImmediate, handleDisarmWindowResize } from './terminal-compositor.lifecycle.resize.js';
 import { enterRawMode, exitRawMode, enableBracketedPasteAndScrollKey, disableBracketedPasteAndScrollKey } from './terminal-compositor.lifecycle.mode.js';
-import { flushPendingCommittedBand } from './terminal-compositor.lifecycle.teardown.js';
+import { flushPendingCommittedBand, endTurnFlush } from './terminal-compositor.lifecycle.teardown.js';
+import { decomposeCommitText } from './terminal-compositor.commit-text.js';
+import { buildBandMeta, buildScrollbackArchiveEscape, scrollbackFlushLines } from './terminal-compositor.scrollback.js';
 
 // Re-export for callers that imported endTurnFlush from this module directly.
 export { endTurnFlush } from './terminal-compositor.lifecycle.teardown.js';
@@ -45,6 +47,8 @@ export { endTurnFlush } from './terminal-compositor.lifecycle.teardown.js';
 export interface LifecycleHost {
   repaint(): void;
   resetState(): void;
+  /** Replay a deferred commit through the normal commit path (called by resumeInput). */
+  commitAbove(text: string): void;
 
   /**
    * Monotonic frame counter — bumped once per {@link repaint}. Read by arm()'s
@@ -59,6 +63,13 @@ export interface LifecycleHost {
 
   armed: boolean;
   suspended: boolean;
+  /**
+   * Queue-and-replay buffer for commitAbove calls that arrive while suspended.
+   * suspendInput() settles pending rows then forgets the model; commitAbove()
+   * appends here instead of writing stdout; resumeInput() drains the queue
+   * through the normal commit path; disarm() while suspended archives directly.
+   */
+  suspendCommitQueue: string[];
   wasRaw: boolean;
   stdinClaim: StdinClaimHandle | null;
   handleKeypress: ((char: string | undefined, key: KeyInfo) => void) | null;
@@ -98,7 +109,6 @@ export interface LifecycleHost {
   // field doc on the class (terminal-compositor.ts).
   bandGeometryStale: boolean;
   // Real frame top/bottom from the last repaint (0 = no frame measured).
-  // suspendInput() zeroes both: the frame it erases is no longer on screen.
   lastMeasuredFrameTop: number;
   lastMeasuredFrameBottom: number;
   // Stale-guard for endTurnFlush: set true when committed-band state changes
@@ -127,15 +137,18 @@ export function suspendInput(self: LifecycleHost): void {
   if (self.logUpdate) {
     try { self.logUpdate.clear(self.scrollRegion?.getExtraRows() ?? 0); self.logUpdate.done(); } catch { /* noop */ }
   }
-  // Invariant (#2382): the frame is now erased and repaint() no-ops until
-  // resumeInput(), so there is NO measured frame on screen. Zero the measured
-  // geometry rather than let it describe a frame that no longer exists: a
-  // stale frame top misroutes a suspended commitAbove onto the fits path and
-  // makes resumeInput()'s repaint read a band stored against the collapsed
-  // frame as overlapping the erased one (geometry-guard I5). The resume
-  // repaint re-measures both fields.
-  self.lastMeasuredFrameTop = 0;
-  self.lastMeasuredFrameBottom = 0;
+  // Invariant (queue-and-replay, issue #2382): the frame is about to be erased
+  // and the owner is about to write freely to stdout. The committed band (all
+  // painted + any pending rows) is flushed to scrollback NOW as a complete,
+  // single-copy archive — before the owner's writes can scroll viewport rows
+  // and make band tracking coordinates stale. endTurnFlush erases the painted
+  // rows on screen (CUP+EL, no scroll, so the archive is the single copy) and
+  // archives the full band to scrollback, then clears the model. The resume
+  // repaint starts with an empty band and fresh geometry: repositionCommittedBand
+  // has nothing to re-pin, so neither stale-coordinate overwrites (S2 duplicate
+  // root cause) nor content loss occur. Queued commits replay through the normal
+  // commit path after the frame is re-established.
+  endTurnFlush(self);
   if (self.handleKeypress) {
     self.stdin.removeListener('keypress', self.handleKeypress);
   }
@@ -158,6 +171,28 @@ export function resumeInput(self: LifecycleHost): void {
   }
   self.suspended = false;
   self.repaint();
+
+  // Contract (queue-and-replay, issue #2382): drain the suspend queue through
+  // the NORMAL commitAbove path. At this point suspended===false and the frame
+  // has been re-established by the repaint above, so band geometry is fresh and
+  // row numbers are trustworthy. Each replayed commit goes through the full
+  // Phase-1/2/3 pipeline (no bypasses). The queue is spliced before the loop so
+  // any commit that arrives mid-drain (re-entrancy guard) goes to a fresh queue
+  // rather than being replayed twice.
+  const queued = self.suspendCommitQueue.splice(0);
+  for (const text of queued) {
+    self.commitAbove(text);
+  }
+  // Post-drain repaint: if the last queued commit routed through band-hold
+  // (commitPhase3HoldStore, which stores with paintedRows=0), the Phase 2
+  // repaint inside that commit ran with commitInFlight=true and suppressed
+  // repositionCommittedBand. Fire one more repaint here (with commitInFlight=false)
+  // so repositionCommittedBand can paint the owed rows. No-op when the last
+  // commit took the fitsAboveFrame path (Phase 3 already painted it).
+  if (queued.length > 0) {
+    self.repaint();
+  }
+
   // Resume blinking now that we hold the TTY again. No-op when disabled.
   self.caretBlinkController.start();
 }
@@ -346,6 +381,37 @@ export function disarm(self: LifecycleHost): void {
   if (self.resizeImmediateUnsub) {
     self.resizeImmediateUnsub();
     self.resizeImmediateUnsub = null;
+  }
+
+  // Contract (queue-and-replay, issue #2382): if disarm fires while still
+  // suspended (Ctrl-C / abort / mid-turn exit), the suspend queue holds commits
+  // that were never written to stdout or to the band model. Archive them
+  // directly to scrollback as soft-wrappable logical lines — bypassing the full
+  // commitAbove pipeline (which would call repaint() on an erased screen and
+  // re-engage the geometry guard) and the band model (which is empty after
+  // forgetCommittedBand). The archive uses the same buildScrollbackArchiveEscape
+  // path as the normal overflow archive, so C1 (single-copy) is preserved.
+  // This runs BEFORE flushPendingCommittedBand so the queue is cleared first;
+  // the band model is already empty (forgetCommittedBand ran at suspendInput)
+  // so flushPendingCommittedBand will be a no-op anyway.
+  if (self.suspended && self.suspendCommitQueue.length > 0) {
+    const queued = self.suspendCommitQueue.splice(0);
+    const rows = Math.max(1, self.stdout.rows ?? 24);
+    const cols = Math.max(1, self.stdout.columns ?? 80);
+    const anchorFloor = Math.max(self.anchorRow ?? 1, 1);
+    for (const text of queued) {
+      const t = decomposeCommitText(text, cols);
+      const blockMeta = buildBandMeta(t.contentLines, cols);
+      const archiveEscape = buildScrollbackArchiveEscape(
+        scrollbackFlushLines(t.contentLines, blockMeta, t.contentLines.length),
+        anchorFloor,
+        rows,
+        cols,
+      );
+      if (archiveEscape.length > 0) {
+        try { self.stdout.write(archiveEscape); } catch { /* terminal closed */ }
+      }
+    }
   }
 
   // External constraint (band-hold materialization ordering): a block committed

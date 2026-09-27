@@ -84,7 +84,6 @@ export function routeCommit(
     committedBandBottomRow: self.committedBandBottomRow,
     committedBandPaintedRows: self.committedBandPaintedRows,
     geometryStale: self.bandGeometryStale,
-    frameErased: geo.frameErased,
     ...(geo.hugSlack > 0 ? { roomTop: geo.roomTop } : {}),
     hugSlack: geo.hugSlack,
   });

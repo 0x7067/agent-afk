@@ -5,32 +5,7 @@ import { writeWithScrollGuard } from './terminal-compositor.commit-guard.js';
 import {
   scrollbackFlushLines,
   buildScrollbackArchiveEscape,
-  eraseAndPaintRow,
 } from './terminal-compositor.scrollback.js';
-
-/**
- * Invariant (#2382 review, erased-frame merge keeps committedBandPaintedRows
- * truthful): while the frame is erased (suspendInput) a commit merges the
- * prior band into a band-hold model that commitPhase3HoldStore records with
- * committedBandPaintedRows = 0 — the WHOLE model is pending. The prior band's
- * painted suffix is still on screen, though, so a teardown before the resume
- * repaint (disarm / endTurn while suspended) would archive those rows to
- * scrollback while their on-screen copy stays put: a duplicate. Erase exactly
- * the rows this compositor painted (CUP+EL, no '\n', so nothing scrolls) so the
- * screen matches the model. It runs BEFORE any Phase 1 archive, whose scroll
- * would otherwise move those rows away from their tracked coordinates. The
- * resumeInput() repaint paints the full model back (repositionCommittedBand
- * repaints whenever rows are owed). Returns '' when there is nothing to erase.
- */
-export function erasedFramePriorBandErase(self: CommittedBandHost, geo: CommitGeometry): string {
-  if (!geo.frameErased || self.committedBand.length === 0) return '';
-  const bottom = self.committedBandBottomRow;
-  const painted = Math.min(self.committedBandPaintedRows, self.committedBand.length);
-  if (painted <= 0 || bottom <= 0) return '';
-  let out = '';
-  for (let r = Math.max(1, bottom - painted + 1); r <= bottom; r++) out += eraseAndPaintRow(r);
-  return out;
-}
 
 /**
  * Phase 1 teardown: clear the live frame, emit the scrollback write (LFs or
@@ -138,12 +113,9 @@ export function commitPhase1Teardown(
     archiveCount,
     maxBandModel: route.maxBandModel,
     overflowRunLen: overflowRun.length,
-    frameErased: geo.frameErased,
   });
 
-  const priorBandErase = useBandHold ? erasedFramePriorBandErase(self, geo) : '';
   writeWithScrollGuard(self, () => {
-    if (priorBandErase.length > 0) self.stdout.write(priorBandErase);
     if (useBandHold) {
       // Band-hold Phase 1: scroll NOTHING for the rows the model keeps (they
       // are "pending" — painted by repositionCommittedBand on collapse). Only

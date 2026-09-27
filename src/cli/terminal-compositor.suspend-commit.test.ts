@@ -214,11 +214,17 @@ describe('commitAbove during suspendInput (issue #2382)', () => {
       assertEachExactlyOnce(vs, labels, `${s.name} (disarm-while-suspended)`);
     });
 
-    // Regression #2382 defect 2: owesRows — a band-hold commit stores
-    // committedBandPaintedRows=0 (everything pending). On resume the idle
-    // repaint must materialize the owed rows even when `moved=false` (the frame
-    // lands at the same position as before suspend). Without the owesRows check,
-    // repositionCommittedBand would return early and leave the band invisible.
+    // Queue-and-replay (#2382 settle design): the queued commit lands as a fresh
+    // commit after resume with the prior content already in scrollback. Each
+    // label appears exactly once across scrollback + viewport; contiguity is not
+    // required because suspendInput flushes prior content to scrollback and the
+    // queued commit starts a new band above the freshly-established frame.
+    // Mechanism-specific change: assertCommittedOnce → assertEachExactlyOnce.
+    // Reason: the settle+queue design archives BLOCK-A/B to scrollback at suspend;
+    // BLOCK-SUSPENDED lands fresh above the frame on resume. The combined
+    // scrollback+viewport list has a gap (blank viewport rows between sb and vp
+    // content) which assertCommittedOnce's contiguity check would reject. The
+    // exactlyOnce invariant is the meaningful correctness check here.
     it(`idle repaint after resume materializes owed rows — ${s.name}`, async () => {
       const { c, vs, internals } = await makeRig(s);
       const labels: string[] = [];
@@ -236,7 +242,7 @@ describe('commitAbove during suspendInput (issue #2382)', () => {
       c.resumeInput();
       labels.push('BLOCK-A', 'BLOCK-B', 'BLOCK-SUSPENDED');
       // resumeInput() calls repaint() internally; no explicit repaint needed.
-      assertCommittedOnce(vs, internals.frameTop(), labels, `${s.name} (idle)`);
+      assertEachExactlyOnce(vs, labels, `${s.name} (idle)`);
       c.disarm();
     });
 
@@ -289,40 +295,44 @@ describe('commitAbove during suspendInput (issue #2382)', () => {
       c.disarm();
     });
 
-    // Codex P2: non-scrolling external write during suspension must not cause
-    // duplication. A newline-free write moves the cursor but does not scroll the
-    // terminal, so committed rows stay in the viewport. The compositor must still
-    // paint the suspended commit exactly once after resume.
-    // Invariant (Codex P2 limit): if the external write causes a terminal scroll
-    // (e.g., `answer\r\n`), committed rows may enter native scrollback while the
-    // model still marks them pending. The compositor cannot observe external
-    // scrolls, so it cannot prevent the duplicate in that case. Callers that must
-    // guarantee no duplicate after a scroll-causing external write must not commit
-    // during suspension, or must clear the band via clearCommittedBand() before
-    // resumeInput(). The test below uses a non-scrolling write only.
+    // Queue-and-replay (#2382 settle design): non-scrolling external write during
+    // suspension. suspendInput flushes the band to scrollback; the non-scrolling
+    // write moves the cursor but does not scroll; resume replays the queued commit
+    // through the normal path. All labels appear exactly once.
+    // Mechanism-specific change: assertCommittedOnce → assertEachExactlyOnce.
+    // Reason: settle+queue archives BLOCK-A/B to scrollback at suspend; BLOCK-S
+    // lands fresh above the frame on resume. The gap between scrollback and
+    // viewport rows is expected (see idle-repaint test comment above).
     it(`non-scrolling external write during suspension: no duplicate — ${s.name}`, async () => {
-      const { c, vs, internals } = await makeRig(s);
+      const { c, vs } = await makeRig(s);
       const stdout = (c as any).stdout as NodeJS.WriteStream;
       const labels: string[] = [];
       for (let i = 0; i < s.fill; i++) {
         const label = `FILL-${String(i).padStart(2, '0')}`;
         labels.push(label);
         c.commitAbove(`${label}\n`);
-        internals.repaint();
+        (c as any).repaint();
       }
       c.commitAbove('BLOCK-A\n');
       c.commitAbove('BLOCK-B\n');
-      internals.repaint();
+      (c as any).repaint();
       c.suspendInput();
       // Non-scrolling external write: moves cursor but does not emit \n.
       stdout.write('PROMPT? ');
       c.commitAbove('BLOCK-SUSPENDED\n');
       c.resumeInput();
       labels.push('BLOCK-A', 'BLOCK-B', 'BLOCK-SUSPENDED');
-      assertCommittedOnce(vs, internals.frameTop(), labels, `${s.name} (ext-write)`);
+      assertEachExactlyOnce(vs, labels, `${s.name} (ext-write)`);
       c.disarm();
     });
 
+    // Queue-and-replay (#2382 settle design): BLOCK-SUSPENDED goes to the queue
+    // at suspend time; BLOCK-C is committed normally after resume. All labels
+    // appear exactly once.
+    // Mechanism-specific change: assertCommittedOnce → assertEachExactlyOnce.
+    // Reason: settle+queue archives BLOCK-A/B to scrollback at suspend;
+    // BLOCK-SUSPENDED and BLOCK-C land fresh above the frame on resume. The
+    // gap between scrollback and viewport is expected (see idle-repaint comment).
     it(`suspended commit is shown exactly once after resume — ${s.name}`, async () => {
       const { c, vs, internals } = await makeRig(s);
       c.setSpinner({ enabled: true });
@@ -349,19 +359,23 @@ describe('commitAbove during suspendInput (issue #2382)', () => {
       c.setSpinner({ enabled: false });
       internals.repaint();
 
-      assertCommittedOnce(vs, internals.frameTop(), labels, s.name);
+      assertEachExactlyOnce(vs, labels, s.name);
       c.disarm();
     });
 
+    // Queue-and-replay (#2382 settle design): BLOCK-SUSPENDED is visible after
+    // resume with no further commits. All labels appear exactly once.
+    // Mechanism-specific change: assertCommittedOnce → assertEachExactlyOnce.
+    // Reason: same as above — settle+queue archives BLOCK-A/B at suspend.
     it(`suspended commit is visible on resume, before any later commit — ${s.name}`, async () => {
-      const { c, vs, internals } = await makeRig(s);
+      const { c, vs } = await makeRig(s);
       c.setSpinner({ enabled: true });
       const labels: string[] = [];
       for (let i = 0; i < s.fill; i++) {
         const label = `FILL-${String(i).padStart(2, '0')}`;
         labels.push(label);
         c.commitAbove(`${label}\n`);
-        internals.repaint();
+        (c as any).repaint();
       }
       c.commitAbove('BLOCK-A\n');
       c.commitAbove('BLOCK-B\n');
@@ -370,7 +384,7 @@ describe('commitAbove during suspendInput (issue #2382)', () => {
       c.resumeInput();
       labels.push('BLOCK-A', 'BLOCK-B', 'BLOCK-SUSPENDED');
 
-      assertCommittedOnce(vs, internals.frameTop(), labels, `${s.name} (on resume)`);
+      assertEachExactlyOnce(vs, labels, `${s.name} (on resume)`);
       c.disarm();
     });
   }
