@@ -59,4 +59,18 @@ export const WHATIF_ENV_REGISTRY = [
     example: '1',
     category: 'misc',
   },
+  {
+    name: 'AFK_FRAMEWORK_PROMPT_FILE',
+    description:
+      'Absolute path to a replacement for the framework base system prompt ' +
+      '(`system-prompt.md`). When set, `loadSystemPrompt()` reads this file instead ' +
+      'of the bundled `system-prompt.md`. Unset = byte-identical default behaviour. ' +
+      'An unreadable path throws at prompt load (hard error, no fallback). Use with ' +
+      '`afk whatif --env AFK_FRAMEWORK_PROMPT_FILE=<path>` to A/B test framework ' +
+      'prompt changes without modifying `system-prompt.md`.',
+    type: 'string',
+    required: false,
+    example: '/tmp/whatif-narration/system-prompt.narrate.md',
+    category: 'misc',
+  },
 ] as const satisfies readonly EnvVarMeta[];
