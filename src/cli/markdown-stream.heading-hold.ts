@@ -10,12 +10,18 @@
  * the renderer can hold the rest until the heading has condensed.
  *
  * Contract (narrow on purpose): only a block whose last line is a markdown
- * heading qualifies, so the held overlay is a single row and its commit is
- * the smallest repaint the compositor can do. Body paragraphs are never
- * held; the reveal paces their styling, never their commits (see the "pace
- * the reveal, never the text" invariant in smoke-reveal.ts). The owner must
- * release held text synchronously before any path that commits or inspects
- * the buffer, so nothing can be committed above a heading that preceded it.
+ * heading (or a bold-only title) qualifies, so the held overlay is a single
+ * row and its commit is the smallest repaint the compositor can do. Body
+ * paragraphs are never held; the reveal paces their styling, never their
+ * commits (see the "pace the reveal, never the text" invariant in
+ * smoke-reveal.ts). The owner must release held text synchronously before any
+ * path that commits or inspects the buffer, so nothing can be committed above
+ * a heading that preceded it.
+ *
+ * Extended: a bold-only first line (`**text**`) is also held, matching the
+ * smoke-reveal.lines.ts LineClassifier extension that treats it as a heading.
+ * Models frequently respond with a bold title instead of `# title` — without
+ * the hold, the smoke accent would be cut off immediately.
  *
  * @module cli/markdown-stream.heading-hold
  */
@@ -23,11 +29,28 @@
 import { findBlockBoundary } from './markdown-stream-format.js';
 
 const HEADING_LINE_RE = /^ {0,3}#{1,6}(\s|$)/;
+/** Bold-only title: line starts with `**` or `*` followed by non-whitespace. */
+const BOLD_TITLE_RE = /^\*{1,2}\S/;
+
+/**
+ * True if `block` (the trimmed text of a completed block) looks like a title:
+ * either a markdown heading or a bold-only single-line block (no interior
+ * newlines after trimming, so we only hold single-row bold blocks).
+ */
+function looksLikeTitle(block: string): boolean {
+  const lastLine = block.slice(block.lastIndexOf('\n') + 1);
+  if (HEADING_LINE_RE.test(lastLine)) return true;
+  // Bold-only title: the whole block is one line starting with ** or *.
+  // We conservatively require no interior newlines to avoid holding long
+  // multi-line blocks that happen to start bold.
+  return !block.includes('\n') && BOLD_TITLE_RE.test(block.trimStart());
+}
 
 /**
  * If appending `chunk` to `buffer` completes a block whose last line is a
- * heading, return the part of `chunk` to push now (up to, not including, the
- * character that completes the boundary) and the rest to hold. Otherwise null.
+ * heading or bold-only title, return the part of `chunk` to push now (up to,
+ * not including, the character that completes the boundary) and the rest to
+ * hold. Otherwise null.
  */
 export function splitAtHeadingBoundary(buffer: string, chunk: string): { now: string; held: string } | null {
   const combined = buffer + chunk;
@@ -35,8 +58,7 @@ export function splitAtHeadingBoundary(buffer: string, chunk: string): { now: st
   // The completing character must be in THIS chunk (index >= buffer.length).
   if (boundary === -1 || boundary - 1 < buffer.length) return null;
   const block = combined.slice(0, boundary).trimEnd();
-  const lastLine = block.slice(block.lastIndexOf('\n') + 1);
-  if (!HEADING_LINE_RE.test(lastLine)) return null;
+  if (!looksLikeTitle(block)) return null;
   const cut = boundary - 1 - buffer.length;
   return { now: chunk.slice(0, cut), held: chunk.slice(cut) };
 }
