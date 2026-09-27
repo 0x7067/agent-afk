@@ -267,15 +267,12 @@ export function decideCommitMode(input: CommitModeInput): CommitMode {
   // mid-commit anchor-evict can move the band, so the merge is suppressed),
   // routing to band-hold would drop the prior band and cause content loss
   // instead of preventing stranding, so the check is skipped.
-  // Note (#2369 investigation): `overlayTallEnoughToStrand` is effectively
-  // redundant with `runExceedsCurrentRoom` in all reachable production
-  // scenarios. When `overflowPriorContiguous=true` (required for the merge
-  // path that band-hold protects), bandOverflow > 0 iff overflowRun.length >
-  // room iff runExceedsCurrentRoom — so Phase 1 scrolls nothing to scrollback
-  // whenever runExceedsCurrentRoom=false, making both routing paths produce
-  // identical screen output. Removing this check would not change compositor
-  // behaviour; it is retained as defence-in-depth and intent documentation
-  // (see terminal-compositor.tall-overlay-strand.test.ts for the analysis).
+  // Note (#2369 investigation): no scenario was found where this check alone
+  // changes output while the frame is on screen (the fits path scrolls nothing
+  // when runExceedsCurrentRoom=false and the prior band is contiguous). However
+  // it is NOT dead: it is currently the sole band-hold router for a commitAbove
+  // that lands while suspendInput is active (see #2382). Re-evaluate after
+  // #2382 lands (#2369).
   const overlayTallEnoughToStrand = !hugSlack && anchorRow <= 1 && fitsAboveFrame && room < maxBandModel;
   const useBandHold =
     overflowHasPending ||
