@@ -136,7 +136,7 @@ export const updateScheduleTool: AnthropicToolDef = {
         description: 'Whether the task should be active.',
       },
       cwd: {
-        type: 'string',
+        type: ['string', 'null'],
         description:
           'New per-task working directory (absolute path or ~/…). ' +
           'Must be an existing directory. Tilde (~) is expanded at save time. ' +

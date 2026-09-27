@@ -229,6 +229,16 @@ describe('routes.schedules', () => {
       expect(vi.mocked(addSchedule)).not.toHaveBeenCalled();
     });
 
+    it('create: cwd: null is treated as absent (returns 201, no cwd passed to addSchedule)', async () => {
+      const { res, json } = makeRes();
+      await handleCreateSchedule(res, { ...base, cwd: null });
+      expect(json().status).toBe(201);
+      // addSchedule must have been called without a cwd field
+      expect(vi.mocked(addSchedule)).toHaveBeenCalledWith(
+        expect.not.objectContaining({ cwd: expect.anything() }),
+      );
+    });
+
     it('update: accepts a valid cwd', async () => {
       const { res, json } = makeRes();
       await handleUpdateSchedule(res, 'nightly-forge', { cwd: dir });

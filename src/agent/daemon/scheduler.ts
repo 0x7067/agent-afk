@@ -309,6 +309,11 @@ export class CronScheduler {
     if (executor === 'builtin') {
       // Normalize the legacy sentinel to the canonical builtin name here --
       // the single compat point -- so runBuiltinTask only sees canonical names.
+      if (task.cwd !== undefined) {
+        process.stderr.write(
+          `agent-afk [daemon]: task "${task.taskId}" has cwd set but executor is builtin — cwd is ignored by builtin tasks\n`,
+        );
+      }
       const normalizedTask = isLegacySentinel
         ? { ...task, command: 'worktree-prune' }
         : task;

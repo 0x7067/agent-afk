@@ -24,6 +24,9 @@ export function parseCwdCreate(
 ): { ok: false; message: string } | { ok: true; resolved: string | undefined } {
   if (!isRecord(body) || !('cwd' in body)) return { ok: true, resolved: undefined };
   const raw = body['cwd'];
+  // null is semantically equivalent to absent on a create route — you can't
+  // clear a cwd that was never set. Treat it the same as omitting the field.
+  if (raw === null) return { ok: true, resolved: undefined };
   if (typeof raw !== 'string') return { ok: false, message: 'cwd must be a string' };
   if (!raw) return { ok: false, message: 'cwd must be a non-empty string' };
   const result = validateScheduleCwd(raw);
