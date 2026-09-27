@@ -2320,9 +2320,10 @@ describe('renderFormHeader — AFK harness vs external MCP banner', () => {
     const messageLines = lines.filter((l) => l.includes('message:'));
     expect(messageLines.length).toBeGreaterThan(0);
     // The rendered message line should NOT contain the 300-char-wide string
-    // verbatim — it must have been truncated at 256 with a trailing '…'.
+    // verbatim — it must have been truncated at 256 with an explicit notice.
     const rendered = messageLines[0]!;
-    expect(rendered).toContain('…');
+    // Either the sanitizeSchemaString trailing '…' or the new truncation notice must be present
+    expect(rendered.includes('[truncated:') || rendered.includes('…')).toBe(true);
     // Sanity: the full 300-char string is not present
     expect(rendered.includes(long)).toBe(false);
   });
@@ -2347,9 +2348,51 @@ describe('renderFormHeader — AFK harness vs external MCP banner', () => {
     const joined = lines.join('\n');
     // Must still show "MCP form elicitation" banner, not the AFK one
     expect(joined).toContain('MCP form elicitation');
-    // Message must be truncated at 256 chars
+    // Message must be truncated at 256 chars with an explicit notice
     const messageLines = lines.filter((l) => l.includes('message:'));
-    expect(messageLines[0]).toContain('…');
+    expect(messageLines[0]!.includes('[truncated:') || messageLines[0]!.includes('…')).toBe(true);
     expect(messageLines[0]!.includes('Y'.repeat(300))).toBe(false);
+  });
+});
+
+describe('REPL form elicitation — long path list truncation (#2366)', () => {
+  it('oversized message: truncation notice appears and message fits within cap', async () => {
+    // Build a 100-path message like path-approval-hook produces
+    const paths = Array.from({ length: 100 }, (_, i) => `  /some/project/path/to/file/${i}.ts`);
+    const bigMessage = paths.join('\n');
+
+    const lines: string[] = [];
+    const readLine = vi.fn().mockResolvedValue('once');
+    const handler = makeReplElicitationHandler({
+      readLine,
+      writer: { line: (t = '') => lines.push(t) },
+      pendingCount: () => 0,
+    });
+
+    // Submit with decline so it does not loop waiting for form fields
+    readLine.mockResolvedValue(':decline');
+
+    const req: ElicitationRequest = {
+      serverName: 'some-mcp',
+      message: bigMessage,
+      mode: 'form',
+      requestedSchema: {
+        type: 'object',
+        properties: {
+          choice: { type: 'string', enum: ['once', 'session', 'persist', 'deny'] },
+        },
+        required: ['choice'],
+      },
+    };
+
+    await handler(req, { signal: new AbortController().signal });
+
+    const joined = lines.join('\n');
+    // The truncation notice must appear somewhere in the rendered output
+    expect(joined).toContain('[truncated: showing');
+    // The message line itself must fit within the 256-char cap (+ prefix overhead is fine on the writer line)
+    const messageLines = lines.filter((l) => l.includes('message:'));
+    expect(messageLines.length).toBeGreaterThan(0);
+    expect(messageLines[0]!.length).toBeLessThan(400); // reasonable bound including prefix
   });
 });

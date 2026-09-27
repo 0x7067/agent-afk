@@ -392,3 +392,47 @@ describe('Telegram elicitation — AFK command preview', () => {
     await p;
   });
 });
+
+describe('Telegram elicitation — long path list truncation (#2366)', () => {
+  it('oversized path list: sent text contains explicit truncation notice, is ≤4000 chars, and no path split mid-line', async () => {
+    // Build a ~200-path message like path-approval-hook produces
+    const paths = Array.from({ length: 200 }, (_, i) => `  /very/long/project/path/to/file/${i}.ts`);
+    const message = paths.join('\n');
+    const req: ElicitationRequest = {
+      serverName: 'agent-afk',
+      message,
+      schema: {
+        type: 'object',
+        properties: {
+          choice: { type: 'string', enum: ['once', 'session', 'persist', 'deny'] },
+        },
+        required: ['choice'],
+      },
+    };
+    const stub = makeStubBot();
+    const handler = createTelegramElicitationHandler(stub.bot, new Set([111]));
+    const controller = new AbortController();
+    const p = handler(req, { signal: controller.signal });
+    await new Promise((r) => setImmediate(r));
+
+    expect(stub.sent).toHaveLength(1);
+    const text = stub.sent[0]!.text;
+
+    // Must be within Telegram's limit
+    expect(text.length).toBeLessThanOrEqual(4000);
+
+    // Must contain an explicit truncation notice
+    expect(text).toContain('[truncated: showing');
+    expect(text).toContain('of 200 lines');
+
+    // No path must be split mid-line: every line that starts with '  /' must be a full original path
+    for (const line of text.split('\n')) {
+      if (line.startsWith('  /')) {
+        expect(paths).toContain(line);
+      }
+    }
+
+    controller.abort();
+    await p;
+  });
+});

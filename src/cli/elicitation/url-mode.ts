@@ -13,6 +13,7 @@
 
 import type { ElicitationRequest } from '../../agent/types/sdk-types.js';
 import { sanitizeSchemaString } from '../_lib/sanitize.js';
+import { truncateAtLineBoundary } from '../../utils/truncate-lines.js';
 import { palette } from '../palette.js';
 import type { ReplElicitationDeps } from './repl-shared.js';
 
@@ -29,7 +30,10 @@ export function renderUrlRequest(
   writer.line();
   writer.line(palette.warning('⚠ MCP elicitation'));
   writer.line(palette.dim('  server:  ') + palette.bold(sanitizeSchemaString(req.serverName, 64)));
-  writer.line(palette.dim('  message: ') + sanitizeSchemaString(req.message, 256));
+  // Pre-truncate at a line boundary so operators see whole paths and an
+  // explicit count of dropped lines.
+  const truncatedMessage = truncateAtLineBoundary(req.message, 256);
+  writer.line(palette.dim('  message: ') + sanitizeSchemaString(truncatedMessage, 256));
   if (req.url) {
     writer.line(palette.dim('  url:     ') + palette.brand(sanitizeSchemaString(req.url, 512)));
   }

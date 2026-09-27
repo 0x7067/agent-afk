@@ -18,6 +18,7 @@
 import type { ElicitationRequest } from '../../agent/types/sdk-types.js';
 import { debugLog } from '../../utils/debug.js';
 import { sanitizeSchemaString } from '../_lib/sanitize.js';
+import { truncateAtLineBoundary } from '../../utils/truncate-lines.js';
 import { palette } from '../palette.js';
 import type { ReplElicitationDeps } from './repl-shared.js';
 
@@ -129,7 +130,12 @@ export function renderFormHeader(
   writer.line();
   writer.line(palette.warning(banner));
   writer.line(palette.dim('  server:  ') + palette.bold(sanitizeSchemaString(req.serverName, 64)));
-  writer.line(palette.dim('  message: ') + sanitizeSchemaString(req.message, messageCap));
+  // Pre-truncate at a line boundary so operators see whole paths and an
+  // explicit count of dropped lines. Pass the result to sanitizeSchemaString
+  // with a cap >= the pre-truncated length so it does not re-clip with a
+  // bare '…'. truncateAtLineBoundary returns the original string when it fits.
+  const truncatedMessage = truncateAtLineBoundary(req.message, messageCap);
+  writer.line(palette.dim('  message: ') + sanitizeSchemaString(truncatedMessage, messageCap));
   if (req.elicitationId) {
     writer.line(palette.dim('  id:      ') + sanitizeSchemaString(req.elicitationId, 64));
   }

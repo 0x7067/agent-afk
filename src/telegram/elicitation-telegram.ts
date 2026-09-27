@@ -60,6 +60,7 @@ import type {
   ElicitationResult,
 } from '../agent/types/sdk-types.js';
 import { escapeRegExp } from '../utils/regexp.js';
+import { truncateAtLineBoundary } from '../utils/truncate-lines.js';
 import { sendOptions, type TelegramRoute } from './route.js';
 import { getElicitationRoute } from './elicitation-route-registry.js';
 
@@ -248,10 +249,10 @@ function formatRequest(req: ElicitationRequest): string {
   // emitting plain text is the correct (and safe) choice here.
   if (req.title) parts.push(req.title);
   parts.push(req.message);
-  // Telegram has a 4096-char body limit. Truncate defensively (path strings
-  // can be long; we don't want to fail-silent on send).
+  // Telegram has a 4096-char body limit. Truncate at a line boundary so the
+  // operator always sees whole paths and an explicit count of what was dropped.
   const joined = parts.join('\n\n');
-  return joined.length > 4000 ? joined.slice(0, 3997) + '...' : joined;
+  return truncateAtLineBoundary(joined, 4000);
 }
 
 function buildKeyboard(ulid: string, choices: string[]): InlineKeyboardMarkup {
