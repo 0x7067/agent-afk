@@ -881,7 +881,7 @@ export type SessionPhaseName =
   // (query-turn-driver.ts:132). metadata carries: `hoistedIndices` (comma-separated
   // original indices where tool_result blocks were reordered), `orphanIds`
   // (tool_use ids that had no paired result), `assistantIndices` (original indices
-  // of the assistant messages that owned orphans), `bridgedIndices` (original indices
+  // of the assistant messages that owned orphans), `bridgedIndices` (post-orphan-pass indices
   // where role-alternation bridges were inserted), `messageCount` (count before
   // repair), `shapeBefore` (compact structural summary — roles + block types + counts,
   // NEVER message text or tool inputs; capped at 2000 chars). See #2136.

@@ -45,9 +45,10 @@ import type { ContentBlockParam, MessageParam } from '@anthropic-ai/sdk/resource
  * returned when history is healthy and no mutation occurred.
  *
  * Index semantics: all index fields refer to positions in the ORIGINAL
- * (pre-repair) message array. Exception: `bridgedIndices` names original
- * indices of the FIRST message in each same-role pair (the insertion lands
- * at original-index + 1), since the bridges do not exist in the original.
+ * (pre-repair) message array. Exception: `bridgedIndices` is measured against
+ * the array as it stood AFTER Pass 1 (orphan repair) and names the FIRST message
+ * of each same-role pair (the bridge lands at index + 1). It equals the original
+ * index only when Pass 1 inserted nothing.
  *
  * The `shapeBefore` string is computed lazily — only when a repair is
  * detected — from a shallow copy of the pre-repair array. It is a compact
@@ -64,8 +65,8 @@ export interface OrphanRepairReport {
   orphanToolUseIds: string[];
   /** Original indices of assistant messages that owned orphaned tool_use blocks. */
   orphanAssistantIndices: number[];
-  /** Original indices of the first message in each same-role pair where a
-   *  synthetic bridging message was inserted (Pass 2 alternation fix). */
+  /** Indices (relative to the post-Pass-1 array) of the first message in each
+   *  same-role pair where a bridging message was inserted (Pass 2 fix). */
   bridgedIndices: number[];
   /** Length of the message array before any repair. */
   messageCountBefore: number;
@@ -233,8 +234,9 @@ function repairOrphanToolUsesPass(messages: MessageParam[]): {
  * interact with each other and the splice offset is adjusted by incrementing
  * the loop index past the insertion.
  *
- * Returns the original indices of the first message in each pair where a
- * bridge was inserted (the bridge lands between originalIndex and originalIndex+1).
+ * Returns, for each inserted bridge, the index of the first message of the
+ * same-role pair in the array as passed in (i.e. after Pass 1), not counting
+ * bridges inserted earlier in this scan.
  */
 function repairRoleAlternation(messages: MessageParam[], originalLength: number): number[] {
   const bridged: number[] = [];
