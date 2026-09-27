@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.259.2] - 2026-09-27
+
+### Fixed
+- wire AFK risk gate for daemon ticks and afk chat (#2315) (9ee45429)
+
 ## [5.259.1] - 2026-09-27
 
 ### Fixed
