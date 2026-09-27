@@ -81,7 +81,10 @@ export class PlanTextTracker {
       case 'stream.retry':
         // The in-flight round is re-driven from scratch and its text will be
         // re-emitted; drop the partial count so it is not double-counted.
+        // Also clear any armed reset: the re-emitted plan text must not be
+        // erased by a stale arm from a tool.output that preceded the retry.
         this.roundChars = 0;
+        this.resetArmed = false;
         return;
       default:
         return;

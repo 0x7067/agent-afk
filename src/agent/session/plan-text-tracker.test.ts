@@ -104,4 +104,19 @@ describe('PlanTextTracker', () => {
     feed(t, [text(half), { type: 'stream.retry' }, text(half.slice(0, 10)), toolStart('exit_plan_mode')]);
     expect(t.check()).toBe('refuse');
   });
+
+  it('tool.output → stream.retry → delta.text(plan): re-emitted plan after a retry is not discarded', () => {
+    // Regression: stream.retry did not clear resetArmed, so the stale armed
+    // reset fired on the first post-retry delta.text and zeroed roundChars
+    // before the plan characters were counted, producing a false refuse.
+    const t = new PlanTextTracker();
+    t.beginTurn();
+    feed(t, [
+      toolOut('agent'),          // arms the reset
+      { type: 'stream.retry' }, // should clear the armed reset
+      text(plan),                // plan re-emitted by the retried stream
+      toolStart('exit_plan_mode'),
+    ]);
+    expect(t.check()).toBe('ok');
+  });
 });

@@ -62,7 +62,7 @@ const PICKER_MESSAGE =
 // appears (the user is never stranded) but it no longer claims the plan is above.
 const PICKER_MESSAGE_UNWRITTEN =
   'Plan ready. How do you want to proceed? (Warning: the agent did not write its ' +
-  'plan out as visible text in this response. Scroll up or choose Keep planning.)';
+  'plan out as visible text in this response. Choose Keep planning to prompt it to write one.)';
 
 /**
  * Tool result for a gate refusal. Names WHY (tool results and thinking are not
