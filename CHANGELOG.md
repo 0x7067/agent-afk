@@ -11,6 +11,59 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.257.6] - 2026-09-27
+
+### Fixed
+- show child-failure badge on completed nested agent rows (cfb66840)
+
+### Changed
+- Merge pull request #2335 from griffinwork40/afk/issue-2239-ekdo (61bdc5a6)
+
+## [5.257.5] - 2026-09-27
+
+### Fixed
+- move builtin-cwd warning to cwd-validator to satisfy filesize gate (175323e4)
+- prevent double SIGKILL timer and extra/unset bypass; document empty-changes behavior (f5514f6a)
+- align update_schedule cwd schema, null-on-create, error messages (2bf7a94a)
+- remove dead firstCompletedAt, widen timing margin (06ad6ec1)
+- per-call durationMs for parallel tool batches (e9cd3280)
+- advisory review findings — daemon per-task cwd (40cfa944)
+- address advisory findings from #2274 whatif prediction engine (fbb710d9)
+
+### Changed
+- Merge pull request #2330 from griffinwork40/afk/iso-agent-tool-10-grctv3 (bcede334)
+- Merge pull request #2328 from griffinwork40/afk/iso-agent-tool-6-dns1ai (a40d99ea)
+- Merge pull request #2332 from griffinwork40/afk/issue-2249-m4k9 (8ada5643)
+- consolidate shared makeResult/makeError helpers into tool-lane-render.fixtures.ts (#2323) (3737deb2)
+- bump the fumadocs group in /website with 3 updates (#2341) (814ce249)
+- extract emitDispatchedToolOutputs to fix funcsize gate (06049024)
+
+## [5.257.4] - 2026-09-27
+
+### Fixed
+- tighten --allow-growth/--reason arg guards and fix bootstrap JSDoc (#2279) (f3ca1a61)
+- child hot-write guard follow-ups from #2093 review (#2338) (8b92fc85)
+- address #2245 advisory findings for session_id_assigned (#2340) (a2da7450)
+
+## [5.257.3] - 2026-09-27
+
+### Fixed
+- enforce 2000px many-image limit at request-build time (7f142a65)
+- tighten fast-mode service_tier error latch, add catalog deps injection, trailing-slash normalisation, NoticeKind export, and staleness doc (688b9a99)
+- widen C1 regex, fix truncate code-point safety, update docs/comments (2c3467eb)
+- advisory nits from #2272/#2273 — unref guard, flatMap dead filter, stub type, export, shared helper, trailing blank, mid-file import (a9b34acf)
+
+### Changed
+- Merge pull request #2333 from griffinwork40/afk/fix-many-image-2000px (0617e7b9)
+- Merge pull request #2325 from griffinwork40/afk/iso-agent-tool-5-ykvy1a (b4a5609a)
+- Merge pull request #2326 from griffinwork40/afk/iso-agent-tool-7-avd1is (63d84e43)
+- Merge pull request #2327 from griffinwork40/afk/iso-agent-tool-9-brrvpd (af5b05ee)
+- Merge pull request #2329 from griffinwork40/afk/iso-agent-tool-8-c25noy (6e505c75)
+- Merge pull request #2324 from griffinwork40/afk/iso-agent-tool-3-2ouwtw (ad599bf1)
+- cover web-ui-assets exclusion; merge redundant CI scan step (#2334) (afdbf17c)
+- add content-hug guard test and update banner-path trigger comment (6df2a2d4)
+- correct five doc/help strings that contradicted runtime behavior (3bcbc122)
+
 ## [5.257.2] - 2026-09-26
 
 ### Added

@@ -192,6 +192,12 @@ async function gradeOutputs(
   const crossCheckCrossScores: number[] = [];
   let judgeFailures = 0;
 
+  // Hoist cross-check set out of the per-trace closure; crossCheckIndices is
+  // a pure function of goodTraces.length so it is constant for this grading run.
+  const crossCheckSet = crossCheckJudge
+    ? new Set(crossCheckIndices(goodTraces.length, 3))
+    : null;
+
   async function judgeOne(trace: EpisodeTrace, idx: number): Promise<void> {
     if (signal?.aborted) return;
     const key = `${trace.episodeId}:${trace.env}:${trace.sample}`;
@@ -203,7 +209,7 @@ async function gradeOutputs(
     try {
       const result = await judge.grade(input, signal);
       judgeResults.set(key, result);
-      if (crossCheckJudge && crossCheckIndices(goodTraces.length, 3).includes(idx)) {
+      if (crossCheckJudge && crossCheckSet?.has(idx)) {
         try {
           const ccResult = await crossCheckJudge.grade(input, signal);
           for (const q of questions) {

@@ -80,7 +80,7 @@ function isDispatchEntry(entry: Entry | undefined): entry is ToolEntry {
  * set on them. Non-NESTING ancestors are walked through, not counted. The
  * walk stops when an agentContext lookup misses (already-flushed ancestor).
  */
-export function propagateChildFailure(entries: ReadonlyMap<string, Entry>, failedId: string): void {
+export function propagateChildFailure(entries: Map<string, Entry>, failedId: string): void {
   const failed = entries.get(failedId);
   if (!isDispatchEntry(failed) || failed.failurePropagated) return;
   failed.failurePropagated = true;

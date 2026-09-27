@@ -226,11 +226,10 @@ export const ENV_REGISTRY = [
   },
   {
     name: 'AFK_MAX_BUDGET_USD',
-    description: 'Cumulative USD budget ceiling for the session. Aborts the turn when the running cost crosses this.',
+    description: 'Opt-in cumulative USD budget ceiling for the session. Aborts the turn when the running cost crosses this. Unset by default (no cap applied).',
     type: 'number',
     required: false,
-    default: '5.00',
-    example: '10.00',
+    example: '5.00',
     category: 'model',
   },
   {

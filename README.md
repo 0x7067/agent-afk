@@ -83,8 +83,8 @@ AFK_MODEL=sonnet
 TELEGRAM_BOT_TOKEN=1234567890:ABC...
 AFK_TELEGRAM_ALLOWED_CHAT_IDS=12345678
 
-# Per-task safety rails
-AFK_MAX_BUDGET_USD=5.00
+# Optional per-session cost cap (unset = no limit)
+# AFK_MAX_BUDGET_USD=5.00
 ```
 
 **Project-scoped system prompt.** Drop an `AFK.md` at your project root and `afk` appends it to its built-in framework prompt whenever you run from that directory — your instructions layer on top of the base, they don't replace it. No frontmatter needed.

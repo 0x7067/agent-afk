@@ -86,6 +86,15 @@ export interface PanelSpec {
   body: string | string[];
 }
 
+/**
+ * Semantic category for a `notice` OutputEvent / ProviderEvent.
+ *
+ * Exported as a named union to enable exhaustive switch checks in consumers.
+ * New notice kinds must be added here so downstream switch statements are
+ * flagged by the TypeScript compiler.
+ */
+export type NoticeKind = 'truncation' | 'refusal' | 'fast-tier';
+
 /** Output stream event types */
 export type OutputEvent =
   | { type: 'message'; message: Message }
@@ -122,7 +131,7 @@ export type OutputEvent =
       /** Short operator-facing message (one sentence, no markdown). */
       text: string;
       /** Semantic category — guides rendering and programmatic branching. */
-      kind: 'truncation' | 'refusal' | 'fast-tier';
+      kind: NoticeKind;
     }
   // Live tool-activity marker (Phase 2, issue #516). Mirrors ProviderEvent
   // 'tool.activity'. Reports the tool calls ACTUALLY running at this instant,
