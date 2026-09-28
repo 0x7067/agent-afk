@@ -45,13 +45,19 @@ function truncateLines(text: string, maxLines: number): string {
 // Verified prediction table (#2403)
 // ---------------------------------------------------------------------------
 
-/** "2 probes, n=6/6" : how many episodes and graded outputs back a verdict. */
+/**
+ * "2 probes (n=6 eps, 18 samples)" — episodes are the unit of analysis
+ * (#2404); sample count shown separately for transparency.
+ */
 function scoredOn(vp: VerifiedPrediction): string {
-  const n = `n=${vp.rates.n.baseline}/${vp.rates.n.candidate}`;
-  if (!vp.scope) return n; // pre-#2403 result: pooled over every episode
+  const nEps = `n=${vp.rates.n.baseline}/${vp.rates.n.candidate} eps`;
+  if (!vp.scope) return nEps; // pre-#2403 result: pooled over every episode
   const eps = new Set([...vp.scope.episodes.baseline, ...vp.scope.episodes.candidate]).size;
   if (eps === 0) return `no graded probes (${vp.scope.targetedEpisodes} planned)`;
-  return `${eps} probe${eps === 1 ? '' : 's'}, ${n}`;
+  const samplesNote = vp.scope.totalSamples !== undefined
+    ? `, ${vp.scope.totalSamples} samples`
+    : '';
+  return `${eps} probe${eps === 1 ? '' : 's'}, ${nEps}${samplesNote}`;
 }
 
 function backgroundStr(vp: VerifiedPrediction): string {
