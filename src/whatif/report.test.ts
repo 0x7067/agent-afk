@@ -285,8 +285,52 @@ describe('renderMarkdown', () => {
     // Override predictionAccuracy to undefined (no resolved predictions)
     verify.predictionAccuracy = undefined;
     const report = makeReport(verify);
-    // Headline must not claim any predictions were confirmed/refuted
-    expect(report.headline).not.toMatch(/1 of 1 predictions confirmed/);
+    // Headline must not claim any predictions were confirmed/refuted; the
+    // unobservable one gets its own bucket (#2406 wording + #2409).
+    expect(report.headline).toContain('0 confirmed, 0 refuted, 0 unclear, 1 unobservable (of 1 predictions)');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// renderMarkdown: per-prediction evidence (#2403)
+// ---------------------------------------------------------------------------
+
+describe('renderMarkdown: per-prediction scope', () => {
+  it('shows probe count, n, background rate, and contributing episodes', () => {
+    const vp: VerifiedPrediction = {
+      ...makeVerifiedPred('p1', 'confirmed'),
+      rates: { baseline: 0, candidate: 1, delta: 1, ci: [0.3, 1], n: { baseline: 6, candidate: 6 } },
+      scope: {
+        episodes: { baseline: ['s1', 's2'], candidate: ['s1', 's2'] },
+        targetedEpisodes: 2,
+        background: { baseline: 0.1, candidate: 0.15, delta: 0.05, ci: [-0.1, 0.2], n: { baseline: 54, candidate: 54 } },
+      },
+    };
+    const md = renderMarkdown(makeReport(makeVerifyResult([vp])));
+    expect(md).toContain('Scored on');
+    expect(md).toContain('2 probes, n=6/6');
+    expect(md).toContain('10% → 15% (n=54/54)');
+    expect(md).toContain('- p1: s1, s2');
+    expect(md).toContain('does not affect the result');
+  });
+
+  it('zero graded probes renders as unclear with a plain note', () => {
+    const vp: VerifiedPrediction = {
+      prediction: makePred('p1'),
+      rates: { baseline: 0, candidate: 0, delta: 0, ci: [-1, 1], n: { baseline: 0, candidate: 0 } },
+      verdict: 'unclear',
+      scope: { episodes: { baseline: [], candidate: [] }, targetedEpisodes: 1 },
+    };
+    const md = renderMarkdown(makeReport(makeVerifyResult([vp])));
+    expect(md).toContain('no graded probes (1 planned)');
+    expect(md).toContain('- p1: none graded');
+    expect(md).toContain('⚪ unclear');
+  });
+
+  it('pre-#2403 result without scope still renders n', () => {
+    const md = renderMarkdown(makeReport(makeVerifyResult([makeVerifiedPred('p1', 'confirmed')])));
+    expect(md).toContain('n=20/20');
+    expect(md).not.toContain('Episodes behind each result');
   });
 });
 

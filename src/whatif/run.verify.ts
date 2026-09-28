@@ -11,11 +11,11 @@
  */
 
 import { extractFeatures, featureIndicators, FEATURE_LABELS } from './observe.js';
-import { compareRates, verdictFor, predictionAccuracy, agreementRate } from './stats.js';
+import { compareRates, predictionAccuracy, agreementRate } from './stats.js';
+import { scorePrediction, scoresForQuestion, traceKey } from './run.verify.scoring.js';
 import { discoverDifferences, type OutputPair } from './discover.js';
 import { appendCalibration, type CalibrationRecord } from './ledger.js';
 import { BudgetTracker } from './cost.js';
-import { applyObservability } from './observability.js';
 import { renderTrace } from './trace-render.js';
 import type {
   AgentRunner,
@@ -176,7 +176,7 @@ async function gradeOutputs(
 
   async function judgeOne(trace: EpisodeTrace, idx: number): Promise<void> {
     if (signal?.aborted) return;
-    const key = `${trace.episodeId}:${trace.env}:${trace.sample}`;
+    const key = traceKey(trace);
     const input: JudgeInput = {
       prompt: episodes.find((e) => e.id === trace.episodeId)?.prompt ?? '',
       output: renderTrace(trace),
@@ -227,21 +227,7 @@ async function gradeOutputs(
 // Stats computation
 // ---------------------------------------------------------------------------
 
-function scoresForQuestion(
-  qid: string,
-  env: 'baseline' | 'candidate',
-  goodTraces: EpisodeTrace[],
-  judgeResults: Map<string, Record<string, number>>,
-): number[] {
-  const scores: number[] = [];
-  for (const trace of goodTraces) {
-    if (trace.env !== env) continue;
-    const key = `${trace.episodeId}:${trace.env}:${trace.sample}`;
-    const res = judgeResults.get(key);
-    if (res !== undefined && res[qid] !== undefined) scores.push(res[qid]!);
-  }
-  return scores;
-}
+// Per-prediction episode scoping lives in ./run.verify.scoring.ts (#2403).
 
 // ---------------------------------------------------------------------------
 // Main export
@@ -337,7 +323,7 @@ export async function verifyRun(input: VerifyRunInput): Promise<VerifyRunOutput>
   if (discoveredQuestions.length > 0) {
     for (const trace of goodTraces) {
       if (signal?.aborted) break;
-      const key = `${trace.episodeId}:${trace.env}:${trace.sample}`;
+      const key = traceKey(trace);
       const existing = judgeResults.get(key) ?? {};
       const input: JudgeInput = {
         prompt: episodes.find((e) => e.id === trace.episodeId)?.prompt ?? '',
@@ -355,16 +341,9 @@ export async function verifyRun(input: VerifyRunInput): Promise<VerifyRunOutput>
 
   onProgress?.({ stage: 'report', message: 'Computing statistics' });
 
-  const verifiedPredictions = predictions.map((p) => {
-    const bScores = scoresForQuestion(p.id, 'baseline', goodTraces, judgeResults);
-    const cScores = scoresForQuestion(p.id, 'candidate', goodTraces, judgeResults);
-    const rates = compareRates(bScores, cScores);
-    const rawVerdict = verdictFor(p, rates);
-    // Episodes that targeted this prediction (synthetic probes have ep.targets === p.id).
-    const targetEpIds = episodes.filter((ep) => ep.targets === p.id).map((ep) => ep.id);
-    const { verdict, unobservableReason } = applyObservability(rawVerdict, targetEpIds, goodTraces);
-    return { prediction: p, rates, verdict, ...(unobservableReason !== undefined ? { unobservableReason } : {}) };
-  });
+  // Each prediction is scored on its own probes; other episodes are reported
+  // as a background rate, never pooled (#2403).
+  const verifiedPredictions = predictions.map((p) => scorePrediction(p, episodes, goodTraces, judgeResults));
 
   const verifiedDiscovered = discovered
     .map((d) => {

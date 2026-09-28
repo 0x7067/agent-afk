@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { applyObservability, INTERCEPTED_INTENT_RULE, unobservableReason } from './observability.js';
+import { applyObservability, INTERCEPTED_INTENT_RULE, unobservableReason, type ScoredEpisodes } from './observability.js';
 import type { EpisodeTrace } from './types.js';
 
 // ---------------------------------------------------------------------------
@@ -49,6 +49,11 @@ function makeCleanTrace(
   };
 }
 
+/** The same scored episode ids in both arms (the usual `scope.episodes`). */
+function both(...ids: string[]): ScoredEpisodes {
+  return { baseline: ids, candidate: ids };
+}
+
 // ---------------------------------------------------------------------------
 // INTERCEPTED_INTENT_RULE
 // ---------------------------------------------------------------------------
@@ -82,7 +87,7 @@ describe('unobservableReason', () => {
       makeTrace('ep1', 'baseline', ['agent']),
       makeTrace('ep1', 'candidate', ['agent']),
     ];
-    const reason = unobservableReason('refuted', ['ep1'], traces);
+    const reason = unobservableReason('refuted', both('ep1'), traces);
     expect(reason).toBeDefined();
     expect(reason).toContain('agent');
     expect(reason).toContain('both arms');
@@ -93,7 +98,7 @@ describe('unobservableReason', () => {
       makeTrace('ep1', 'baseline', ['agent']),
       makeTrace('ep1', 'candidate', ['agent']),
     ];
-    const reason = unobservableReason('confirmed', ['ep1'], traces);
+    const reason = unobservableReason('confirmed', both('ep1'), traces);
     expect(reason).toBeUndefined();
   });
 
@@ -102,7 +107,7 @@ describe('unobservableReason', () => {
       makeTrace('ep1', 'baseline', ['agent']),
       makeTrace('ep1', 'candidate', ['agent']),
     ];
-    const reason = unobservableReason('unclear', ['ep1'], traces);
+    const reason = unobservableReason('unclear', both('ep1'), traces);
     expect(reason).toBeUndefined();
   });
 
@@ -111,7 +116,7 @@ describe('unobservableReason', () => {
       makeTrace('ep1', 'baseline', ['agent']),
       makeCleanTrace('ep1', 'candidate'),
     ];
-    const reason = unobservableReason('refuted', ['ep1'], traces);
+    const reason = unobservableReason('refuted', both('ep1'), traces);
     expect(reason).toBeUndefined();
   });
 
@@ -120,7 +125,7 @@ describe('unobservableReason', () => {
       makeCleanTrace('ep1', 'baseline'),
       makeTrace('ep1', 'candidate', ['agent']),
     ];
-    const reason = unobservableReason('refuted', ['ep1'], traces);
+    const reason = unobservableReason('refuted', both('ep1'), traces);
     expect(reason).toBeUndefined();
   });
 
@@ -129,7 +134,7 @@ describe('unobservableReason', () => {
       makeCleanTrace('ep1', 'baseline'),
       makeCleanTrace('ep1', 'candidate'),
     ];
-    const reason = unobservableReason('refuted', ['ep1'], traces);
+    const reason = unobservableReason('refuted', both('ep1'), traces);
     expect(reason).toBeUndefined();
   });
 
@@ -138,18 +143,30 @@ describe('unobservableReason', () => {
       makeTrace('ep1', 'baseline', ['agent', 'write_file']),
       makeTrace('ep1', 'candidate', ['agent']),
     ];
-    const reason = unobservableReason('refuted', ['ep1'], traces);
+    const reason = unobservableReason('refuted', both('ep1'), traces);
     expect(reason).toContain('agent');
     expect(reason).toContain('write_file');
   });
 
-  it('uses all traces when episodeIds is empty (covers the whole run)', () => {
+  it('never downgrades with an empty scope (no scored probes)', () => {
+    // Intercepts elsewhere in the run say nothing about this prediction.
     const traces = [
       makeTrace('ep1', 'baseline', ['agent']),
       makeTrace('ep2', 'candidate', ['agent']),
     ];
-    const reason = unobservableReason('refuted', [], traces);
-    expect(reason).toBeDefined();
+    const reason = unobservableReason('refuted', both(), traces);
+    expect(reason).toBeUndefined();
+  });
+
+  it('checks each arm against its own scored ids (per-arm scope)', () => {
+    // ep1 candidate was not graded, so it is not in scope.candidate; its
+    // intercept must not count even though ep1 is in scope.baseline.
+    const traces = [
+      makeTrace('ep1', 'baseline', ['agent']),
+      makeTrace('ep1', 'candidate', ['agent']),
+    ];
+    const reason = unobservableReason('refuted', { baseline: ['ep1'], candidate: [] }, traces);
+    expect(reason).toBeUndefined();
   });
 
   it('filters to only matching episodes when episodeIds is provided', () => {
@@ -161,7 +178,7 @@ describe('unobservableReason', () => {
       makeTrace('ep2', 'baseline', ['agent']),
       makeTrace('ep2', 'candidate', ['agent']),
     ];
-    const reason = unobservableReason('refuted', ['ep1'], traces);
+    const reason = unobservableReason('refuted', both('ep1'), traces);
     expect(reason).toBeUndefined();
   });
 
@@ -170,7 +187,7 @@ describe('unobservableReason', () => {
       makeTrace('ep1', 'baseline', ['agent']),
       makeTrace('ep1', 'candidate', ['agent']),
     ];
-    const reason = unobservableReason('refuted', ['ep1'], traces);
+    const reason = unobservableReason('refuted', both('ep1'), traces);
     expect(reason).toContain('episode boundary');
   });
 });
@@ -185,7 +202,7 @@ describe('applyObservability', () => {
       makeTrace('ep1', 'baseline', ['agent']),
       makeTrace('ep1', 'candidate', ['agent']),
     ];
-    const result = applyObservability('refuted', ['ep1'], traces);
+    const result = applyObservability('refuted', both('ep1'), traces);
     expect(result.verdict).toBe('unobservable');
     expect(result.unobservableReason).toBeDefined();
   });
@@ -195,7 +212,7 @@ describe('applyObservability', () => {
       makeTrace('ep1', 'baseline', ['agent']),
       makeCleanTrace('ep1', 'candidate'),
     ];
-    const result = applyObservability('refuted', ['ep1'], traces);
+    const result = applyObservability('refuted', both('ep1'), traces);
     expect(result.verdict).toBe('refuted');
     expect(result.unobservableReason).toBeUndefined();
   });
@@ -205,7 +222,7 @@ describe('applyObservability', () => {
       makeTrace('ep1', 'baseline', ['agent']),
       makeTrace('ep1', 'candidate', ['agent']),
     ];
-    const result = applyObservability('confirmed', ['ep1'], traces);
+    const result = applyObservability('confirmed', both('ep1'), traces);
     expect(result.verdict).toBe('confirmed');
     expect(result.unobservableReason).toBeUndefined();
   });
@@ -215,7 +232,7 @@ describe('applyObservability', () => {
       makeTrace('ep1', 'baseline', ['agent']),
       makeTrace('ep1', 'candidate', ['agent']),
     ];
-    const result = applyObservability('unclear', ['ep1'], traces);
+    const result = applyObservability('unclear', both('ep1'), traces);
     expect(result.verdict).toBe('unclear');
     expect(result.unobservableReason).toBeUndefined();
   });
@@ -225,7 +242,7 @@ describe('applyObservability', () => {
       makeCleanTrace('ep1', 'baseline'),
       makeCleanTrace('ep1', 'candidate'),
     ];
-    const result = applyObservability('refuted', ['ep1'], traces);
+    const result = applyObservability('refuted', both('ep1'), traces);
     expect(result.verdict).toBe('refuted');
     expect(result.unobservableReason).toBeUndefined();
   });
@@ -257,7 +274,7 @@ describe('applyObservability', () => {
         durationMs: 1000,
       },
     ];
-    const result = applyObservability('refuted', ['ep-p4-probe'], traces);
+    const result = applyObservability('refuted', both('ep-p4-probe'), traces);
     // Must NOT be refuted — this is the core issue
     expect(result.verdict).not.toBe('refuted');
     expect(result.verdict).toBe('unobservable');

@@ -25,15 +25,6 @@ export function verdictEmoji(v: Verdict): string {
 }
 
 /**
- * Whether a verdict counts as "resolved" for headline / accuracy purposes.
- * `unobservable` is intentionally excluded — it is neither confirmed nor
- * refuted.
- */
-export function isResolved(v: Verdict): v is 'confirmed' | 'refuted' {
-  return v === 'confirmed' || v === 'refuted';
-}
-
-/**
  * Verdict text for a row: the bare verdict, or for `unobservable` the verdict
  * plus its one-line reason so the reader sees why it could not be scored.
  */
