@@ -10,7 +10,8 @@ import * as os from 'node:os';
 import * as fs from 'node:fs';
 import * as fsp from 'node:fs/promises';
 import * as path from 'node:path';
-import { isPidAlive, reconcileOrphanedMeta } from './bg-job-log.js';
+import { reconcileOrphanedMeta } from './bg-job-log.js';
+import { isProcessAlive } from './process-liveness.js';
 
 // We need to control the AFK_HOME before importing paths/bg-job-log.
 // Use a unique temp dir per test suite run.
@@ -315,29 +316,25 @@ describe('BgJobLogWriter + BgJobLogReader integration', () => {
 });
 
 // ---------------------------------------------------------------------------
-// isPidAlive
+// isProcessAlive (from process-liveness.ts, used by reconcileOrphanedMeta)
 // ---------------------------------------------------------------------------
 
-describe('isPidAlive', () => {
+describe('isProcessAlive', () => {
   it('returns true for the current process PID', () => {
-    expect(isPidAlive(process.pid)).toBe(true);
+    expect(isProcessAlive(process.pid)).toBe(true);
   });
 
-  it('returns false for a PID that cannot exist (PID 1 owned by init — use ESRCH path)', () => {
-    // PID 0 is never a valid user process; process.kill(0, 0) sends to the
-    // current process GROUP (not ESRCH). Use a very high synthetic PID that
-    // is extremely unlikely to be alive (max pid_max on Linux is 4194304).
-    // We mock process.kill to control the result deterministically.
+  it('returns false when kill throws ESRCH (no such process)', () => {
     const origKill = process.kill.bind(process);
     let killCalled = false;
-    (process as any).kill = (pid: number, sig: number) => {
+    (process as any).kill = (_pid: number, _sig: number) => {
       killCalled = true;
       const err = new Error('ESRCH') as NodeJS.ErrnoException;
       err.code = 'ESRCH';
       throw err;
     };
     try {
-      const result = isPidAlive(999999999);
+      const result = isProcessAlive(999999999);
       expect(result).toBe(false);
       expect(killCalled).toBe(true);
     } finally {
@@ -353,7 +350,24 @@ describe('isPidAlive', () => {
       throw err;
     };
     try {
-      expect(isPidAlive(1)).toBe(true);
+      expect(isProcessAlive(1)).toBe(true);
+    } finally {
+      (process as any).kill = origKill;
+    }
+  });
+
+  it('returns false when kill throws EINVAL (invalid signal)', () => {
+    // EINVAL can occur with invalid pid or signal arguments. The canonical
+    // isProcessAlive (process-liveness.ts) returns false for any error except
+    // EPERM — including EINVAL — so orphan detection is safe against it.
+    const origKill = process.kill.bind(process);
+    (process as any).kill = (_pid: number, _sig: number) => {
+      const err = new Error('EINVAL') as NodeJS.ErrnoException;
+      err.code = 'EINVAL';
+      throw err;
+    };
+    try {
+      expect(isProcessAlive(0)).toBe(false);
     } finally {
       (process as any).kill = origKill;
     }
@@ -396,7 +410,7 @@ describe('reconcileOrphanedMeta', () => {
       const result = reconcileOrphanedMeta(meta);
       expect(result.status).toBe('failed');
       expect(result.stopReason).toBe('owner-process-exited');
-      expect(result.endedAt).toBeTypeOf('number');
+      expect(result.endedAt).toBeUndefined(); // not stamped — exit time is unknown
       // Other fields preserved
       expect(result.jobId).toBe(meta.jobId);
       expect(result.ownerPid).toBe(999999999);

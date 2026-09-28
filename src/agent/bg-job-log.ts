@@ -28,6 +28,7 @@ import * as fsp from 'node:fs/promises';
 import * as readline from 'node:readline';
 import { getBgJobsRoot, getBgJobDir, getBgJobLog, getBgJobMeta } from '../paths.js';
 import { atomicWriteFileAsync } from '../utils/atomic-write.js';
+import { isProcessAlive } from './process-liveness.js';
 import type { OutputEvent } from './types/session-types.js';
 
 // ---------------------------------------------------------------------------
@@ -52,6 +53,11 @@ export interface BgJobMeta {
    * `isIncompleteStopReason` / `annotateIfIncomplete` partial-result labeling
    * the in-memory replay applies. Optional and additive: old logs written
    * before this field existed simply lack it (schemaVersion stays 1).
+   *
+   * Synthetic sentinel values (not emitted by the subagent runtime):
+   * - `'owner-process-exited'` — set by `reconcileOrphanedMeta` when the job
+   *   was still `running` on disk but its owner PID has since died. The job
+   *   was never explicitly stopped; this value signals post-hoc detection.
    */
   stopReason?: string;
   /**
@@ -225,42 +231,30 @@ export class BgJobLogWriter {
 // ---------------------------------------------------------------------------
 
 /**
- * Returns `true` if the process with the given PID is still alive in the
- * current OS session. Uses `process.kill(pid, 0)` — signal 0 tests
- * existence without delivering a real signal (same approach as
- * `wait-for-conditions.ts`). Returns `false` for ESRCH (no such process)
- * and `true` for EPERM (exists but we lack permission). Returns `true`
- * on any unexpected error so we never incorrectly promote a live job.
- */
-export function isPidAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true; // did not throw → process exists
-  } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code;
-    if (code === 'ESRCH') return false; // no such process
-    // EPERM or anything else: process exists or we cannot tell — treat as alive.
-    return true;
-  }
-}
-
-/**
  * If `meta` is still `running` but its owner PID is no longer alive,
- * return a copy promoted to `failed` with `reason: 'owner-process-exited'`.
+ * return a copy promoted to `failed` with `stopReason: 'owner-process-exited'`.
  * Otherwise return `meta` unchanged.
  *
  * This is a pure, synchronous reconciliation — it does NOT write to disk.
  * Callers that want to persist the correction should call `writeMeta` after
  * receiving a promoted result.
+ *
+ * `endedAt` is intentionally left absent on orphan-reconciled records:
+ * the process exit time is unknown, so stamping the current read time
+ * would inflate any durationMs calculation. Consumers must tolerate an
+ * absent `endedAt` (the field is already optional in `BgJobMeta`).
+ *
+ * Liveness check delegates to `isProcessAlive` from `process-liveness.ts`,
+ * which returns `true` for EPERM (process exists, no permission) and `false`
+ * for any other error — including ESRCH (no such process) and EINVAL.
  */
 export function reconcileOrphanedMeta(meta: BgJobMeta): BgJobMeta {
   if (meta.status !== 'running') return meta;
   if (meta.ownerPid === undefined) return meta; // legacy entry — no PID recorded
-  if (isPidAlive(meta.ownerPid)) return meta;
+  if (isProcessAlive(meta.ownerPid)) return meta;
   return {
     ...meta,
     status: 'failed',
-    endedAt: meta.endedAt ?? Date.now(),
     stopReason: 'owner-process-exited',
   };
 }
