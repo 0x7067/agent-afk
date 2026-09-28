@@ -261,3 +261,5 @@ describe('scorePrediction', () => {
     expect(vp.rates.n).toEqual({ baseline: 2, candidate: 1 });
   });
 });
+
+// Observability (#2409) is covered in run.verify.observability.test.ts.

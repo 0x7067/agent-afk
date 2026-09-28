@@ -144,6 +144,10 @@ export function verdictFor(pred: Prediction, rates: RateComparison): Verdict {
 /**
  * Fraction of non-unclear verdicts that are confirmed.
  *
+ * `unobservable` verdicts are excluded from both the numerator and denominator
+ * (they are neither confirmed nor refuted — behavior was past the episode
+ * boundary and cannot be scored).
+ *
  * @returns `undefined` when there are no resolved (confirmed + refuted) verdicts.
  */
 export function predictionAccuracy(

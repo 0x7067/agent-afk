@@ -134,6 +134,19 @@ export interface StructuralImpact {
 export type PredictionDirection = 'added' | 'removed' | 'strengthened' | 'weakened';
 export type Confidence = 'high' | 'medium' | 'low';
 
+/**
+ * Whether a prediction can be measured by a decision-only episode (#2409),
+ * decided at predict time, before any data exists.
+ *
+ * - `'decision'`: what the agent chooses, says, requests or proposes in its
+ *   turn, up to and including its first side-effecting request (which the
+ *   episode gate records as intent). Scored normally.
+ * - `'downstream'`: needs an intercepted action to COMPLETE, or its results
+ *   (tests pass, file content is correct, a subagent finds the bug, total task
+ *   cost, behavior after verification). Always verdict `'unobservable'`.
+ */
+export type PredictionObservable = 'decision' | 'downstream';
+
 export interface Prediction {
   /** Stable id within a run, e.g. "p1". */
   id: string;
@@ -150,6 +163,13 @@ export interface Prediction {
   testQuestion: string;
   /** 1-2 synthetic user requests likely to exercise this behavior. */
   probes: string[];
+  /**
+   * Predict-time observability tag (#2409). `predictChanges` always sets it;
+   * absent (older results, hand-built fixtures) means `'decision'`.
+   */
+  observable?: PredictionObservable;
+  /** One short line on why the behavior is `'downstream'`. Optional. */
+  observabilityReason?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -260,7 +280,7 @@ export interface RateComparison {
   n: { baseline: number; candidate: number };
 }
 
-export type Verdict = 'confirmed' | 'refuted' | 'unclear';
+export type Verdict = 'confirmed' | 'refuted' | 'unclear' | 'unobservable';
 
 /**
  * Which episodes back one prediction's verdict (issue #2403). A prediction is
@@ -287,6 +307,11 @@ export interface VerifiedPrediction {
   verdict: Verdict;
   /** Absent in results written before #2403 (those pooled every episode). */
   scope?: PredictionScope;
+  /**
+   * Why the verdict is `'unobservable'`: the prediction was tagged
+   * `observable: 'downstream'` at predict time. Optional, additive.
+   */
+  unobservableReason?: string;
 }
 
 export interface DiscoveredDifference {
@@ -309,7 +334,7 @@ export interface VerifyResult {
   episodes: number;
   samples: number;
   judge: { name: 'jev' | 'claude'; external: boolean; crossCheckAgreement?: number };
-  /** Share of predictions confirmed, among those not 'unclear'. */
+  /** Share of predictions confirmed, among confirmed + refuted (excludes 'unclear' and 'unobservable'). */
   predictionAccuracy?: number;
   truncatedByBudget: boolean;
   failedEpisodes: number;
@@ -338,64 +363,13 @@ export interface WhatifReport {
 // Orchestration
 // ---------------------------------------------------------------------------
 
-export type WhatifStage =
-  | 'compile'
-  | 'sandbox'
-  | 'snapshot'
-  | 'predict'
-  | 'episodes'
-  | 'run'
-  | 'judge'
-  | 'discover'
-  | 'report';
-
-export interface WhatifProgress {
-  stage: WhatifStage;
-  message: string;
-  /** Optional completed/total for the current stage. */
-  done?: number;
-  total?: number;
-}
-
-/** Text-in/text-out model call used for predict, compile, judge, discover. */
-export type CompleteFn = (req: {
-  system: string;
-  user: string;
-  maxTokens: number;
-  model: string;
-  signal?: AbortSignal;
-}) => Promise<{ text: string; costUsd: number }>;
-
-export interface WhatifOptions {
-  spec: ChangeSpec;
-  realHome: string;
-  realCwd: string;
-  /** Model the agent under test uses (default: session / config model). */
-  agentModel: string;
-  /** Model for predict / compile / discover / Claude judge. */
-  analystModel: string;
-  verify: boolean;
-  /** Real turns to replay. */
-  turns: number;
-  /** Samples per episode per environment. */
-  samples: number;
-  maxUsd: number;
-  judge: 'auto' | 'jev' | 'claude';
-  concurrency: number;
-  maxTurns: number;
-  episodeTimeoutMs: number;
-  /** Keep sandboxes on disk after the run (debugging). */
-  keepSandboxes: boolean;
-}
-
-export interface WhatifDeps {
-  runner: AgentRunner;
-  complete: CompleteFn;
-  /** Resolves the judge for `options.judge`. */
-  makeJudge(choice: WhatifOptions['judge']): Promise<Judge>;
-  /** Claude judge used for the cross-check sample (may equal the main judge). */
-  makeCrossCheckJudge(): Promise<Judge | undefined>;
-  onProgress?: (p: WhatifProgress) => void;
-  signal?: AbortSignal;
-  now?: () => Date;
-}
+// Orchestration types (stages, progress, options, deps) live in their own
+// module and are re-exported here so every consumer keeps importing from
+// `./types.js`.
+export type {
+  WhatifStage,
+  WhatifProgress,
+  CompleteFn,
+  WhatifOptions,
+  WhatifDeps,
+} from './types.orchestration.js';

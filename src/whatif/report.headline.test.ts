@@ -41,7 +41,7 @@ function makeVP(
   id: string,
   delta: number,
   ci: [number, number],
-  verdict: 'confirmed' | 'refuted' | 'unclear',
+  verdict: 'confirmed' | 'refuted' | 'unclear' | 'unobservable',
   behavior = 'answered without tools',
 ): VerifiedPrediction {
   const baseline = 0.5;
@@ -229,6 +229,35 @@ describe('buildHeadline — prediction summary', () => {
     ];
     const h = buildHeadline(makeReport(makeVerify(vps, [], undefined)));
     expect(h).toContain('0 confirmed, 0 refuted, 2 unclear (of 2 predictions)');
+  });
+
+  it('names unobservable predictions as their own bucket (#2409)', () => {
+    const vps = [
+      makeVP('p1', 0.30, [0.10, 0.50], 'confirmed', 'asked clarifying questions'),
+      makeVP('p2', -0.20, [-0.40, -0.10], 'refuted'),
+      makeVP('p3', 0.05, [-0.05, 0.10], 'unclear'),
+      makeVP('p4', 0.02, [-0.05, 0.08], 'unclear'),
+      makeVP('p5', 0.0, [-0.1, 0.1], 'unobservable'),
+    ];
+    const h = buildHeadline(makeReport(makeVerify(vps, [], 0.5)));
+    expect(h).toContain('1 confirmed, 1 refuted, 2 unclear, 1 unobservable (of 5 predictions)');
+  });
+
+  it('omits the unobservable bucket when there are none', () => {
+    const vps = [makeVP('p1', 0.07, [-0.077, 0.145], 'unclear')];
+    const h = buildHeadline(makeReport(makeVerify(vps, [], undefined)));
+    expect(h).not.toContain('unobservable');
+  });
+
+  it('never headlines an unobservable prediction as an effect, even if its CI excludes zero', () => {
+    const vps = [
+      makeVP('p1', -0.40, [-0.60, -0.20], 'unobservable', 'spawned a subagent'),
+      makeVP('p2', 0.05, [-0.05, 0.10], 'unclear', 'answered without tools'),
+    ];
+    const h = buildHeadline(makeReport(makeVerify(vps, [], undefined)));
+    expect(h).not.toContain('spawned a subagent');
+    expect(h).toContain('No clear behavioral difference detected');
+    expect(h).toContain('0 confirmed, 0 refuted, 1 unclear, 1 unobservable (of 2 predictions)');
   });
 
   it('no accuracy string when the verify run has no predictions', () => {

@@ -36,6 +36,7 @@ export type {
   PredictionDirection,
   Confidence,
   Prediction,
+  PredictionObservable,
   Episode,
   ToolRequest,
   EpisodeTrace,

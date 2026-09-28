@@ -46,6 +46,7 @@ function ciSignificant(ci: [number, number]): boolean {
  * For verified runs it picks the largest significant shift (CI excludes zero).
  * If no shift is significant, emits a "no clear difference" message.
  * Prediction accuracy uses the full `total` count, naming each verdict bucket.
+ * Unobservable predictions are counted but never picked as the headline shift.
  */
 export function buildHeadline(report: Omit<WhatifReport, 'headline'>): string {
   const { predictions, verify } = report;
@@ -73,6 +74,9 @@ export function buildHeadline(report: Omit<WhatifReport, 'headline'>): string {
   let fallbackAfter = 0;
 
   for (const vp of verified) {
+    // An unobservable prediction's rates measure a behavior the episode gate
+    // stopped in both arms (#2409); never headline them as an effect.
+    if (vp.verdict === 'unobservable') continue;
     const d = Math.abs(vp.rates.delta);
     if (ciSignificant(vp.rates.ci)) {
       if (d > bestDelta) {
@@ -135,7 +139,9 @@ export function buildHeadline(report: Omit<WhatifReport, 'headline'>): string {
  * Build the accuracy substring: "; N confirmed, M refuted, K unclear (of T predictions)".
  * Emitted whenever the verify run has any predictions, including when every
  * verdict is `unclear` (where `predictionAccuracy` is undefined), so unclear
- * predictions are never hidden from the headline (#2406).
+ * predictions are never hidden from the headline (#2406). Unobservable
+ * predictions (#2409) get their own bucket, named only when present:
+ * "…, 1 unobservable (of 5 predictions)", so the buckets always sum to T.
  */
 function buildAccuracyStr(verified: ReadonlyArray<VerifiedPrediction>): string {
   if (verified.length === 0) return '';
@@ -143,7 +149,9 @@ function buildAccuracyStr(verified: ReadonlyArray<VerifiedPrediction>): string {
   const confirmed = verified.filter((vp) => vp.verdict === 'confirmed').length;
   const refuted = verified.filter((vp) => vp.verdict === 'refuted').length;
   const unclear = verified.filter((vp) => vp.verdict === 'unclear').length;
+  const unobservable = verified.filter((vp) => vp.verdict === 'unobservable').length;
   const total = verified.length;
+  const unobsStr = unobservable > 0 ? `, ${unobservable} unobservable` : '';
 
-  return `; ${confirmed} confirmed, ${refuted} refuted, ${unclear} unclear (of ${total} predictions)`;
+  return `; ${confirmed} confirmed, ${refuted} refuted, ${unclear} unclear${unobsStr} (of ${total} predictions)`;
 }

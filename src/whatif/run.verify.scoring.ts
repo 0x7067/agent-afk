@@ -17,6 +17,12 @@
  * failed, budget stop, judge failure) its verdict is forced to `unclear`, so
  * an empty sample can never render as confirmed or refuted.
  *
+ * Contract (#2409): a prediction tagged `observable: 'downstream'` at predict
+ * time is always `unobservable`, whatever its rates. Its rates and scope are
+ * still recorded for transparency. For every other prediction the verdict is
+ * exactly `verdictFor` plus the empty-sample guard above: nothing observed in
+ * the episodes (intercepted tools, trace contents) can relabel it.
+ *
  * Discovered differences and the measured-feature table are universal, so
  * they keep using every episode (see `run.verify.ts`).
  *
@@ -24,6 +30,7 @@
  */
 
 import { compareRates, verdictFor } from './stats.js';
+import { unobservableReason } from './observability.js';
 import type { Episode, EpisodeTrace, Prediction, VerifiedPrediction } from './types.js';
 
 type Arm = 'baseline' | 'candidate';
@@ -104,16 +111,22 @@ export function scorePrediction(
     ? compareRates(bgB.scores, bgC.scores)
     : undefined;
 
+  // Observability was decided at predict time (#2409), never from the data.
+  const downstream = unobservableReason(prediction);
+
   // Invariant: an arm with no graded output carries no evidence; never let
   // compareRates' zero-filled rates reach verdictFor.
-  const verdict = rates.n.baseline === 0 || rates.n.candidate === 0
-    ? 'unclear'
-    : verdictFor(prediction, rates);
+  const verdict = downstream !== undefined
+    ? 'unobservable'
+    : rates.n.baseline === 0 || rates.n.candidate === 0
+      ? 'unclear'
+      : verdictFor(prediction, rates);
 
   return {
     prediction,
     rates,
     verdict,
+    ...(downstream !== undefined ? { unobservableReason: downstream } : {}),
     scope: {
       episodes: {
         baseline: inEpisodeOrder(episodes, b.episodeIds),

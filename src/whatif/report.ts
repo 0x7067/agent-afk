@@ -19,6 +19,7 @@ import type {
   WhatifReport,
 } from './types.js';
 import { describeChange } from './operators/index.js';
+import { verdictEmoji, verdictLabel } from './report-verdict.js';
 export { buildHeadline } from './report.headline.js';
 
 // ---------------------------------------------------------------------------
@@ -31,12 +32,6 @@ function pct(n: number): string {
 
 function ciStr(ci: [number, number]): string {
   return `[${pct(ci[0])}, ${pct(ci[1])}]`;
-}
-
-function verdictEmoji(v: 'confirmed' | 'refuted' | 'unclear'): string {
-  if (v === 'confirmed') return '✅';
-  if (v === 'refuted') return '❌';
-  return '⚪';
 }
 
 /** Truncate a string to at most `maxLines` lines, appending a note if cut. */
@@ -96,7 +91,7 @@ function renderVerifiedPredictionTable(
       continue;
     }
     lines.push(
-      `| ${pred.id} | ${pred.behavior} | ${pred.direction} | ${pct(vp.rates.baseline)} | ${pct(vp.rates.candidate)} | ${ciStr(vp.rates.ci)} | ${scoredOn(vp)} | ${backgroundStr(vp)} | ${verdictEmoji(vp.verdict)} ${vp.verdict} |`,
+      `| ${pred.id} | ${pred.behavior} | ${pred.direction} | ${pct(vp.rates.baseline)} | ${pct(vp.rates.candidate)} | ${ciStr(vp.rates.ci)} | ${scoredOn(vp)} | ${backgroundStr(vp)} | ${verdictEmoji(vp.verdict)} ${verdictLabel(vp)} |`,
     );
   }
   const scoped = predictions.map((p) => vpMap.get(p.id)).filter((vp) => vp?.scope !== undefined);
@@ -286,7 +281,7 @@ export function renderTerminal(report: WhatifReport, palette: ThemePalette): str
       out.push(
         `  ${palette.dim(pred.id)} ${pred.behavior}` +
           `  ${palette.meta(`${pct(vp.rates.baseline)} → ${pct(vp.rates.candidate)} (${scoredOn(vp)})`)}` +
-          `  ${verdictColor(vp.verdict)}`,
+          `  ${verdictEmoji(vp.verdict)} ${verdictColor(verdictLabel(vp))}`,
       );
     }
   } else {

@@ -16,6 +16,7 @@ import { scorePrediction, scoresForQuestion, traceKey } from './run.verify.scori
 import { discoverDifferences, type OutputPair } from './discover.js';
 import { appendCalibration, type CalibrationRecord } from './ledger.js';
 import { BudgetTracker } from './cost.js';
+import { renderTrace } from './trace-render.js';
 import type {
   AgentRunner,
   CompleteFn,
@@ -31,32 +32,6 @@ import type {
   VerifyResult,
   WhatifProgress,
 } from './types.js';
-
-// ---------------------------------------------------------------------------
-// Output rendering (for judge input)
-// ---------------------------------------------------------------------------
-
-/** Truncate long input JSON to prevent judge overload. */
-function truncInput(v: unknown, maxChars: number): string {
-  const s = JSON.stringify(v) ?? '';
-  return s.length <= maxChars ? s : s.slice(0, maxChars) + '…[truncated]';
-}
-
-/**
- * Render an episode trace into a compact text for the judge.
- * Shows assistant text then a compact tool-request list.
- */
-function renderTrace(trace: EpisodeTrace): string {
-  const parts: string[] = [trace.text];
-  for (const t of trace.tools) {
-    if (t.verdict === 'recorded') {
-      parts.push(`[tool requested: ${t.tool} (not executed)] ${truncInput(t.input, 200)}`);
-    } else {
-      parts.push(`[tool used: ${t.tool}]`);
-    }
-  }
-  return parts.join('\n');
-}
 
 // ---------------------------------------------------------------------------
 // Cross-check sample indices
@@ -391,13 +366,17 @@ export async function verifyRun(input: VerifyRunInput): Promise<VerifyRunOutput>
 
   // ── 5. Calibration ────────────────────────────────────────────────────────
 
-  const calibrationRecords: CalibrationRecord[] = verifiedPredictions.map(({ prediction, rates, verdict }) => ({
-    ts: new Date().toISOString(),
-    changeKinds,
-    prediction,
-    verdict,
-    delta: rates.delta,
-  }));
+  // Unobservable (downstream) predictions carry no evidence either way, so
+  // they never enter the track record (#2409).
+  const calibrationRecords: CalibrationRecord[] = verifiedPredictions
+    .filter((vp) => vp.verdict !== 'unobservable')
+    .map(({ prediction, rates, verdict }) => ({
+      ts: new Date().toISOString(),
+      changeKinds,
+      prediction,
+      verdict,
+      delta: rates.delta,
+    }));
 
   await appendCalibration(calibrationRecords, calibrationFile).catch(() => { /* non-fatal */ });
 

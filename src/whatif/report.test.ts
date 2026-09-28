@@ -77,6 +77,15 @@ function makeVerifiedPred(id: string, verdict: 'confirmed' | 'refuted' | 'unclea
   };
 }
 
+function makeUnobservablePred(id: string): VerifiedPrediction {
+  return {
+    prediction: makePred(id),
+    rates: { baseline: 0.1, candidate: 0.1, delta: 0.0, ci: [-0.3, 0.3], n: { baseline: 10, candidate: 10 } },
+    verdict: 'unobservable',
+    unobservableReason: 'downstream of the episode boundary: the tests must run to completion',
+  };
+}
+
 function makeFeatureDelta(label: string): FeatureDelta {
   return {
     label,
@@ -260,6 +269,26 @@ describe('renderMarkdown', () => {
     expect(md).toContain('claude');
     expect(md).toContain('88%');
   });
+
+  it('unobservable verdict shows 🔭 marker and reason in MD table', () => {
+    const vp = makeUnobservablePred('p1');
+    const report = makeReport(makeVerifyResult([vp]));
+    const md = renderMarkdown(report);
+    expect(md).toContain('🔭');
+    expect(md).toContain('unobservable');
+    expect(md).toContain('episode boundary');
+  });
+
+  it('unobservable is not counted as resolved in headline', () => {
+    const vp = makeUnobservablePred('p1');
+    const verify = makeVerifyResult([vp]);
+    // Override predictionAccuracy to undefined (no resolved predictions)
+    verify.predictionAccuracy = undefined;
+    const report = makeReport(verify);
+    // Headline must not claim any predictions were confirmed/refuted; the
+    // unobservable one gets its own bucket (#2406 wording + #2409).
+    expect(report.headline).toContain('0 confirmed, 0 refuted, 0 unclear, 1 unobservable (of 1 predictions)');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -345,6 +374,16 @@ describe('renderTerminal', () => {
     const lines = renderTerminal(report, identityPalette);
     const joined = lines.join('\n');
     expect(joined).toContain('confirmed');
+  });
+
+  it('unobservable verdict shows 🔭 and reason in terminal render', () => {
+    const vp = makeUnobservablePred('p1');
+    const report = makeReport(makeVerifyResult([vp]));
+    const lines = renderTerminal(report, identityPalette);
+    const joined = lines.join('\n');
+    expect(joined).toContain('🔭');
+    expect(joined).toContain('unobservable');
+    expect(joined).toContain('episode boundary');
   });
 
   it('contains cost at end', () => {
