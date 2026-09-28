@@ -13,6 +13,7 @@ import type { ContentBlockParam } from '@anthropic-ai/sdk/resources';
 import type { AgentConfig, ResumeHistoryTurn } from '../../types/config-types.js';
 import type { ProviderUserTurn } from '../../provider.js';
 import { refreshEnvironmentDate } from '../shared/date-rollover.js';
+import { repairOrphanToolCalls } from './query/repair-orphan-tool-calls.js';
 
 /**
  * A single OpenAI Chat Completions content part. The multimodal `content`
@@ -300,10 +301,12 @@ export function buildMessages(args: {
     // then the next request rebuild hits this map). `OpenAIMessage.content`'s
     // type omits `null`, so the `as unknown as OpenAIMessage` casts at the
     // priorTurns push sites hid the gap from the compiler.
-    return messages.map((m) =>
-      Array.isArray(m.content) ? { ...m, content: flattenOpenAIParts(m.content) } : m,
+    return repairOrphanToolCalls(
+      messages.map((m) =>
+        Array.isArray(m.content) ? { ...m, content: flattenOpenAIParts(m.content) } : m,
+      ),
     );
   }
 
-  return messages;
+  return repairOrphanToolCalls(messages);
 }
