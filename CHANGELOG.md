@@ -11,6 +11,14 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.261.7] - 2026-09-28
+
+### Fixed
+- score predictions on their relevant episodes (#2403) (#2427) (b9a5cc96)
+
+### Changed
+- hook-injected context differs between arms (path- and recency-sensitive hooks confound deltas) (#2434) (9fbe8314)
+
 ## [5.261.6] - 2026-09-28
 
 ### Fixed
