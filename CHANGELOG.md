@@ -11,6 +11,122 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.262.0] - 2026-09-28
+
+### Added
+- M0 backfill — verified_outcome labeling functions and distribution report (1aec6259)
+
+### Fixed
+- M0 precision fixes; exit check now honestly FAILS (887b194d)
+
+### Changed
+- Merge pull request #2429 from griffinwork40/afk/verified-outcome-m0 (cd192e9c)
+
+## [5.261.7] - 2026-09-28
+
+### Fixed
+- score predictions on their relevant episodes (#2403) (#2427) (b9a5cc96)
+
+### Changed
+- hook-injected context differs between arms (path- and recency-sensitive hooks confound deltas) (#2434) (9fbe8314)
+
+## [5.261.6] - 2026-09-28
+
+### Fixed
+- gate report headline on significance, scale adverb, name total predictions (#2433) (4ff87436)
+
+## [5.261.5] - 2026-09-28
+
+### Fixed
+- address advisory findings from #2213 — plugin hook registration (#2337) (56081762)
+
+### Changed
+- Merge pull request #2432 from griffinwork40/afk/issue-2428-q8w3 (e068f969)
+
+## [5.261.4] - 2026-09-27
+
+### Fixed
+- prefer context.sessionId over registration-time id in command hooks (#2392) (12eaee43)
+- dispose() marks buffered jobs delivered; clarify truncateBytes JSDoc (f355f975)
+- trim query() invariant comment to pass funcsize ratchet (65d9999b)
+- clear resetArmed in stream.retry branch of PlanTextTracker (9c20a166)
+- deliver background subagent results to chat and next turn (68c9a1d0)
+- refuse exit_plan_mode when the plan was never written as visible text (e3fb66bc)
+- pass the resolved session id to the tool dispatcher (d4692df5)
+
+### Changed
+- Merge pull request #2380 from griffinwork40/afk/issue-2364-opk9 (f6ec52e4)
+- Merge pull request #2362 from griffinwork40/afk/debug-advocate-output (210910d7)
+- Merge pull request #2354 from griffinwork40/afk/oai-dispatcher-sessionid (836507df)
+- Merge branch 'main' into afk/oai-dispatcher-sessionid (c019a80d)
+
+## [5.261.3] - 2026-09-27
+
+### Fixed
+- regenerate env-registry docs after AFK_WHATIF_ALLOW_MCP description update (9c1aa0b1)
+
+### Changed
+- Merge pull request #2356 from griffinwork40/afk/issue-2349-q8x3 (919975c8)
+- fix stale comments and tighten tests from #2324–#2333 triage batch (d237819c)
+
+## [5.261.2] - 2026-09-27
+
+### Fixed
+- correct overlayTallEnoughToStrand analysis after adversarial review (d64cce8c)
+
+### Changed
+- Merge pull request #2384 from griffinwork40/afk/issue-2369-correction (4965ae74)
+
+## [5.261.1] - 2026-09-27
+
+### Fixed
+- two follow-up defects from #2382 suspend-commit review (e0c69603)
+- treat a suspended frame as top-unknown so suspended commits survive (#2382) (3ade1cba)
+
+### Changed
+- Merge pull request #2390 from griffinwork40/afk/issue-2382-suspend-commit (3058fe66)
+- Merge pull request #2391 from griffinwork40/afk/issue-2389-q7t3 (4ae9896f)
+- pin accumulateStreamJson's deliberate exclusion of thinking chunks (a0da2998)
+
+## [5.261.0] - 2026-09-27
+
+### Added
+- gate major versions behind a manual dispatch; auto-update never crosses a major (2b54bd1c)
+
+### Changed
+- Merge pull request #2385 from griffinwork40/afk/major-release-gate (bb9e16c3)
+- Merge pull request #2370 from griffinwork40/afk/issue-2363-l7jj (a26af363)
+- show the full high-risk command in approval prompts (head+tail preview, no 256-char form cap) (554513af)
+
+## [5.260.0] - 2026-09-27
+
+### Added
+- A/B framework prompt edits and capture inter-tool narration (c7614ff8)
+
+### Fixed
+- address review feedback (36ba1f07)
+
+### Changed
+- Merge pull request #2374 from griffinwork40/afk/whatif-framework-prompt (0bd4e4be)
+
+## [5.259.2] - 2026-09-27
+
+### Fixed
+- wire AFK risk gate for daemon ticks and afk chat (#2315) (9ee45429)
+
+## [5.259.1] - 2026-09-27
+
+### Fixed
+- flag empty-output success and mark truncated response excerpt (#2383) (69b2f986)
+
+## [5.259.0] - 2026-09-27
+
+### Added
+- light narration on interactive surfaces (#2375) (a497294f)
+
+### Changed
+- compositor-level regression for tall-overlay strand gap (#2369) (#2381) (52d00e30)
+
 ## [5.258.2] - 2026-09-27
 
 ### Added

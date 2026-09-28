@@ -162,6 +162,7 @@ export class AgentSession implements IAgentSession {
               requestImplementSeed: (message, mode) =>
                 this.planExit.requestImplementSeed(message, mode),
               getPrePlanMode: () => this.planExit.getPrePlanMode(),
+              checkPlanText: () => this.planExit.planText.check(),
             },
           }
         : config;
@@ -280,6 +281,7 @@ export class AgentSession implements IAgentSession {
       setSubagentOutputRecorder: (r) => { this.subagentOutputRecorder = r; },
       getProviderQuery: () => this.providerQuery,
       getLedgerMetadata: () => this.stateManager.getSessionMetadata(),
+      observeProviderEvent: (e) => this.planExit.planText.observe(e),
     });
 
     const initializer = new ProviderInitializer(
