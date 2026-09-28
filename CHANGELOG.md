@@ -11,6 +11,23 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.265.3] - 2026-09-28
+
+### Fixed
+- F1/F2/F3/F6 re-review findings for disarm-while-suspended owner-wrote path (5f15ef41)
+- B1 CSI tracking, L1 idempotent remove, L2 resetState, L3 live dims, B2 pending archive (346d2d21)
+- remove debugLog from disarm (not in LifecycleHost interface) (72704a52)
+- counted-handoff suspend/resume + prior-band archive fix (69fc5465)
+- settle+queue design for suspend-commit (issue #2382, PR #2390) (a105362d)
+
+### Changed
+- Merge pull request #2400 from griffinwork40/afk/issue-2382-suspend-commit (2573e900)
+- drop agent report file from repo root (d743a658)
+- add 2400-fixes-report.md with per-finding evidence and gate results (6844dfee)
+- extract processChunk + helpers to suspend-observer.process.ts (funcsize gate) (1c327415)
+- restore strict oracles + add counted-handoff tests (3675208d)
+- Merge remote-tracking branch 'origin/main' into afk/issue-2382-suspend-commit (dff035d7)
+
 ## [5.265.2] - 2026-09-28
 
 ### Fixed
