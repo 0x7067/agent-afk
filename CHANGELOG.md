@@ -11,6 +11,23 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.262.1] - 2026-09-28
+
+### Added
+- events.jsonl reader extends backfill to 16k older sessions (4abb48dd)
+
+### Fixed
+- exclude whatif sessions and context-dependent follow-ups from replay corpus (#2435) (3c3a92a9)
+- F1/F2/F3 review findings (session 5) (de82082f)
+- guarantee alt-screen teardown on SIGINT and all process.exit paths (#2393) (946703cb)
+- mid-turn task view uses the alternate screen (9ef02e46)
+
+### Changed
+- Merge pull request #2440 from griffinwork40/afk/verified-outcome-history (988faf4b)
+- Merge pull request #2393 from griffinwork40/afk/taskview-alt-screen (4e9b388f)
+- Merge remote-tracking branch 'origin/main' into afk/sync-history (84be5da0)
+- Merge remote-tracking branch 'origin/main' into afk/taskview-alt-screen (7e53d264)
+
 ## [5.262.0] - 2026-09-28
 
 ### Added
