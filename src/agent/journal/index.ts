@@ -7,13 +7,14 @@
 
 export * from './types.js';
 export { JournalSync, type SyncOptions } from './sync.js';
-export { createMessageJournal, type CreateMessageJournalOptions } from './writer.js';
+export { createMessageJournal, isMessageJournalDisabled, type CreateMessageJournalOptions } from './writer.js';
 export {
   findToolResult,
   foldJournal,
   hydrateMessages,
   journalExists,
   listSubagentJournals,
+  loadJournalFold,
   loadJournalMessages,
   readJournalRecords,
   type FoldResult,
