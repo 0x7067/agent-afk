@@ -203,7 +203,9 @@ async function runWhatifCommand(
       ...deps,
       onProgress: (p) => {
         const msg = `${p.stage}: ${p.message}`;
-        if (spinner) {
+        if (spinner && p.stage === 'preflight') {
+          spinner.info(msg).start(); // persist the MDE line; spinner text is overwritten next stage
+        } else if (spinner) {
           spinner.text = msg;
         } else {
           process.stderr.write(`[whatif] ${msg}\n`);

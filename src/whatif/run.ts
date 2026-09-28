@@ -23,6 +23,7 @@ import { describeChange } from './operators/index.js';
 import { computeStructuralImpact } from './structural.js';
 import { normalizeSnapshot } from './structural.normalize.js';
 import { verifyShortfallLimits } from './run.limits.js';
+import { formatPreflightMde } from './mde.js';
 import { trackRecordSummary } from './ledger.js';
 import { predictChanges } from './predict.js';
 import { collectRealTurns, syntheticEpisodes, loadSuiteEpisodes } from './episodes.js';
@@ -266,6 +267,8 @@ export async function runWhatif(
       },
       judgeExternal: resolvedJudge.external,
     });
+
+    deps.onProgress?.({ stage: 'preflight', message: formatPreflightMde(episodes.length) });
 
     const totalEstimate = estimate.usd + analystCostUsd;
     if (totalEstimate > options.maxUsd) {
