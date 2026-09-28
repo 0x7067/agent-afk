@@ -123,8 +123,12 @@ Thinking blocks carry `origin` (provider family); Anthropic replays signed
 thinking only when `origin` is `anthropic` or absent (pre-#2464 records). If
 Anthropic still rejects a recovered signature with a 400, the round retries
 once with thinking stripped from earlier turns
-(`anthropic-direct/loop/signature-retry.ts`). Whether that retry fires on
-every A→B→A switch is unverified against the live API.
+(`anthropic-direct/loop/signature-retry.ts`). That retry is a rare fallback:
+a live A→B→A run (2026-09-28, `claude-opus-5-5` → `gpt-6-luna` →
+`claude-opus-5-5`) replayed four recovered signed thinking blocks after six
+OpenAI-written turns and Anthropic accepted the request with no 400. Not yet
+verified live: switching back to a DIFFERENT Claude model than the one that
+signed the thinking.
 
 **Mid-session `/model` swap:** a cross-provider switch rebuilds the provider
 runtime through the router (`src/agent/providers/router/provider-router.ts`).
