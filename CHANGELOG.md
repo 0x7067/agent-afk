@@ -11,6 +11,19 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.264.0] - 2026-09-28
+
+### Added
+- M2 nightly delayed-relabel job (c1b7350c)
+
+### Fixed
+- relabel job caps provisional records, not the directory scan (726e69b3)
+
+### Changed
+- Merge pull request #2439 from griffinwork40/afk/verified-outcome-relabel (13a1da72)
+- Merge remote-tracking branch 'origin/main' into afk/sync-relabel (2e27e6f5)
+- Merge remote-tracking branch 'origin/afk/verified-outcome-m2' into afk/relabel-conflict-fix (b9b52919)
+
 ## [5.263.0] - 2026-09-28
 
 ### Added
