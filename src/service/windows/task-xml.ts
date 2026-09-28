@@ -35,7 +35,9 @@ export interface TaskXmlOptions {
   /**
    * Extra env vars. Task Scheduler has no native env block; each entry is
    * prepended as `set "K=V" && ` in the cmd.exe arguments string.
-   * Values containing `"` or `%` are silently skipped (documented here).
+   * Keys must match `[A-Za-z_][A-Za-z0-9_]*` — entries with non-conforming
+   * keys are silently skipped. Values containing `"` or `%` are also silently
+   * skipped (documented here).
    */
   environmentVariables?: Record<string, string>;
 }
@@ -79,6 +81,9 @@ function buildCmdArguments(
   const envParts: string[] = [];
   if (env && Object.keys(env).length > 0) {
     for (const k of Object.keys(env).sort()) {
+      // Reject keys that are not valid identifier-style names — any of `"`, `=`,
+      // `%`, CR, or LF in the key would break the `set "K=V"` quoting model.
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(k)) continue;
       const v = env[k] ?? '';
       // Reject values with " or % — both break cmd.exe quoting.
       if (v.includes('"') || v.includes('%')) continue;

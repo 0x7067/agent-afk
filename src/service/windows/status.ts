@@ -73,6 +73,7 @@ export function windowsStatus(name: ServiceName): ServiceStatus {
     const parsed = parseSchtasksQuery(output);
     // PID not available from schtasks — leave undefined.
     if (parsed.lastExitStatus !== undefined) snapshot.lastExitStatus = parsed.lastExitStatus;
+    if (parsed.running) snapshot.running = true;
   } catch {
     // schtasks absent or errored — XML file is source of truth for installed.
   }

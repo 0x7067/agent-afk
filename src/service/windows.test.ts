@@ -37,7 +37,7 @@ vi.mock('../telegram/manager.js', () => ({
 import { installWindowsTask, readTaskFile, uninstallWindowsTask } from './windows/install.js';
 import { windowsManager } from './windows/manager.js';
 import { taskXmlPath } from './windows/paths.js';
-import { parseSchtasksQuery } from './windows/status.js';
+import { parseSchtasksQuery, windowsStatus } from './windows/status.js';
 import { renderTaskXml } from './windows/task-xml.js';
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -122,6 +122,25 @@ describe('renderTaskXml', () => {
     expect(xml).not.toContain('BAD_PCT');
   });
 
+  it('skips env entries with unsafe keys', () => {
+    const xml = renderTaskXml({
+      ...base,
+      environmentVariables: {
+        SAFE_KEY: 'ok',
+        'BAD=KEY': 'v',
+        'BAD%KEY': 'v',
+        'BAD"KEY': 'v',
+        '123start': 'v',
+      },
+    });
+    expect(xml).toContain('SAFE_KEY');
+    expect(xml).not.toContain('BAD=KEY');
+    expect(xml).not.toContain('BAD%KEY');
+    // BAD"KEY would be XML-escaped to BAD&quot;KEY; check the raw key substring
+    expect(xml).not.toContain('BAD&quot;KEY');
+    expect(xml).not.toContain('123start');
+  });
+
   it('emits WorkingDirectory in Exec block', () => {
     const xml = renderTaskXml(base);
     expect(xml).toContain('<WorkingDirectory>/home/u</WorkingDirectory>');
@@ -155,6 +174,60 @@ describe('parseSchtasksQuery', () => {
     const r = parseSchtasksQuery('\nFoo: bar\nStatus:      Ready\n\nLast Result: 3\n');
     expect(r.running).toBe(false);
     expect(r.lastExitStatus).toBe(3);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// I/O: windowsStatus snapshot
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('windowsStatus snapshot', () => {
+  let tmpHome: string;
+  let prevAfkHome: string | undefined;
+
+  beforeEach(() => {
+    tmpHome = mkdtempSync(join(tmpdir(), 'afk-win-status-test-'));
+    prevAfkHome = process.env['AFK_HOME'];
+    process.env['AFK_HOME'] = join(tmpHome, '.afk');
+    mockExecFileSync.mockReset();
+  });
+
+  afterEach(() => {
+    if (prevAfkHome === undefined) delete process.env['AFK_HOME'];
+    else process.env['AFK_HOME'] = prevAfkHome;
+    rmSync(tmpHome, { recursive: true, force: true });
+  });
+
+  it('sets running=true on snapshot when schtasks reports Running', () => {
+    const xmlPath = taskXmlPath('telegram');
+    mkdirSync(dirname(xmlPath), { recursive: true });
+    writeFileSync(xmlPath, '<Task/>');
+    mockExecFileSync.mockReturnValue('Status:      Running\nLast Result: 0\n');
+    const snap = windowsStatus('telegram');
+    expect(snap.installed).toBe(true);
+    expect(snap.running).toBe(true);
+    expect(snap.lastExitStatus).toBe(0);
+  });
+
+  it('leaves running undefined on snapshot when schtasks reports Ready', () => {
+    const xmlPath = taskXmlPath('telegram');
+    mkdirSync(dirname(xmlPath), { recursive: true });
+    writeFileSync(xmlPath, '<Task/>');
+    mockExecFileSync.mockReturnValue('Status:      Ready\nLast Result: 1\n');
+    const snap = windowsStatus('telegram');
+    expect(snap.installed).toBe(true);
+    expect(snap.running).toBeUndefined();
+    expect(snap.lastExitStatus).toBe(1);
+  });
+
+  it('copies lastExitStatus through regardless of running state', () => {
+    const xmlPath = taskXmlPath('daemon');
+    mkdirSync(dirname(xmlPath), { recursive: true });
+    writeFileSync(xmlPath, '<Task/>');
+    mockExecFileSync.mockReturnValue('Status:      Running\nLast Result: 42\n');
+    const snap = windowsStatus('daemon');
+    expect(snap.lastExitStatus).toBe(42);
+    expect(snap.running).toBe(true);
   });
 });
 

@@ -98,6 +98,8 @@ export interface ServiceStatus {
   configPath: string;
   /** Running PID if the supervisor reports the job as loaded with an active process. */
   pid?: number;
+  /** Optional running flag for backends that cannot supply a PID (e.g. Windows Task Scheduler). */
+  running?: boolean;
   /** Last exit status reported by the supervisor (0 = clean). */
   lastExitStatus?: number;
   /** Log file path AFK redirects the service's stdout+stderr to. */
