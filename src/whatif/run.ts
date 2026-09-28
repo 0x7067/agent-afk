@@ -24,6 +24,7 @@ import { describeChange } from './operators/index.js';
 import { computeStructuralImpact } from './structural.js';
 import { normalizeSnapshot } from './structural.normalize.js';
 import { verifyShortfallLimits, hookIsolationLimits, specTargetsHooksOrPlugins } from './run.limits.js';
+import { preflightMdeMessage, mdeLimits } from './mde.js';
 import { keepContextHooksInEpisode } from '../agent/whatif-episode-gate.js';
 import { trackRecordSummary } from './ledger.js';
 import { predictChanges } from './predict.js';
@@ -187,10 +188,8 @@ export async function runWhatif(
 
   // ── a) Run directory ──────────────────────────────────────────────────────
 
-  // Run dir is a timestamp plus an opaque suffix — omitting the change title
-  // keeps the path opaque to the agent during an episode (issue #2425), and
-  // the suffix stops two runs started in the same second from colliding.
-  // The title is recorded in results.json so it is never lost.
+  // Timestamp + opaque suffix: keeps path hidden from the agent (#2425); prevents
+  // same-second collisions. Title is recorded in results.json so it is never lost.
   const runDir = path.join(
     getWhatifDir(),
     `${dateStamp(now)}-${randomBytes(3).toString('hex')}`,
@@ -201,11 +200,8 @@ export async function runWhatif(
 
   // ── b) Sandboxes ──────────────────────────────────────────────────────────
 
-  // When the change spec directly targets hooks or plugins, keep context hooks
-  // on in both episode arms so the hooks under test actually register and can
-  // be observed.  Without this, both arms would run with SessionStart and
-  // UserPromptSubmit suppressed, making the experiment measure nothing.
-  // The manual AFK_WHATIF_KEEP_CONTEXT_HOOKS=1 override takes the same path.
+  // Auto-enable context hooks when the spec targets hooks/plugins, or when the
+  // manual override is set; without this both arms suppress hooks measuring nothing.
   const autoKeepContextHooks =
     specTargetsHooksOrPlugins(spec) || keepContextHooksInEpisode();
 
@@ -265,6 +261,7 @@ export async function runWhatif(
     deps.onProgress?.({ stage: 'episodes', message: 'Collecting episodes' });
 
     const { episodes, corpusExclusions } = await collectVerifyEpisodes(options, predictions);
+    deps.onProgress?.({ stage: 'episodes', message: preflightMdeMessage(episodes.length) });
 
     // Resolve judge BEFORE preflight estimate (so we know if it's external)
     const resolvedJudge = await deps.makeJudge(options.judge);
@@ -338,6 +335,7 @@ export async function runWhatif(
     const limits = [
       ...standardLimits({ verified: true, judgeExternal: resolvedJudge.external }),
       ...verifyShortfallLimits(verifyResult!),
+      ...mdeLimits(verifyResult!),
       ...hookIsolationLimits({ keepContextHooks: autoKeepContextHooks, structural }),
     ];
 
