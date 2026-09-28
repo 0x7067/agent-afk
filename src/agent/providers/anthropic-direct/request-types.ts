@@ -35,6 +35,8 @@ export interface RunTurnInput {
   throttleQueue?: import('./throttle-queue.js').ThrottleQueue;
   /** Callback invoked after each tool round returns 'continue', before the next openRound(). Returns steering text to inject, or undefined. */
   beforeNextRound?: () => string | undefined;
+  /** Journal differ; `sync(messages)` at each commit point (docs/message-journal.md). */
+  journalSync?: import('../../journal/index.js').JournalSync<MessageParam>;
 }
 
 /** Streaming-only subset of the Anthropic client used by the loop. */

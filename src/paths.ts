@@ -370,6 +370,13 @@ export {
   validateSessionId,
 } from './paths.witness.js';
 
+export {
+  getSessionBlobsDir,
+  getSessionJournalPath,
+  getSubagentJournalPath,
+  getSubagentJournalsDir,
+} from './paths.journal.js';
+
 export function getDaemonStateDir(instanceId: string = 'default'): string {
   return join(getAfkStateDir(), 'daemon', `agent-afk@${instanceId}`);
 }

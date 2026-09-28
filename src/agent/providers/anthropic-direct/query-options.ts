@@ -59,6 +59,8 @@ export interface AnthropicDirectQueryOptions {
   toolDispatcher: ToolDispatcher;
   sessionId?: string;
   initialMessages?: MessageParam[];
+  /** Durable message-journal sink (`AgentConfig.messageJournal`); seeded into SessionState. */
+  messageJournal?: import('../../journal/index.js').MessageJournal;
   /**
    * Conservative token estimate seeded from the last completed turn of a
    * restored session (#1294). When non-zero, used as the initial `lastUsage`
