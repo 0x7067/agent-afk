@@ -210,10 +210,22 @@ export function processChunk(
 
     if (st.state === ObserverEscState.Csi) {
       if (st.csiBuf.length >= CSI_BUF_MAX) {
-        // Overflow: discard and reset; re-process this byte as Normal.
+        // Invariant (CSI overflow discard): the parameter section exceeded
+        // CSI_BUF_MAX bytes — the sequence is malformed or intentionally
+        // oversized (fuzzing, DCS passthrough). We cannot trust any byte as
+        // a final-byte boundary yet; enter a discard loop that swallows all
+        // remaining bytes until the CSI final byte (0x40–0x7E), then returns
+        // to Normal. Re-processing the current byte as Normal (the old i--
+        // approach) is wrong: parameter bytes (0x30–0x3F) are NOT printable
+        // and would silently corrupt `col` via the printable branch below.
+        while (i < s.length) {
+          const discardCp = s.charCodeAt(i);
+          i++;
+          if (discardCp >= 0x40 && discardCp <= 0x7e) break; // final byte consumed
+        }
+        i--; // outer loop will i++ again
         st.csiBuf = '';
         st.state = ObserverEscState.Normal;
-        i--;
         continue;
       }
       if (cp >= 0x40 && cp <= 0x7e) {

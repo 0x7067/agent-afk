@@ -31,7 +31,7 @@ import * as InputDispatch from './terminal-compositor.input-dispatch.js';
 import type { KeyDispatchHost } from './terminal-compositor.input-dispatch.js';
 import { handleResizeImmediate, handleDisarmWindowResize } from './terminal-compositor.lifecycle.resize.js';
 import { enterRawMode, exitRawMode, enableBracketedPasteAndScrollKey, disableBracketedPasteAndScrollKey } from './terminal-compositor.lifecycle.mode.js';
-import { flushPendingCommittedBand, endTurnFlush } from './terminal-compositor.lifecycle.teardown.js';
+import { flushPendingCommittedBand, endTurnFlush, appendLinesAtCursor } from './terminal-compositor.lifecycle.teardown.js';
 import { decomposeCommitText } from './terminal-compositor.commit-text.js';
 import { buildBandMeta, buildScrollbackArchiveEscape, scrollbackFlushLines } from './terminal-compositor.scrollback.js';
 import { installObserver, type SuspendObserverHandle } from './terminal-compositor.lifecycle.suspend-observer.js';
@@ -468,10 +468,12 @@ export function disarm(self: LifecycleHost): void {
   // the committed band (see below). The observer's stdout.write patch must be
   // removed before any further stdout writes in this function.
   let disarmOwnerWrote = false;
+  let disarmCursorRow = self.lastMeasuredFrameTop > 0 ? self.lastMeasuredFrameTop : 1;
   if (self.suspended && self.suspendObserver) {
     const observerState = self.suspendObserver.remove();
     self.suspendObserver = null;
     const P = self.lastMeasuredFrameTop > 0 ? self.lastMeasuredFrameTop : 1;
+    disarmCursorRow = observerState.cursorRow;
     disarmOwnerWrote = observerState.cursorRow !== P || observerState.scrollCount !== 0;
   }
 
@@ -489,37 +491,55 @@ export function disarm(self: LifecycleHost): void {
   // endTurnFlush would emit ANSI sequences that duplicate rows already present in
   // native scrollback (S2 defect root cause). PENDING rows — those that were in
   // the model but never reached the terminal — cannot be in native scrollback
-  // (they were never displayed); flushing them before forgetting the model ensures
-  // committed content is not silently lost when the overlay was full-viewport at
-  // suspend time. flushPendingCommittedBand is a no-op when all rows are painted.
+  // (they were never displayed); on this path we emit them as a plain append at
+  // cursor row R (appendLinesAtCursor), which lets the terminal scroll naturally
+  // WITHOUT the CUP-paint-at-anchorFloor erase that buildScrollbackArchiveEscape
+  // performs. That erase would destroy still-visible prior-transcript rows at
+  // anchorFloor (often row 1) that have never reached scrollback (F2 root cause).
   if (self.suspended) {
     if (!disarmOwnerWrote) {
       endTurnFlush(self);
     } else {
-      flushPendingCommittedBand(self);
+      // Owner-wrote path: emit any pending rows as a plain append at cursor R.
+      // flushPendingCommittedBand (the CUP-paint path) must NOT be called here
+      // because it uses buildScrollbackArchiveEscape which erases at anchorFloor.
+      const pendingCount = self.committedBand.length - self.committedBandPaintedRows;
+      if (pendingCount > 0) {
+        const pendingLines = scrollbackFlushLines(self.committedBand, self.committedBandMeta, pendingCount);
+        appendLinesAtCursor(pendingLines, disarmCursorRow, self);
+      }
       self.forgetCommittedBand();
     }
   }
 
-  // Archive queued commits to scrollback directly (bypassing commitAbove which
-  // would call repaint() against a disarmed frame). The archive uses the same
-  // buildScrollbackArchiveEscape path as the normal overflow path (C1-safe).
+  // Archive queued commits. On the owner-wrote path use appendLinesAtCursor so
+  // the archive is a plain append at the cursor (no CUP-erase at anchorFloor).
+  // On the no-write path use buildScrollbackArchiveEscape (the erase is safe
+  // there because endTurnFlush has already cleared the on-screen band content).
   if (self.suspended && self.suspendCommitQueue.length > 0) {
     const queued = self.suspendCommitQueue.splice(0);
-    const rows = Math.max(1, self.stdout.rows ?? 24);
     const cols = Math.max(1, self.stdout.columns ?? 80);
-    const anchorFloor = Math.max(self.anchorRow ?? 1, 1);
-    for (const text of queued) {
-      const t = decomposeCommitText(text, cols);
-      const blockMeta = buildBandMeta(t.contentLines, cols);
-      const archiveEscape = buildScrollbackArchiveEscape(
-        scrollbackFlushLines(t.contentLines, blockMeta, t.contentLines.length),
-        anchorFloor,
-        rows,
-        cols,
-      );
-      if (archiveEscape.length > 0) {
-        try { self.stdout.write(archiveEscape); } catch { /* terminal closed */ }
+    if (disarmOwnerWrote) {
+      // Plain-append path: emit each queued commit as text at the cursor.
+      for (const text of queued) {
+        const t = decomposeCommitText(text, cols);
+        appendLinesAtCursor(t.contentLines, disarmCursorRow, self);
+      }
+    } else {
+      const rows = Math.max(1, self.stdout.rows ?? 24);
+      const anchorFloor = Math.max(self.anchorRow ?? 1, 1);
+      for (const text of queued) {
+        const t = decomposeCommitText(text, cols);
+        const blockMeta = buildBandMeta(t.contentLines, cols);
+        const archiveEscape = buildScrollbackArchiveEscape(
+          scrollbackFlushLines(t.contentLines, blockMeta, t.contentLines.length),
+          anchorFloor,
+          rows,
+          cols,
+        );
+        if (archiveEscape.length > 0) {
+          try { self.stdout.write(archiveEscape); } catch { /* terminal closed */ }
+        }
       }
     }
   }

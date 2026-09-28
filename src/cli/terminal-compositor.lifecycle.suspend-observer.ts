@@ -11,13 +11,21 @@
  * {@link ../../cli/commands/interactive/interactive.pty-setup.ts} to also
  * track soft-wraps, carriage-returns, and alt-screen entry/exit.
  *
- * Algorithm (per-chunk):
- *  • Ignore ANSI escape sequences entirely (state-machine skip).
- *  • \r      — reset visual column to 0.
- *  • \n      — advance cursor row; if row would exceed the terminal floor,
+ * Algorithm (per-chunk, state machine in suspend-observer.process.ts):
+ *  • ESC sequences — parsed by a 4-state machine (Normal/Esc/Csi/AltScreen).
+ *  • CSI cursor sequences (CUU/CUD/CUP/CHA/VPA/CNL/CPL/HVP, CSI s/u) update
+ *               row and col directly so selector-style rewinds (CUU N + reprint)
+ *               leave R at the true cursor position rather than inflating it.
+ *  • ESC 7/8   — save/restore cursor (row + col).
+ *  • ESC M/D/E — reverse index / IND / NEL row adjustments.
+ *  • \r        — reset visual column to 0.
+ *  • \n        — advance cursor row; if row would exceed the terminal floor,
  *               increment the scroll counter instead (the screen scrolled).
  *  • Printable character — advance visual column by 1; if it reaches the
  *               terminal width, wrap: col ← 0, advance cursor row as above.
+ *  • CSI overflow — sequences whose parameter section exceeds CSI_BUF_MAX
+ *               bytes are discarded: the state machine swallows all remaining
+ *               bytes until the final byte (0x40–0x7E), then returns to Normal.
  *  • ESC[?1049h — enter alt-screen; suspend column/row tracking (writes to
  *               the alternate buffer do not affect the main cursor).
  *  • ESC[?1049l — leave alt-screen; resume tracking.

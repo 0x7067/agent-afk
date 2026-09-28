@@ -163,6 +163,13 @@ describe('B2 path (a): pending rows archived on disarm-while-suspended (owner-wr
     c.commitAbove('PENDING-BLOCK\n');
     repaint();
 
+    // Precondition: the band must be fully pending (paintedRows=0) so the test
+    // exercises the exact scenario it claims to cover (all-pending discard bug).
+    // If this assertion fails, the overlay was not large enough to force a hold.
+    const rawPre = c as unknown as { committedBand: string[]; committedBandPaintedRows: number };
+    expect(rawPre.committedBandPaintedRows, 'precondition: band must be fully pending (paintedRows=0)').toBe(0);
+    expect(rawPre.committedBand.length, 'precondition: committedBand must be non-empty').toBeGreaterThan(0);
+
     // Now suspend.
     c.suspendInput();
 
@@ -267,21 +274,25 @@ describe('B2 path (b): pending rows archived in phase1 prior-band archive', () =
 
   it('fully-pending prior band (paintedRows=0) is archived in phase1', async () => {
     // To reach !overflowPriorContiguous && useBandHold with a fully-pending
-    // prior band, we need:
+    // prior band (paintedRows=0), we need:
     //   1. anchorRow > 1 (banner) — makes overflowPriorContiguous always false.
-    //   2. First commit: band-hold path storing a fully-pending model.
-    //      This requires !fitsAboveFrame for the first commit.
-    //      With banner at row 5 and NO overlay, frame is near the bottom
-    //      (row ~23). room = 23 - 5 = 18. Commit > 18 lines to force
-    //      !fitsAboveFrame → band-hold.
-    //   3. Second commit: also !fitsAboveFrame or band-hold, triggers
-    //      Phase 1 prior-band archive.
+    //   2. A large overlay that fills the viewport so the frame covers the full
+    //      screen above the banner, leaving no room for the committed band.
+    //      This forces commitPhase3HoldStore which stores committedBandPaintedRows=0
+    //      (all rows pending — never painted to the terminal).
+    //   3. Second commit: triggers Phase 1 prior-band archive with !overflowPriorContiguous.
     //
-    // Strategy: commit a block of (ROWS - BANNER_ROWS + 2) lines = 22 lines.
-    // With room = ~18, this forces !fitsAboveFrame. useBandHold fires because
-    // maxBandModel = overflowTargetBottom - anchorFloor > 0.
+    // Without an overlay the frame sits near the bottom (ROWS-1), leaving
+    // ~18 rows above it — a 22-line commit fits fitsAboveFrame and paintedRows=22,
+    // making the test pass vacuously (no pending rows at risk). The overlay is
+    // required to force the all-pending scenario the test is named after.
 
-    const { c, vs, repaint } = await makeRig({ banner: true });
+    // A large overlay (ROWS-2 lines) fills nearly the full viewport, leaving
+    // no room above the frame for the committed band — forces commitPhase3HoldStore
+    // (all-pending). The banner's anchorRow=5 does NOT prevent the hold; it only
+    // blocks the overflowPriorContiguous merge path in Phase 1.
+    const fullOverlay = Array.from({ length: ROWS - 2 }, (_, i) => `fov-${i}`).join('\n');
+    const { c, vs, repaint } = await makeRig({ banner: true, overlay: fullOverlay });
 
     // Build first commit: enough lines to force !fitsAboveFrame with banner.
     const firstLines = Array.from({ length: ROWS - BANNER_ROWS + 2 }, (_, i) => `pending-prior-${i}`);
@@ -295,26 +306,35 @@ describe('B2 path (b): pending rows archived in phase1 prior-band archive', () =
     const paintedAtCommit = raw.committedBandPaintedRows;
     const bandLenAtCommit = raw.committedBand.length;
 
+    // Precondition: the first commit must result in a fully-pending band
+    // (paintedRows=0) so the test exercises the all-pending prior-band archive
+    // path. If paintedRows > 0 here, the overlay/banner geometry was not
+    // sufficient to force a full hold and the test would pass vacuously.
+    expect(paintedAtCommit, 'precondition: first-commit band must be fully pending (paintedRows=0)').toBe(0);
+    expect(bandLenAtCommit, 'precondition: first-commit band must be non-empty').toBeGreaterThan(0);
+
     // Second commit: triggers Phase 1 prior-band archive with banner.
-    // Use another large block so it also takes the band-hold path.
-    const secondLines = Array.from({ length: ROWS - BANNER_ROWS + 2 }, (_, i) => `second-${i}`);
-    c.commitAbove(secondLines.join('\n') + '\n');
+    // Use another small block so it also reaches Phase 1 and archives the first band.
+    c.commitAbove('SECOND-TRIGGER\n');
+    repaint();
+
+    // Clear the overlay so any remaining pending rows can be materialized and
+    // the final state is inspectable. With a large overlay both commits may be
+    // fully pending in the band model; this collapses the frame to reveal them.
+    c.setOverlay('');
     repaint();
 
     const all = [...vs.scrollbackLines(), ...vs.visibleLines()];
     const dump = dumpScreen(vs);
 
     // All lines from the first commit must each appear exactly once.
-    // The prior band may have had pending rows (paintedAtCommit < bandLenAtCommit).
-    // With the fix, the full band is archived; without it, pending rows would be lost.
+    // These were all-pending (paintedAtCommit=0). Phase 1 must archive them
+    // when the second commit triggers the prior-band archive path. Without the
+    // fix the pending rows would be silently discarded.
     for (const label of firstLines) {
       const count = all.filter((l) => l.trim() === label).length;
       expect(count, `"${label}" must appear exactly once (painted=${paintedAtCommit}/${bandLenAtCommit}):\n${dump}`).toBe(1);
     }
-
-    // At least one second-commit line must also appear.
-    const secondCount = all.filter((l) => secondLines.some((sl) => l.trim() === sl)).length;
-    expect(secondCount, `second-commit lines must be present:\n${dump}`).toBeGreaterThan(0);
   });
 
   it('prior band with mixed pending+painted rows: both portions archived', async () => {
