@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.270.0] - 2026-09-28
+
+### Added
+- support Claude Sonnet 5.5 (claude-sonnet-5-5) (#2495) (774930c6)
+
 ## [5.269.0] - 2026-09-28
 
 ### Added
