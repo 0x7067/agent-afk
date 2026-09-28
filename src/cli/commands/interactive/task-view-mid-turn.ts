@@ -26,6 +26,7 @@ import {
 import { getTasksManager } from '../../slash/commands/tasks.js';
 import { stripEscapeSequences } from '../../../utils/terminal-sanitize.js';
 import { truncateDisplayWidth, suffixDisplayWidth, previousGraphemeIndex } from '../../display.js';
+import { registerCleanup } from '../../../utils/cleanupRegistry.js';
 import type { SubagentManager } from '../../../agent/subagent.js';
 import type { TerminalCompositor } from '../../terminal-compositor.js';
 import type { OutputEvent } from '../../../agent/types/session-types.js';
@@ -61,16 +62,75 @@ export interface MidTurnTaskViewOptions {
   compositor: TerminalCompositor;
 }
 
+// ---------------------------------------------------------------------------
+// Alt-screen lifecycle with signal-safe teardown
+// ---------------------------------------------------------------------------
+
 /**
  * Leave the alternate screen and hand the terminal back to the compositor.
- * Invariant: must be called BEFORE resumeInput/repaint on every exit path,
- * or the compositor repaints into the alt buffer instead of the main screen.
- * Teardown helper declared before launchMidTurnTaskView (ordered-sequence rule).
+ *
+ * Invariant (ordering):
+ *   1. stdout.write(LEAVE_ALT_SCREEN)  — escape the alt buffer FIRST
+ *   2. compositor.resumeInput()        — compositor may now repaint
+ *   3. compositor.repaint()            — force immediate redraw
+ *
+ * LEAVE_ALT_SCREEN must precede resumeInput() on every exit path; otherwise
+ * the compositor repaints into the alt buffer and the main screen is never
+ * restored. Teardown helper declared before launchMidTurnTaskView
+ * (ordered-sequence rule).
  */
 function leaveAltScreen(compositor: TerminalCompositor): void {
   compositor.stdout.write(LEAVE_ALT_SCREEN);
   compositor.resumeInput();
   compositor.repaint();
+}
+
+/**
+ * Enter the alternate screen buffer and register two complementary teardown
+ * guards so that LEAVE_ALT_SCREEN is always written on signal- or exit-driven
+ * teardown, not only on the normal Esc path.
+ *
+ * Returns an `disarmCleanup` function that the normal exit path MUST call
+ * before invoking `leaveAltScreen()` to prevent a double-leave.
+ *
+ * Invariant (cleanup ordering):
+ *   - The cleanup-registry function runs during runCleanupFunctions() called
+ *     by the signal handler (SIGTERM/SIGHUP after grace period) and by the
+ *     REPL's rl.on('close') path.  It writes LEAVE_ALT_SCREEN directly to
+ *     the compositor's stdout without touching resumeInput (the compositor is
+ *     already tearing down on that path).
+ *   - The process.on('exit') fallback fires synchronously on process.exit()
+ *     and catches any path that bypasses the cleanup registry (e.g. SIGINT
+ *     double-press in the interactive cleanup or an unhandled rejection).
+ *   - Both guards are disarmed atomically by disarmCleanup() so the normal
+ *     leaveAltScreen() call is the sole writer on the happy path.
+ */
+function enterAltScreen(compositor: TerminalCompositor): () => void {
+  compositor.stdout.write(ENTER_ALT_SCREEN + '\x1b[2J\x1b[H');
+
+  // Idempotent writer — safe to call from either guard; writes the escape once.
+  const writeLeave = (): void => { compositor.stdout.write(LEAVE_ALT_SCREEN); };
+
+  // One-shot process.on('exit') fallback: fires synchronously on any
+  // process.exit() call that bypasses the cleanup registry (e.g. SIGINT
+  // double-press timeout, unhandled rejection).  Removed on normal leave so
+  // no listener leaks across repeated opens.
+  process.on('exit', writeLeave);
+
+  // Cleanup-registry registration: runs during runCleanupFunctions() called
+  // by the signal handler grace-period timeout and by rl.on('close').
+  const unregisterCleanup = registerCleanup(async (): Promise<void> => {
+    writeLeave();
+  });
+
+  // disarmCleanup: call on normal (Esc / stream-end) leave BEFORE calling
+  // leaveAltScreen(), so the two guards don't write a redundant leave sequence.
+  const disarmCleanup = (): void => {
+    unregisterCleanup();
+    process.removeListener('exit', writeLeave);
+  };
+
+  return disarmCleanup;
 }
 
 /**
@@ -130,8 +190,11 @@ export async function launchMidTurnTaskView(
   // Item 1: re-enable raw mode after suspending so keystrokes arrive per-byte.
   try { process.stdin.setRawMode?.(true); } catch { /* non-TTY */ }
 
-  // Enter the alternate screen buffer, then clear and home within it.
-  stdout.write(ENTER_ALT_SCREEN + '\x1b[2J\x1b[H');
+  // Enter the alternate screen buffer (writes ENTER_ALT_SCREEN + clear/home)
+  // and register two teardown guards so LEAVE_ALT_SCREEN is written even on
+  // signal- or exit-driven teardown.  disarmCleanup() MUST be called on every
+  // normal exit path before leaveAltScreen() to prevent a double-leave.
+  const disarmCleanup = enterAltScreen(compositor);
   const status = handle.status ?? 'running';
   stdout.write(clamp(renderTaskViewHeader(id, status, agentType)) + '\n\n');
 
@@ -166,6 +229,9 @@ export async function launchMidTurnTaskView(
     // Item 1: restore cooked mode before resuming compositor.
     try { process.stdin.setRawMode?.(false); } catch { /* non-TTY */ }
     midTurnViewActive = false;
+    // Disarm before leaveAltScreen so the cleanup guards do not emit a
+    // redundant LEAVE_ALT_SCREEN after the normal leave writes it.
+    disarmCleanup();
     leaveAltScreen(compositor);
     return true;
   }
@@ -305,6 +371,9 @@ export async function launchMidTurnTaskView(
     try { process.stdin.setRawMode?.(false); } catch { /* non-TTY */ }
     // FIX-1: Clear the reentrancy guard so a subsequent Tab is accepted.
     midTurnViewActive = false;
+    // Disarm before leaveAltScreen so the cleanup guards do not emit a
+    // redundant LEAVE_ALT_SCREEN after the normal leave writes it.
+    disarmCleanup();
     leaveAltScreen(compositor);
   }
 

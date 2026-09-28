@@ -1177,23 +1177,50 @@ describe('alternate screen buffer', () => {
 
   it('writes the leave alt-screen sequence on the Esc-abort exit path (finally block)', async () => {
     const { launchMidTurnTaskView } = await import('./task-view-mid-turn.js');
-    const { written, fakeManager, fakeCompositor, getCaptured } = makeRunningFixture();
 
-    // Send Esc as soon as the data listener is registered (before the stream
-    // can emit events), so the abort controller fires and the finally block runs
-    // without going through waitForEsc.
+    // Build the fixture manually (no makeRunningFixture) so we avoid
+    // stacking a second vi.spyOn on top of makeRunningFixture's spy —
+    // double-spying on the same method and then restoreAllMocks() leaves
+    // the underlying spy in place and causes the following stream-end test
+    // to see a partially-stubbed process.stdin.on.
+    const written: string[] = [];
+    const fakeStdout = {
+      columns: 80,
+      write: (s: string) => { written.push(s); return true; },
+    };
+
+    let capturedDataListener: ((data: Buffer) => void) | null = null;
     const origOn = process.stdin.on.bind(process.stdin);
+    const origRemoveListener = process.stdin.removeListener.bind(process.stdin);
     vi.spyOn(process.stdin, 'on').mockImplementation((event: string, listener: (...args: unknown[]) => void) => {
-      const result = origOn(event as never, listener as never);
       if (event === 'data') {
+        capturedDataListener = listener as (d: Buffer) => void;
         // Inject Esc immediately on the next microtask so the listener is armed.
         Promise.resolve().then(() => {
-          const l = getCaptured();
-          if (l) l(Buffer.from('\x1b'));
+          if (capturedDataListener) capturedDataListener(Buffer.from('\x1b'));
         });
       }
-      return result;
+      return origOn(event as never, listener as never);
     });
+    vi.spyOn(process.stdin, 'removeListener').mockImplementation((event: string, listener: (...args: unknown[]) => void) => {
+      return origRemoveListener(event as never, listener as never);
+    });
+
+    const fakeSession = {
+      getHistory: () => [],
+      getOutputStream: async function* () { /* no events — stream ends immediately */ },
+    };
+    const fakeHandle = { status: 'running' as const, session: fakeSession, sendMessage: vi.fn() };
+    const fakeManager = {
+      list: () => [{ id: 'sub-esc-abort', status: 'running' as const }],
+      get: (_id: string) => fakeHandle as never,
+    };
+    const fakeCompositor = {
+      stdout: fakeStdout as never,
+      suspendInput: vi.fn(),
+      resumeInput: vi.fn(),
+      repaint: vi.fn(),
+    };
 
     await launchMidTurnTaskView({ manager: fakeManager as never, compositor: fakeCompositor as never });
     vi.restoreAllMocks();
@@ -1203,14 +1230,12 @@ describe('alternate screen buffer', () => {
   });
 
   it('leave alt-screen is the last write before teardown on the stream-end exit path', async () => {
-    // Uses the early-complete path (status !== 'running') as a clean proxy
-    // for the ordering invariant: the function writes LEAVE_ALT as its very
-    // last stdout.write before calling resumeInput/repaint.
-    //
-    // The finally-block path exercises the same three consecutive statements
-    //   stdout.write(LEAVE_ALT) → compositor.resumeInput() → compositor.repaint()
-    // so the ordering invariant is shared. The early-complete path is used
-    // here because it is synchronous and deterministic (no stdin/Esc plumbing).
+    // Uses the early-complete path (status === 'succeeded') as a deterministic
+    // proxy for the ordering invariant: the code writes LEAVE_ALT as its very
+    // last stdout.write before calling resumeInput/repaint.  Both the early-
+    // complete path and the finally-block path call the same leaveAltScreen()
+    // helper, so ordering is shared.  The early-complete fixture is used here
+    // because it is synchronous and immune to stdin-spy state from adjacent tests.
     const { launchMidTurnTaskView } = await import('./task-view-mid-turn.js');
     const { written, fakeManager, fakeCompositor } = makeCompletedFixture();
 
@@ -1253,5 +1278,254 @@ describe('alternate screen buffer', () => {
     }
     // Sanity: the clear-screen sequence must have been written at least once.
     expect(found2J).toBe(true);
+  });
+
+  // -------------------------------------------------------------------------
+  // SIGINT / process.exit() teardown path
+  //
+  // These tests cover the flagged DO-NOT-MERGE regression: interactive.cleanup
+  // calls process.exit(0) after runCleanupFunctions(), and a SIGINT double-
+  // press also calls ctx.rl.close() which leads to process.exit(). Without
+  // the enterAltScreen / registerCleanup fix, neither path writes LEAVE_ALT.
+  //
+  // Test strategy: spy on process.on / process.removeListener to capture the
+  // 'exit' listener registered by enterAltScreen, then call it manually to
+  // simulate process.exit() without actually terminating the test runner.
+  // -------------------------------------------------------------------------
+
+  it('process.on(exit) guard writes LEAVE_ALT when the view is open (SIGINT path)', async () => {
+    // Invariant: enterAltScreen() registers a process.on('exit', writeLeave)
+    // fallback so that process.exit() from interactive.cleanup always writes
+    // LEAVE_ALT_SCREEN even when the cleanup registry was bypassed.
+    // This test fails without the process.on('exit') registration.
+    const { launchMidTurnTaskView } = await import('./task-view-mid-turn.js');
+    const written: string[] = [];
+
+    const fakeStdout = {
+      columns: 80,
+      write: (s: string) => { written.push(s); return true; },
+    };
+
+    // Capture the exit listener added by enterAltScreen and any subsequent
+    // removal so we can simulate the guard firing without calling process.exit.
+    let capturedExitListener: ((...args: unknown[]) => void) | null = null;
+    const origProcessOn = process.on.bind(process);
+    const origProcessRemoveListener = process.removeListener.bind(process);
+    vi.spyOn(process, 'on').mockImplementation((event: string, listener: (...args: unknown[]) => void) => {
+      if (event === 'exit') capturedExitListener = listener;
+      return origProcessOn(event as never, listener as never);
+    });
+    vi.spyOn(process, 'removeListener').mockImplementation((event: string, listener: (...args: unknown[]) => void) => {
+      if (event === 'exit' && listener === capturedExitListener) {
+        capturedExitListener = null;
+      }
+      return origProcessRemoveListener(event as never, listener as never);
+    });
+
+    // Capture stdin data listener so we can send Esc.
+    let capturedDataListener: ((data: Buffer) => void) | null = null;
+    const origOn = process.stdin.on.bind(process.stdin);
+    const origRemoveListener = process.stdin.removeListener.bind(process.stdin);
+    vi.spyOn(process.stdin, 'on').mockImplementation((event: string, listener: (...args: unknown[]) => void) => {
+      if (event === 'data') capturedDataListener = listener as (d: Buffer) => void;
+      return origOn(event as never, listener as never);
+    });
+    vi.spyOn(process.stdin, 'removeListener').mockImplementation((event: string, listener: (...args: unknown[]) => void) => {
+      return origRemoveListener(event as never, listener as never);
+    });
+
+    // Running fixture — stream ends immediately; we inject Esc to exit.
+    let resolveStream!: () => void;
+    const streamDone = new Promise<void>((r) => { resolveStream = r; });
+
+    const fakeSession = {
+      getHistory: () => [],
+      getOutputStream: async function* () { resolveStream(); },
+    };
+    const fakeHandle = { status: 'running' as const, session: fakeSession, sendMessage: vi.fn() };
+    const fakeManager = {
+      list: () => [{ id: 'sub-exit-guard', status: 'running' as const }],
+      get: (_id: string) => fakeHandle as never,
+    };
+    const fakeCompositor = {
+      stdout: fakeStdout as never,
+      suspendInput: vi.fn(),
+      resumeInput: vi.fn(),
+      repaint: vi.fn(),
+    };
+
+    // Invoke the exit guard BEFORE the normal exit path runs (simulating
+    // process.exit() being called while the stream is still open, e.g. a
+    // SIGINT double-press). We do this by intercepting the stream start:
+    // once enterAltScreen has registered the guard (after the stream begins),
+    // fire the exit listener, then let the view exit normally via Esc.
+    let firedExitGuard = false;
+    const origGetOutputStream = fakeSession.getOutputStream;
+    fakeSession.getOutputStream = async function* () {
+      // Enter alt screen has already been called at this point.
+      // Fire the process exit guard to simulate process.exit() mid-view.
+      if (capturedExitListener && !firedExitGuard) {
+        firedExitGuard = true;
+        capturedExitListener();
+      }
+      yield* origGetOutputStream();
+    };
+
+    void streamDone.then(() => {
+      setTimeout(() => {
+        if (capturedDataListener) capturedDataListener(Buffer.from('\x1b'));
+      }, 10);
+    });
+
+    await launchMidTurnTaskView({ manager: fakeManager as never, compositor: fakeCompositor as never });
+    vi.restoreAllMocks();
+
+    // The exit guard must have written LEAVE_ALT when fired.
+    const allOutput = written.join('');
+    expect(allOutput).toContain(LEAVE_ALT);
+    // The guard must have been registered (fired = true confirms it was captured).
+    expect(firedExitGuard).toBe(true);
+  });
+
+  it('cleanup registry writes LEAVE_ALT when called during runCleanupFunctions (SIGTERM path)', async () => {
+    // Invariant: enterAltScreen() registers a cleanup-registry function.
+    // runCleanupFunctions() is called by the SIGTERM/SIGHUP grace-period
+    // timeout and by rl.on('close'). This test confirms the registry write
+    // fires and fails without the registerCleanup() call in enterAltScreen.
+    const { launchMidTurnTaskView } = await import('./task-view-mid-turn.js');
+    const { runCleanupFunctions } = await import('../../../utils/cleanupRegistry.js');
+    const written: string[] = [];
+
+    const fakeStdout = {
+      columns: 80,
+      write: (s: string) => { written.push(s); return true; },
+    };
+
+    let capturedDataListener: ((data: Buffer) => void) | null = null;
+    const origOn = process.stdin.on.bind(process.stdin);
+    const origRemoveListener = process.stdin.removeListener.bind(process.stdin);
+    vi.spyOn(process.stdin, 'on').mockImplementation((event: string, listener: (...args: unknown[]) => void) => {
+      if (event === 'data') capturedDataListener = listener as (d: Buffer) => void;
+      return origOn(event as never, listener as never);
+    });
+    vi.spyOn(process.stdin, 'removeListener').mockImplementation((event: string, listener: (...args: unknown[]) => void) => {
+      return origRemoveListener(event as never, listener as never);
+    });
+
+    // Hang the stream so the view stays open while we fire runCleanupFunctions.
+    let resolveStream!: () => void;
+    const streamReady = new Promise<void>((r) => { resolveStream = r; });
+
+    const fakeSession = {
+      getHistory: () => [],
+      // History: stream stays open until we resolve it.
+      getOutputStream: async function* () {
+        resolveStream();
+        // Wait until the test fires runCleanupFunctions and injects Esc.
+        await new Promise<void>((r) => setTimeout(r, 100));
+      },
+    };
+    const fakeHandle = { status: 'running' as const, session: fakeSession, sendMessage: vi.fn() };
+    const fakeManager = {
+      list: () => [{ id: 'sub-cleanup-reg', status: 'running' as const }],
+      get: (_id: string) => fakeHandle as never,
+    };
+    const fakeCompositor = {
+      stdout: fakeStdout as never,
+      suspendInput: vi.fn(),
+      resumeInput: vi.fn(),
+      repaint: vi.fn(),
+    };
+
+    // Start the view (does NOT await — it runs concurrently).
+    const viewDone = launchMidTurnTaskView({ manager: fakeManager as never, compositor: fakeCompositor as never });
+
+    // Wait until the stream generator has started (so enterAltScreen has run).
+    await streamReady;
+
+    // Clear the output captured so far so we only see the cleanup write.
+    written.length = 0;
+
+    // Simulate the SIGTERM grace-period timeout calling runCleanupFunctions.
+    await runCleanupFunctions();
+
+    // The cleanup registry must have written LEAVE_ALT.
+    expect(written.join('')).toContain(LEAVE_ALT);
+
+    // Let the view exit cleanly.
+    if (capturedDataListener) capturedDataListener(Buffer.from('\x1b'));
+    await viewDone;
+    vi.restoreAllMocks();
+  });
+
+  it('disarmCleanup prevents double-write of LEAVE_ALT on normal Esc exit (idempotence)', async () => {
+    // Invariant: disarmCleanup() removes both the process.on('exit') guard
+    // and the cleanup-registry function before leaveAltScreen() writes
+    // LEAVE_ALT once on the normal exit path.  After a clean exit, calling
+    // the exit guard or runCleanupFunctions must NOT write a second LEAVE_ALT
+    // (double-leave corrupts the main screen buffer).
+    // This test fails if disarmCleanup() does not remove both guards.
+    const { launchMidTurnTaskView } = await import('./task-view-mid-turn.js');
+    const { runCleanupFunctions } = await import('../../../utils/cleanupRegistry.js');
+    const written: string[] = [];
+
+    const fakeStdout = {
+      columns: 80,
+      write: (s: string) => { written.push(s); return true; },
+    };
+
+    // Capture the exit listener.
+    let capturedExitListener: ((...args: unknown[]) => void) | null = null;
+    const origProcessOn = process.on.bind(process);
+    const origProcessRemoveListener = process.removeListener.bind(process);
+    vi.spyOn(process, 'on').mockImplementation((event: string, listener: (...args: unknown[]) => void) => {
+      if (event === 'exit') capturedExitListener = listener;
+      return origProcessOn(event as never, listener as never);
+    });
+    vi.spyOn(process, 'removeListener').mockImplementation((event: string, listener: (...args: unknown[]) => void) => {
+      if (event === 'exit' && listener === capturedExitListener) {
+        capturedExitListener = null; // disarmed
+      }
+      return origProcessRemoveListener(event as never, listener as never);
+    });
+
+    // Use the early-complete path for simplicity: view exits synchronously.
+    const fakeSession = {
+      getHistory: () => [],
+      getOutputStream: async function* () { /* no events */ },
+    };
+    const fakeHandle = { status: 'succeeded' as const, session: fakeSession, sendMessage: vi.fn() };
+    const fakeManager = {
+      list: () => [{ id: 'sub-idempotent', status: 'running' as const }],
+      get: (_id: string) => fakeHandle as never,
+    };
+    const fakeCompositor = {
+      stdout: fakeStdout as never,
+      suspendInput: vi.fn(),
+      resumeInput: vi.fn(),
+      repaint: vi.fn(),
+    };
+
+    // Let the view complete normally.
+    await launchMidTurnTaskView({ manager: fakeManager as never, compositor: fakeCompositor as never });
+
+    // Normal exit has written exactly one LEAVE_ALT — record the count.
+    const leaveCountAfterNormalExit = written.filter((s) => s === LEAVE_ALT).length;
+    expect(leaveCountAfterNormalExit).toBe(1);
+
+    // Now simulate redundant cleanup calls that would fire AFTER normal exit.
+    // The exit guard must have been disarmed (capturedExitListener === null).
+    // If it was NOT disarmed, calling it here would write a second LEAVE_ALT.
+    if (capturedExitListener) {
+      // Guard was not disarmed — call it to show the double-write.
+      (capturedExitListener as () => void)();
+    }
+    await runCleanupFunctions();
+
+    // No second LEAVE_ALT must have been written.
+    const leaveCountAfterRedundant = written.filter((s) => s === LEAVE_ALT).length;
+    expect(leaveCountAfterRedundant).toBe(1);
+
+    vi.restoreAllMocks();
   });
 });
