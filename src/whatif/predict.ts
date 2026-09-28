@@ -3,7 +3,9 @@
  * predicted behavior changes.
  *
  * One model call. Output is validated against the Prediction schema; invalid
- * entries are dropped. The model is instructed to return an empty list when
+ * entries are dropped. Each prediction is tagged `observable: 'decision' |
+ * 'downstream'` here, before any episode runs (#2409); a missing or invalid
+ * tag defaults to `'decision'`. The model is instructed to return an empty list when
  * the change has no plausible behavioral effect (no filler).
  *
  * @module whatif/predict
@@ -25,7 +27,26 @@ const PredictionSchema = z.object({
   reason: z.string(),
   testQuestion: z.string(),
   probes: z.array(z.string()).min(1).max(2),
+  // Lenient (#2409): a missing or invalid tag never drops the prediction; it
+  // is normalized to 'decision' by `withObservability`.
+  observable: z.unknown().optional(),
+  observabilityReason: z.unknown().optional(),
 });
+
+/**
+ * Normalize the predict-time observability tag. Anything but `'downstream'`
+ * becomes `'decision'` (backward compatible); a reason is kept only for a
+ * downstream prediction and only when it is a non-empty string.
+ */
+function withObservability(
+  entry: z.infer<typeof PredictionSchema>,
+  id: string,
+): Prediction {
+  const { observable, observabilityReason, ...rest } = entry;
+  if (observable !== 'downstream') return { ...rest, id, observable: 'decision' };
+  const reason = typeof observabilityReason === 'string' ? observabilityReason.trim() : '';
+  return { ...rest, id, observable: 'downstream', ...(reason ? { observabilityReason: reason } : {}) };
+}
 
 const RawPredictionsArraySchema = z.array(z.unknown());
 
@@ -55,13 +76,42 @@ how the agent's behavior will change. Return a JSON array of Prediction objects.
 - probes: 1-2 realistic user requests that would exercise the predicted behavior.
 - confidence must be honest: high only when the causal link is clear from the diff.
 - Ids must be p1, p2, … pN (sequential, no gaps).
+- observable: REQUIRED. Tag every prediction "decision" or "downstream" (see below).
+
+## Observability (decide before any data exists)
+
+Verification runs each probe as a single decision-only turn. Read-only tools
+run normally. The FIRST side-effecting request (write/edit a file, mutating
+shell command, spawning a subagent or skill, network write, git push) is
+recorded as the agent's decision and NOT executed; the turn stops there. The
+grader sees the request itself, e.g. "[tool requested: agent (not executed)]",
+and counts it as the agent doing that thing.
+
+- "decision": the behavior is visible in what the agent chooses, says,
+  requests, or proposes in its turn, up to and including that first
+  side-effecting request. Examples: asks a clarifying question before acting;
+  spawns a subagent when asked to; edits the file directly instead of
+  explaining; runs the tests before editing; refuses; answers without tools;
+  response tone or length.
+- "downstream": the behavior only shows once an intercepted action COMPLETES,
+  or in its results. Examples: the tests pass after the fix; the written file
+  content is correct; the subagent finds the bug; total task cost or turn
+  count; how the agent behaves after verifying its change.
+
+When unsure, prefer rephrasing the testQuestion to ask about the decision
+(e.g. "Does the response request a subagent?" rather than "Does the subagent
+find the bug?"). Tag "downstream" only when no decision-level question
+captures the behavior. For "downstream", add observabilityReason: one short
+line naming the action that would have to complete. Downstream predictions are
+reported as unobservable and never count as confirmed or refuted.
 
 ## Output format
 
 Respond with ONLY a JSON array (no prose, no fences):
 [{"id":"p1","behavior":"…","direction":"added"|"removed"|"strengthened"|"weakened",
   "confidence":"high"|"medium"|"low","reason":"…","testQuestion":"Does the response …?",
-  "probes":["…","…"]}, …]`;
+  "probes":["…","…"],"observable":"decision"|"downstream",
+  "observabilityReason":"… (downstream only)"}, …]`;
 
 // ---------------------------------------------------------------------------
 // Input type
@@ -124,7 +174,7 @@ export async function predictChanges(
   for (const entry of raw) {
     const parsed = PredictionSchema.safeParse(entry);
     if (parsed.success && valid.length < 8) {
-      valid.push({ ...parsed.data, id: `p${valid.length + 1}` });
+      valid.push(withObservability(parsed.data, `p${valid.length + 1}`));
     }
   }
 

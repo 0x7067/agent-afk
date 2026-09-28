@@ -366,13 +366,17 @@ export async function verifyRun(input: VerifyRunInput): Promise<VerifyRunOutput>
 
   // ── 5. Calibration ────────────────────────────────────────────────────────
 
-  const calibrationRecords: CalibrationRecord[] = verifiedPredictions.map(({ prediction, rates, verdict }) => ({
-    ts: new Date().toISOString(),
-    changeKinds,
-    prediction,
-    verdict,
-    delta: rates.delta,
-  }));
+  // Unobservable (downstream) predictions carry no evidence either way, so
+  // they never enter the track record (#2409).
+  const calibrationRecords: CalibrationRecord[] = verifiedPredictions
+    .filter((vp) => vp.verdict !== 'unobservable')
+    .map(({ prediction, rates, verdict }) => ({
+      ts: new Date().toISOString(),
+      changeKinds,
+      prediction,
+      verdict,
+      delta: rates.delta,
+    }));
 
   await appendCalibration(calibrationRecords, calibrationFile).catch(() => { /* non-fatal */ });
 

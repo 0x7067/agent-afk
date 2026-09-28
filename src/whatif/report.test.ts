@@ -82,7 +82,7 @@ function makeUnobservablePred(id: string): VerifiedPrediction {
     prediction: makePred(id),
     rates: { baseline: 0.1, candidate: 0.1, delta: 0.0, ci: [-0.3, 0.3], n: { baseline: 10, candidate: 10 } },
     verdict: 'unobservable',
-    unobservableReason: 'behavior lies past the episode boundary (intercepted in both arms: agent)',
+    unobservableReason: 'downstream of the episode boundary: the tests must run to completion',
   };
 }
 

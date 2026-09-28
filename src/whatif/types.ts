@@ -134,6 +134,19 @@ export interface StructuralImpact {
 export type PredictionDirection = 'added' | 'removed' | 'strengthened' | 'weakened';
 export type Confidence = 'high' | 'medium' | 'low';
 
+/**
+ * Whether a prediction can be measured by a decision-only episode (#2409),
+ * decided at predict time, before any data exists.
+ *
+ * - `'decision'`: what the agent chooses, says, requests or proposes in its
+ *   turn, up to and including its first side-effecting request (which the
+ *   episode gate records as intent). Scored normally.
+ * - `'downstream'`: needs an intercepted action to COMPLETE, or its results
+ *   (tests pass, file content is correct, a subagent finds the bug, total task
+ *   cost, behavior after verification). Always verdict `'unobservable'`.
+ */
+export type PredictionObservable = 'decision' | 'downstream';
+
 export interface Prediction {
   /** Stable id within a run, e.g. "p1". */
   id: string;
@@ -150,6 +163,13 @@ export interface Prediction {
   testQuestion: string;
   /** 1-2 synthetic user requests likely to exercise this behavior. */
   probes: string[];
+  /**
+   * Predict-time observability tag (#2409). `predictChanges` always sets it;
+   * absent (older results, hand-built fixtures) means `'decision'`.
+   */
+  observable?: PredictionObservable;
+  /** One short line on why the behavior is `'downstream'`. Optional. */
+  observabilityReason?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -287,7 +307,10 @@ export interface VerifiedPrediction {
   verdict: Verdict;
   /** Absent in results written before #2403 (those pooled every episode). */
   scope?: PredictionScope;
-  /** Why the verdict is `'unobservable'` (e.g. intercepted in both arms). Optional, additive. */
+  /**
+   * Why the verdict is `'unobservable'`: the prediction was tagged
+   * `observable: 'downstream'` at predict time. Optional, additive.
+   */
   unobservableReason?: string;
 }
 
@@ -311,7 +334,7 @@ export interface VerifyResult {
   episodes: number;
   samples: number;
   judge: { name: 'jev' | 'claude'; external: boolean; crossCheckAgreement?: number };
-  /** Share of predictions confirmed, among those not 'unclear'. */
+  /** Share of predictions confirmed, among confirmed + refuted (excludes 'unclear' and 'unobservable'). */
   predictionAccuracy?: number;
   truncatedByBudget: boolean;
   failedEpisodes: number;

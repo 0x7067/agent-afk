@@ -17,10 +17,11 @@
  * failed, budget stop, judge failure) its verdict is forced to `unclear`, so
  * an empty sample can never render as confirmed or refuted.
  *
- * Contract (#2409): a would-be `refuted` becomes `unobservable` when the
- * prediction's scored probes (exactly `scope.episodes`, per arm) show
- * gate-intercepted calls in both arms. Intercepts in any other episode never
- * affect the prediction. The empty-sample `unclear` above is never touched.
+ * Contract (#2409): a prediction tagged `observable: 'downstream'` at predict
+ * time is always `unobservable`, whatever its rates. Its rates and scope are
+ * still recorded for transparency. For every other prediction the verdict is
+ * exactly `verdictFor` plus the empty-sample guard above: nothing observed in
+ * the episodes (intercepted tools, trace contents) can relabel it.
  *
  * Discovered differences and the measured-feature table are universal, so
  * they keep using every episode (see `run.verify.ts`).
@@ -29,7 +30,7 @@
  */
 
 import { compareRates, verdictFor } from './stats.js';
-import { applyObservability } from './observability.js';
+import { unobservableReason } from './observability.js';
 import type { Episode, EpisodeTrace, Prediction, VerifiedPrediction } from './types.js';
 
 type Arm = 'baseline' | 'candidate';
@@ -110,26 +111,27 @@ export function scorePrediction(
     ? compareRates(bgB.scores, bgC.scores)
     : undefined;
 
+  // Observability was decided at predict time (#2409), never from the data.
+  const downstream = unobservableReason(prediction);
+
   // Invariant: an arm with no graded output carries no evidence; never let
   // compareRates' zero-filled rates reach verdictFor.
-  const rawVerdict = rates.n.baseline === 0 || rates.n.candidate === 0
-    ? 'unclear'
-    : verdictFor(prediction, rates);
-
-  const scoped = {
-    baseline: inEpisodeOrder(episodes, b.episodeIds),
-    candidate: inEpisodeOrder(episodes, c.episodeIds),
-  };
-  // Observability looks at exactly the episodes recorded in scope (#2409).
-  const { verdict, unobservableReason } = applyObservability(rawVerdict, scoped, goodTraces);
+  const verdict = downstream !== undefined
+    ? 'unobservable'
+    : rates.n.baseline === 0 || rates.n.candidate === 0
+      ? 'unclear'
+      : verdictFor(prediction, rates);
 
   return {
     prediction,
     rates,
     verdict,
-    ...(unobservableReason !== undefined ? { unobservableReason } : {}),
+    ...(downstream !== undefined ? { unobservableReason: downstream } : {}),
     scope: {
-      episodes: scoped,
+      episodes: {
+        baseline: inEpisodeOrder(episodes, b.episodeIds),
+        candidate: inEpisodeOrder(episodes, c.episodeIds),
+      },
       targetedEpisodes: targeted.size,
       ...(background ? { background } : {}),
     },

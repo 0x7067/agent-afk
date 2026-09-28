@@ -106,6 +106,55 @@ describe('predictChanges', () => {
     expect(call[0].user).toContain('calibration data here');
   });
 
+  describe('observable tag (#2409)', () => {
+    const base = { behavior: 'b', direction: 'added', confidence: 'low', reason: 'r', testQuestion: 'Does the response x?', probes: ['a'] };
+    async function parse(entries: unknown[]) {
+      return predictChanges(
+        { spec: { title: 't', changes: [] }, changeDescriptions: [], structural: emptyStructural() },
+        makeFake(JSON.stringify(entries)),
+        MODEL,
+      );
+    }
+
+    it('defaults a missing tag to decision', async () => {
+      const [p] = await parse([{ id: 'p1', ...base }]);
+      expect(p?.observable).toBe('decision');
+      expect(p?.observabilityReason).toBeUndefined();
+    });
+
+    it('keeps a downstream tag and its reason', async () => {
+      const [p] = await parse([{ id: 'p1', ...base, observable: 'downstream', observabilityReason: ' tests must run ' }]);
+      expect(p?.observable).toBe('downstream');
+      expect(p?.observabilityReason).toBe('tests must run');
+    });
+
+    it('turns an invalid tag into decision instead of dropping the prediction', async () => {
+      const result = await parse([{ id: 'p1', ...base, observable: 'later', observabilityReason: 42 }]);
+      expect(result).toHaveLength(1);
+      expect(result[0]?.observable).toBe('decision');
+      expect(result[0]?.observabilityReason).toBeUndefined();
+    });
+
+    it('drops a reason attached to a decision prediction', async () => {
+      const [p] = await parse([{ id: 'p1', ...base, observable: 'decision', observabilityReason: 'stray' }]);
+      expect(p?.observabilityReason).toBeUndefined();
+    });
+
+    it('asks the model for the tag, with criteria and examples', async () => {
+      const fn = makeFake('[]');
+      await predictChanges(
+        { spec: { title: 't', changes: [] }, changeDescriptions: [], structural: emptyStructural() },
+        fn,
+        MODEL,
+      );
+      const call = (fn as ReturnType<typeof vi.fn>).mock.calls[0] as [Parameters<CompleteFn>[0]];
+      expect(call[0].system).toContain('"observable":"decision"|"downstream"');
+      expect(call[0].system).toContain('observabilityReason');
+      expect(call[0].system).toMatch(/FIRST side-effecting request/);
+      expect(call[0].system).toMatch(/the tests pass after the fix/);
+    });
+  });
+
   it('truncates long systemDiff', async () => {
     const longDiff = 'x'.repeat(20000);
     const structural = { ...emptyStructural(), systemDiff: longDiff };

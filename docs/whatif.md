@@ -27,11 +27,20 @@ engine:
    Confirmed / Refuted / Unclear, and unpredicted differences are proposed.
    Each prediction is scored only on its own probes (see
    [Which episodes score a prediction](#which-episodes-score-a-prediction)).
-   A prediction that would read as Refuted is marked **Unobservable** instead
-   when its own probes show both arms requesting a tool the episode gate
-   stopped (for example `agent` or `write_file`): the behavior lies past the
-   episode boundary, so the run cannot tell. Unobservable rows show the reason
-   and are left out of accuracy counts.
+   Episodes stop at the agent's first side-effecting request, and the judges
+   grade that request as intent: `[tool requested: agent (not executed)]`
+   counts as the agent spawning a subagent. So a prediction about what the
+   agent *chooses* is measurable even though the action never runs.
+   A prediction whose behavior needs an intercepted action to *complete*
+   (the tests pass, the written file is correct, the subagent finds the bug)
+   cannot be measured. The predict step tags each prediction up front as
+   `decision` or `downstream`, before any episode runs. Every `downstream`
+   prediction is marked **Unobservable** 🔭 with a one-line reason, whatever
+   its measured rates. Its rates are still shown for transparency, but it
+   never counts as Confirmed or Refuted: it is left out of prediction accuracy,
+   the calibration ledger, and the headline effect. The verdict never changes
+   based on what happened in the episodes (for example, which tools were
+   intercepted).
 
 4. **Records calibration**: every prediction + verified outcome is appended to
    `~/.afk/state/whatif/ledger.jsonl` to improve future predictions.
@@ -192,6 +201,23 @@ with a graded output), `targetedEpisodes` (probes planned), and `background`
 (the other-episodes rate comparison, absent when an arm had none). The
 Measured Behaviors table and Unexpected Differences still use every episode,
 since those are universal.
+
+Observability fields in `results.json` (#2409):
+
+- `predictions[].observable` (and `verify.predictions[].prediction.observable`):
+  `"decision"` or `"downstream"`, set by the predict step. A missing or
+  unrecognised value, as in results written before #2409, means `"decision"`.
+- `predictions[].observabilityReason`: optional short reason on a
+  `"downstream"` prediction.
+- `verify.predictions[].verdict` is one of `"confirmed"`, `"refuted"`,
+  `"unclear"` or `"unobservable"`. `"unobservable"` is set exactly when the
+  prediction is `"downstream"`. Filter on all four values; code that only
+  expects the first three will silently drop these rows.
+- `verify.predictions[].unobservableReason`: present only on
+  `"unobservable"` rows, e.g. `downstream of the episode boundary: the tests
+  must run to completion`.
+- `verify.predictionAccuracy` is confirmed / (confirmed + refuted): both
+  `"unclear"` and `"unobservable"` are excluded.
 
 ---
 
