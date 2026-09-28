@@ -11,6 +11,16 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.266.2] - 2026-09-28
+
+### Fixed
+- per-episode analysis and real equivalence test for verdicts (#2404, #2405) (16345281)
+
+### Changed
+- Merge pull request #2473 from griffinwork40/afk/iso-compose-stats-1-e7z5zf (292422fe)
+- remove stray commit-message files (d2f20703)
+- extend calibration harness — Beta latent, tau dimension, updated thresholds (e500f913)
+
 ## [5.266.1] - 2026-09-28
 
 ### Fixed
