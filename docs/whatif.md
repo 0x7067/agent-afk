@@ -176,6 +176,12 @@ The terminal output shows:
 - **Caveats**: fixed reminders about what the engine can and cannot see.
 
 The full Markdown report is written to `~/.afk/state/whatif/<run-id>/report.md`.
+When one or more episodes failed and the failures were arm-imbalanced, the
+report opens with a `[!WARNING]` block before the Predictions table.  A
+**Failed Episodes** section (between Predictions and Unexpected Differences)
+lists each failure with its arm, error class, duration, and error message.
+`results.json` carries `verify.failedEpisodeRecords` (structured) and
+`verify.armImbalance` (when the imbalance threshold was exceeded).
 
 ### Which episodes score a prediction
 
@@ -394,6 +400,43 @@ src/cli/slash/commands/whatif.ts  REPL surface
 docs/whatif.md                  This file
 ```
 
+### Failed episodes and arm-imbalance warning (#2411)
+
+When `--verify` is used and one or more episodes fail (timeout or subprocess
+error), the report and `results.json` now surface this explicitly:
+
+- **`report.md` — Failed Episodes table**: every failed episode is listed with
+  its arm (`baseline` or `candidate`), sample index, error class (`timeout` or
+  `error`), wall-clock duration, and the first line of the error message.
+  When the episode targeted a specific prediction, the prediction id (`p1`, …)
+  is shown beside the episode id.
+
+- **`results.json` — `verify.failedEpisodeRecords`**: a structured array with
+  the same fields. Always present (empty array when no failures).
+
+- **Arm-imbalance warning**: when failures are significantly concentrated in one
+  arm, the report emits a prominent `[!WARNING]` block (Markdown) and a yellow
+  banner (terminal). `results.json` includes `verify.armImbalance` with
+  `baselineFailRate`, `candidateFailRate`, `rateDiff`, `allInOneArm`, and
+  `concentrationArm`.
+
+  **Threshold**: the warning fires when EITHER of these holds:
+  - The absolute failure-rate difference between arms exceeds **20 percentage
+    points** (20 pp). This is conservative enough not to flag a single stray
+    failure in a small run (1/6 vs 0/6 = 17 pp) while reliably catching the
+    pilot scenario (6/16 vs 0/26 = 37.5 pp).
+  - All failures landed in a single arm AND the total failure count is at least
+    2. This catches extreme concentration even when the pool is small.
+
+  The warning message suggests raising `--timeout` as the most common remedy,
+  since timeouts caused by the behaviour under test (e.g. the agent exploring
+  more thoroughly after a clarifying-question change) are the primary cause of
+  biased imbalance.
+
+  **Counting timeouts as outcomes** (recording a timeout as an observable
+  "did not finish within the turn") is deliberately deferred — see GitHub
+  issues #2411 and #2415 for the full discussion.
+
 ### Limits
 
 Every report includes standard caveats:
@@ -403,3 +446,5 @@ Every report includes standard caveats:
 - Redaction of secrets from real turns is regex best-effort; use `--judge claude`
   to keep data within Anthropic.
 - Statistical rates have uncertainty (Wilson 95% CI shown in the report).
+- Failed episodes are excluded from every rate; the Limits section names the count.
+  When failures are arm-imbalanced, a warning flags the potential verdict bias.
