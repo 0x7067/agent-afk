@@ -248,6 +248,62 @@ the real problem, though.
    session JSON still existing. An events.jsonl reader could extend the
    backfill to the older history (follow-up).
 
+### History extension (2026-09-28)
+
+Implemented an `events.jsonl` reader (`scripts/outcomes-backfill-events.ts`)
+that maps the per-session event stream into the same `Turn[]` shape the
+immediate LFs consume. Key measurement results before implementation:
+
+| Signal | Events-only sessions | Recovery rate |
+|---|---|---|
+| `cwd` (from `meta` record) | 16,248 / 16,248 | 100% |
+| Git commit SHA (from `tool_result` content) | 336 | 2% |
+| PR URL from `gh pr create` (from `tool_result`) | 121 | 0.7% |
+| `closed.reason=abort` (closure LF) | 175 | 1% |
+| Self-report Done/Blocked (from `assistant` records) | 2,388 / 63 | ~15% |
+| Facet coverage (yield_tracking / commits) | 3,556 (22%) | 0 with pr_url or commits |
+
+**Strategies chosen:**
+- **SHA/PR recovery**: `tool_result` records carry the actual command output
+  (not a 90-char truncated preview), so the same regex patterns work verbatim.
+  Facets were rejected — none of the 3,556 facets covering events sessions
+  carry `pr_url` or `world_changes.commits`.
+- **Commit subject matching**: rejected. Only 36% of commits use `-m "..."`;
+  `-F file` (31%) and heredocs (25%) make the subject invisible in inputs, and
+  `git log --grep` matching on truncated subjects would cause false attributions.
+- **PR branch matching (`gh pr create --head`)**: rejected. `--head` is never
+  visible in the sampled inputs; the bare `--title` is present in 87% but is
+  not unique enough for safe matching.
+- **Closure LF**: events `closed.reason=abort` gives a direct closure signal,
+  so events-only sessions get closure LF coverage that JSON-sidecar sessions
+  lack in M0.
+
+**New distribution** (16,255 total sessions; `--source all`):
+
+| Label | Count | % |
+|---|---|---|
+| succeeded | 270 | 2% |
+| failed | 18 | 0.1% |
+| interrupted | 166 | 1% |
+| blocked | 63 | 0.4% |
+| unknown | 15,738 | 97% |
+
+**Per-source breakdown:**
+
+| Source | Sessions | succeeded | failed | interrupted | blocked | unknown |
+|---|---|---|---|---|---|---|
+| json (M0) | 1,000 | 258 | 5 | 0 | 8 | 729 |
+| events (new) | 15,255 | 12 | 13 | 166 | 55 | 15,009 |
+
+**Exit check: PASS** (517 non-unknown, up from 272). The 166 new `interrupted`
+labels come entirely from the `closure` LF fired on `closed.reason=abort`
+events. The `failed` count is 18 (was 5) — still far below the 200 required
+for the router experiment. The primary blocker remains: explicit feedback
+(`/good`, `/bad`) is the only viable path to 200 `failed` labels. The events
+history adds 13 new `failed` from `error_tail` (3+ consecutive tool errors at
+session end) and `in_session_correction`, but scaling to 200 via bulk history
+alone is not feasible given the 97% `unknown` rate.
+
 ### What this changes in M2 (re-prioritised)
 
 Negative evidence is now the critical path. Build these before anything that
@@ -307,3 +363,85 @@ The router experiment (M3) stays blocked until the label has at least 200
    Revisit if M1 shows reverts arriving after day 7.
 4. `unknown` sessions are excluded from the router experiment (treated as
    missing data, never as zero).
+
+## M2 status (2026-09-28)
+
+### What is wired
+
+**M2 part 1 (commit 5d3391a1):**
+
+- `src/agent/outcomes/store.ts` — `readRecord`, `writeRecord`, `listRecords`, `upsertVotes`, `appendArtifacts`. Atomic tmp+rename writes. `appendArtifacts` handles the read-modify-write race between parent teardown and child attribution.
+- `src/cli/slash/commands/feedback.ts` + `src/telegram/handlers/feedback.ts` — `/good [note]` and `/bad [note]` REPL and Telegram commands. Write an `explicit_feedback` vote at confidence 1.0.
+- `src/agent/tools/handlers/get-facet.ts` — joins `verified_outcome` at read time.
+- `src/paths.ts` — `getOutcomesDir()`, `getOutcomeRecordPath()`.
+- Telegram bot refactor: `bot.command-descriptors.ts`, `bot.delegating-commands.ts`, `bot.feedback-commands.ts`.
+
+**M2 part 2 (this commit):**
+
+1. **Session-end immediate pass** (`src/agent/outcomes/session-end-hook.ts`, wired via `registerFacetAndOutcomeHooks` in `src/agent/default-hook-registry.ts:110`): at root-session teardown, loads session JSON turns, recovers artifacts, runs all immediate LFs (`closure`, `budget_cap`, `error_tail`, `verification`, `in_session_correction`, `self_report`). Closure info is read from `context.tracePath` synchronously. Stores `first_prompt` / `first_cwd` for reask. Upserts as `provisional` + 7-day settles_after when artifacts present; `settled` immediately otherwise. Fire-and-forget; never blocks teardown; skips forked children via `isSubagentContext`.
+
+2. **Child artifact attribution** (`src/agent/outcomes/child-attribution.ts`, `PostToolUse` hook in `registerFacetAndOutcomeHooks`): forked children inherit the shared hook registry and set `parentSessionId` on every `PostToolUse` context. This hook catches bash tool results from children, extracts commit SHAs and PR URLs using `recoverCommitSHAs` / `isPRCreateEvent`, and calls `appendArtifacts(parentSessionId, ...)`. Fire-and-forget; merges deduplicate; atomic rename avoids torn writes.
+
+3. **Closure LF** (`src/agent/outcomes/session-end-hook.ts:closureFromTrace`): reads `context.tracePath` (the sealed trace.jsonl threaded by the hook dispatch) and scans for `{kind:'closure'}` events to extract `reason`. Feeds `lfClosure` and `lfBudgetCap` inside `runImmediateLFs`.
+
+4. **`cross_session_reask` LF** (`src/agent/outcomes/lf-reask.ts`): when a new root session starts in the same `cwd` and its `first_prompt` has normalized-token Jaccard ≥ 0.6 with a prior session in the same `cwd` within 30 minutes, upserts a weak -1 onto the prior session's record. Jaccard threshold 0.6 documented in the module. Bounded scan of 20 most-recent records. Fire-and-forget; called from session-end hook after upsert.
+
+5. **Schema extension** (`src/agent/outcomes/schema.ts`): additive optional fields `first_prompt?: string` and `first_cwd?: string`. Existing records without them still parse (Zod `optional()`).
+
+### Follow-ups
+
+- **Telegram thumbs reactions**: `message_reaction` updates are not wired; `/good /bad` is the only explicit-feedback channel.
+- **Delayed LF job**: `src/agent/outcomes/lf-delayed.ts` is implemented but no daemon shell task calls it yet. Wire via `create_schedule` when the gold set (M1) is ready.
+- **Backfill**: the `scripts/outcomes-backfill.ts` M0 script covers existing history but not events.jsonl (sessions > 30 days). A follow-up reader could extend coverage.
+- **`fix_of_fix` LF**: scaffolded but skip-commented in `lf-delayed.ts`; requires the `FIX_OF_FIX_WINDOW_DAYS` probe to run during the nightly delayed pass.
+- **Deep nesting attribution**: child attribution routes to `parentSessionId`, which is the immediate parent. For grandchildren the intermediate child's `PostToolUse` events also fire on the grandparent's registry (all levels share the same hook registry), but the grandchild's `parentSessionId` points at the intermediate child, not the root. In practice the dominant pattern is single-level nesting (worktree-isolated children created by the root). Multi-level nesting attribution is a future follow-up.
+
+## M2 status: relabel job
+
+Implemented in PR stacked on #2429 (afk/verified-outcome-relabel branch).
+
+### Files
+
+| File | Purpose |
+|---|---|
+| `src/agent/outcomes/lf-ci.ts` | Delayed LF: `ci` — `gh pr checks` conclusion; weak vote |
+| `src/agent/outcomes/lf-fof.ts` | Delayed LF: `fix_of_fix` — reuses gh-fix-of-fix.ts patterns; weak -1 only |
+| `src/agent/outcomes/relabel-job.ts` | Batch runner: scans provisional records, runs LFs, upserts votes, settles |
+| `scripts/outcomes-relabel.ts` | Shell entrypoint: `--dry-run`, `--limit`; prints one-line summary |
+
+### How to schedule the relabel job
+
+Run this `create_schedule` call from an interactive session (not from code — the schedule is a persistent shared change):
+
+```json
+{
+  "name": "Nightly outcome relabel",
+  "cron": "17 3 * * *",
+  "executor": "shell",
+  "command": "npx tsx /Users/griffinlong/Projects/open_source/agent-afk/scripts/outcomes-relabel.ts",
+  "cwd": "/Users/griffinlong/Projects/open_source/agent-afk",
+  "notifyOn": "failure"
+}
+```
+
+Rationale for 03:17: avoids the :00 scheduling pileup; runs after midnight when
+GH rate limits have reset; well outside the daytime interactive window.
+
+### Settle semantics
+
+A record transitions from `provisional` to `settled` when:
+- All PRs in its artifacts have reached a terminal state (MERGED or CLOSED), OR
+- `settles_after` + 2-day grace period has passed (force-settle to avoid infinite
+  retry of records with deleted repos or revoked GH access).
+
+### Error handling contract
+
+- GH failures (rate limit, network, auth): `fetchPrState` / `execFnCi` /
+  `execFnFof` return null/empty and the record is NOT settled. It will be
+  retried the next night.
+- Missing or non-git `cwd` (repo path in artifacts no longer exists): `existsSync`
+  check skips `commit_survival`; `pr_fate` and `ci` still run via GH API.
+- Unexpected throws inside `processRecord`: caught by `Promise.allSettled`-style
+  wrapper in `runRelabelJob`; counted as an error in the summary line but never
+  crash the batch.
+- The job itself never throws at the top level (all errors are internal).
