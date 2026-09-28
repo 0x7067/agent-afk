@@ -62,6 +62,16 @@ export const VerifiedOutcomeSchema = z.object({
   artifacts: ArtifactsSchema,
   votes: z.array(VoteSchema),
   history: z.array(HistoryEntrySchema),
+  /**
+   * First prompt text (normalized for cross_session_reask Jaccard comparison).
+   * Stored at teardown; absent on records written before M2 or when unavailable.
+   */
+  first_prompt: z.string().optional(),
+  /**
+   * Effective cwd at session start. Stored alongside first_prompt so the
+   * cross_session_reask LF can filter to the same directory.
+   */
+  first_cwd: z.string().optional(),
 });
 
 export type VerifiedOutcome = z.infer<typeof VerifiedOutcomeSchema>;

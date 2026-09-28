@@ -173,6 +173,55 @@ export function upsertVotes(
 }
 
 // ---------------------------------------------------------------------------
+// Append artifacts — used by child attribution at tool-call time
+// ---------------------------------------------------------------------------
+
+/**
+ * Merge new commit SHAs and PR URLs into an existing outcome record's
+ * artifacts, then re-persist. If no record exists yet, creates a skeleton.
+ * Flips state to 'provisional' with a 7-day settles_after when the record
+ * was settled and new artifacts arrive (rare: attribution race).
+ *
+ * Read-modify-write: re-reads the record immediately before writing to
+ * minimize races between parent teardown and child PostToolUse dispatches.
+ * The atomic rename ensures no partial writes are observed.
+ */
+export function appendArtifacts(
+  sessionId: string,
+  incoming: { commits?: string[]; prs?: string[]; repo?: string | null },
+  opts: UpsertVotesOptions = {},
+): void {
+  validateSessionId(sessionId);
+  const outcomesDir = opts.outcomesDir ?? getOutcomesDir();
+  // Re-read right before writing to catch concurrent parent writes
+  const existing = readRecord(sessionId, outcomesDir);
+  const record: VerifiedOutcome = existing ?? _skeleton(sessionId);
+
+  // Merge deduplicated commits + prs
+  const commitsSet = new Set(record.artifacts.commits);
+  for (const sha of incoming.commits ?? []) commitsSet.add(sha);
+
+  const prsSet = new Set(record.artifacts.prs);
+  for (const url of incoming.prs ?? []) prsSet.add(url);
+
+  record.artifacts = {
+    commits: Array.from(commitsSet),
+    prs: Array.from(prsSet),
+    repo: record.artifacts.repo ?? incoming.repo ?? null,
+  };
+
+  // If artifacts arrived and record was settled, flip back to provisional
+  const hasNew =
+    (incoming.commits?.length ?? 0) > 0 || (incoming.prs?.length ?? 0) > 0;
+  if (hasNew && record.state === 'settled' && record.settles_after === null) {
+    record.state = 'provisional';
+    record.settles_after = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  }
+
+  writeRecord(record, outcomesDir);
+}
+
+// ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
 
