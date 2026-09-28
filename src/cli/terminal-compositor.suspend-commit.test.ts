@@ -214,17 +214,11 @@ describe('commitAbove during suspendInput (issue #2382)', () => {
       assertEachExactlyOnce(vs, labels, `${s.name} (disarm-while-suspended)`);
     });
 
-    // Queue-and-replay (#2382 settle design): the queued commit lands as a fresh
-    // commit after resume with the prior content already in scrollback. Each
-    // label appears exactly once across scrollback + viewport; contiguity is not
-    // required because suspendInput flushes prior content to scrollback and the
-    // queued commit starts a new band above the freshly-established frame.
-    // Mechanism-specific change: assertCommittedOnce → assertEachExactlyOnce.
-    // Reason: the settle+queue design archives BLOCK-A/B to scrollback at suspend;
-    // BLOCK-SUSPENDED lands fresh above the frame on resume. The combined
-    // scrollback+viewport list has a gap (blank viewport rows between sb and vp
-    // content) which assertCommittedOnce's contiguity check would reject. The
-    // exactlyOnce invariant is the meaningful correctness check here.
+    // Regression #2382 defect 2: owesRows — a band-hold commit stores
+    // committedBandPaintedRows=0 (everything pending). On resume the idle
+    // repaint must materialize the owed rows even when `moved=false` (the frame
+    // lands at the same position as before suspend). Without the owesRows check,
+    // repositionCommittedBand would return early and leave the band invisible.
     it(`idle repaint after resume materializes owed rows — ${s.name}`, async () => {
       const { c, vs, internals } = await makeRig(s);
       const labels: string[] = [];
@@ -242,7 +236,7 @@ describe('commitAbove during suspendInput (issue #2382)', () => {
       c.resumeInput();
       labels.push('BLOCK-A', 'BLOCK-B', 'BLOCK-SUSPENDED');
       // resumeInput() calls repaint() internally; no explicit repaint needed.
-      assertEachExactlyOnce(vs, labels, `${s.name} (idle)`);
+      assertCommittedOnce(vs, internals.frameTop(), labels, `${s.name} (idle)`);
       c.disarm();
     });
 
@@ -295,44 +289,41 @@ describe('commitAbove during suspendInput (issue #2382)', () => {
       c.disarm();
     });
 
-    // Queue-and-replay (#2382 settle design): non-scrolling external write during
-    // suspension. suspendInput flushes the band to scrollback; the non-scrolling
-    // write moves the cursor but does not scroll; resume replays the queued commit
-    // through the normal path. All labels appear exactly once.
-    // Mechanism-specific change: assertCommittedOnce → assertEachExactlyOnce.
-    // Reason: settle+queue archives BLOCK-A/B to scrollback at suspend; BLOCK-S
-    // lands fresh above the frame on resume. The gap between scrollback and
-    // viewport rows is expected (see idle-repaint test comment above).
+    // Non-scrolling external write during suspension: the owner writes a prompt
+    // without a trailing newline, so the cursor moves but no scroll occurs. The
+    // compositor observes R==P (cursor at same row) and takes the no-write resume
+    // path: band model preserved, repaint re-establishes the frame at the exact
+    // pre-suspend position. All labels must appear contiguously once.
+    // Invariant (Codex P2 limit): if the external write causes a terminal scroll
+    // (e.g., `answer\r\n`), committed rows may enter native scrollback while the
+    // model still marks them pending. The compositor cannot observe external
+    // scrolls, so it cannot prevent the duplicate in that case. Callers that must
+    // guarantee no duplicate after a scroll-causing external write must not commit
+    // during suspension, or must clear the band via clearCommittedBand() before
+    // resumeInput(). The test below uses a non-scrolling write only.
     it(`non-scrolling external write during suspension: no duplicate — ${s.name}`, async () => {
-      const { c, vs } = await makeRig(s);
+      const { c, vs, internals } = await makeRig(s);
       const stdout = (c as any).stdout as NodeJS.WriteStream;
       const labels: string[] = [];
       for (let i = 0; i < s.fill; i++) {
         const label = `FILL-${String(i).padStart(2, '0')}`;
         labels.push(label);
         c.commitAbove(`${label}\n`);
-        (c as any).repaint();
+        internals.repaint();
       }
       c.commitAbove('BLOCK-A\n');
       c.commitAbove('BLOCK-B\n');
-      (c as any).repaint();
+      internals.repaint();
       c.suspendInput();
       // Non-scrolling external write: moves cursor but does not emit \n.
       stdout.write('PROMPT? ');
       c.commitAbove('BLOCK-SUSPENDED\n');
       c.resumeInput();
       labels.push('BLOCK-A', 'BLOCK-B', 'BLOCK-SUSPENDED');
-      assertEachExactlyOnce(vs, labels, `${s.name} (ext-write)`);
+      assertCommittedOnce(vs, internals.frameTop(), labels, `${s.name} (ext-write)`);
       c.disarm();
     });
 
-    // Queue-and-replay (#2382 settle design): BLOCK-SUSPENDED goes to the queue
-    // at suspend time; BLOCK-C is committed normally after resume. All labels
-    // appear exactly once.
-    // Mechanism-specific change: assertCommittedOnce → assertEachExactlyOnce.
-    // Reason: settle+queue archives BLOCK-A/B to scrollback at suspend;
-    // BLOCK-SUSPENDED and BLOCK-C land fresh above the frame on resume. The
-    // gap between scrollback and viewport is expected (see idle-repaint comment).
     it(`suspended commit is shown exactly once after resume — ${s.name}`, async () => {
       const { c, vs, internals } = await makeRig(s);
       c.setSpinner({ enabled: true });
@@ -359,16 +350,12 @@ describe('commitAbove during suspendInput (issue #2382)', () => {
       c.setSpinner({ enabled: false });
       internals.repaint();
 
-      assertEachExactlyOnce(vs, labels, s.name);
+      assertCommittedOnce(vs, internals.frameTop(), labels, s.name);
       c.disarm();
     });
 
-    // Queue-and-replay (#2382 settle design): BLOCK-SUSPENDED is visible after
-    // resume with no further commits. All labels appear exactly once.
-    // Mechanism-specific change: assertCommittedOnce → assertEachExactlyOnce.
-    // Reason: same as above — settle+queue archives BLOCK-A/B at suspend.
     it(`suspended commit is visible on resume, before any later commit — ${s.name}`, async () => {
-      const { c, vs } = await makeRig(s);
+      const { c, vs, internals } = await makeRig(s);
       c.setSpinner({ enabled: true });
       const labels: string[] = [];
       for (let i = 0; i < s.fill; i++) {
@@ -384,7 +371,198 @@ describe('commitAbove during suspendInput (issue #2382)', () => {
       c.resumeInput();
       labels.push('BLOCK-A', 'BLOCK-B', 'BLOCK-SUSPENDED');
 
-      assertEachExactlyOnce(vs, labels, `${s.name} (on resume)`);
+      assertCommittedOnce(vs, internals.frameTop(), labels, `${s.name} (on resume)`);
+      c.disarm();
+    });
+
+    // Counted-handoff (issue #2382, PR #2400): no-write suspend/resume — the
+    // owner writes nothing; the compositor takes the R==P, S==0 path. The viewport
+    // must be byte-identical to what it was immediately before suspendInput() —
+    // no blank rows introduced, no content lost.
+    it(`no-write suspend/resume: viewport identical before/after — ${s.name}`, async () => {
+      const { c, vs, internals } = await makeRig(s);
+      c.setSpinner({ enabled: true });
+      const labels: string[] = [];
+      for (let i = 0; i < s.fill; i++) {
+        const label = `FILL-${String(i).padStart(2, '0')}`;
+        labels.push(label);
+        c.commitAbove(`${label}\n`);
+        internals.repaint();
+      }
+      c.commitAbove('BLOCK-A\n');
+      c.commitAbove('BLOCK-B\n');
+      labels.push('BLOCK-A', 'BLOCK-B');
+      internals.repaint();
+
+      // Snapshot viewport immediately before suspend.
+      const viewportBefore = vs.visibleLines().slice();
+      const dump = dumpScreen(vs);
+
+      c.suspendInput();
+      // Owner writes nothing.
+      c.resumeInput();
+
+      const viewportAfter = vs.visibleLines();
+      for (let i = 0; i < ROWS; i++) {
+        expect(
+          viewportAfter[i],
+          `[${s.name} (no-write)] row ${i + 1} changed after no-write resume:\nbefore:\n${dump}\nafter:\n${dumpScreen(vs)}`,
+        ).toBe(viewportBefore[i]);
+      }
+      // Blocks must still appear exactly once in the correct order.
+      assertCommittedOnce(vs, internals.frameTop(), labels, `${s.name} (no-write resume)`);
+      c.disarm();
+    });
+
+    // Counted-handoff: owner writes 2 newline-terminated lines that fit within the
+    // viewport (non-scrolling: R moves to P+2 but S==0), no queued commits. After
+    // resume the compositor takes the owner-wrote path (R != P), forgets the band,
+    // advances the anchor to R+1, and repaints. The owner's 2 lines are visible
+    // exactly once below the prior block content; nothing is overwritten.
+    it(`inline owner write (non-scrolling), no queue: owner lines visible once — ${s.name}`, async () => {
+      const { c, vs, internals } = await makeRig(s);
+      const stdout = (c as any).stdout as NodeJS.WriteStream;
+      const labels: string[] = [];
+      for (let i = 0; i < s.fill; i++) {
+        const label = `FILL-${String(i).padStart(2, '0')}`;
+        labels.push(label);
+        c.commitAbove(`${label}\n`);
+        internals.repaint();
+      }
+      c.commitAbove('BLOCK-A\n');
+      c.commitAbove('BLOCK-B\n');
+      labels.push('BLOCK-A', 'BLOCK-B');
+      internals.repaint();
+
+      c.suspendInput();
+      // Two CR+LF-terminated owner writes: each advances cursor row by 1.
+      // CR resets column to 0, LF advances row. Together they move R from P to
+      // P+2. The viewport is large enough that no scroll occurs (S==0), so the
+      // observer reports R=P+2, S=0. The compositor takes the owner-wrote path.
+      stdout.write('OWNER-LINE-0\r\n');
+      stdout.write('OWNER-LINE-1\r\n');
+      // No commitAbove while suspended.
+      c.resumeInput();
+
+      const all = [...vs.scrollbackLines(), ...vs.visibleLines()];
+      const dump = dumpScreen(vs);
+      // Prior blocks must each appear exactly once.
+      for (const label of labels) {
+        const count = all.filter((l) => l.trim() === label).length;
+        expect(count, `[${s.name} (owner-write-no-queue)] "${label}" must appear exactly once (found ${count}):\n${dump}`).toBe(1);
+      }
+      // Owner lines must each appear exactly once.
+      const ol0 = all.filter((l) => l.trim() === 'OWNER-LINE-0').length;
+      const ol1 = all.filter((l) => l.trim() === 'OWNER-LINE-1').length;
+      expect(ol0, `[${s.name} (owner-write-no-queue)] OWNER-LINE-0 must appear exactly once (found ${ol0}):\n${dump}`).toBe(1);
+      expect(ol1, `[${s.name} (owner-write-no-queue)] OWNER-LINE-1 must appear exactly once (found ${ol1}):\n${dump}`).toBe(1);
+      // Prior blocks must precede the owner lines (blocks appear above owner output).
+      const lastBlockIdx = Math.max(...labels.map((lb) => all.findIndex((l) => l.trim() === lb)));
+      const ownerIdx = all.findIndex((l) => l.trim() === 'OWNER-LINE-0');
+      expect(
+        lastBlockIdx < ownerIdx,
+        `[${s.name} (owner-write-no-queue)] prior blocks must precede owner lines:\n${dump}`,
+      ).toBe(true);
+      c.disarm();
+    });
+
+    // Counted-handoff: owner writes 2 newline-terminated non-scrolling lines AND
+    // a commit is queued while suspended. After resume: order must be blocks, owner
+    // lines, queued commit, then the frame — in top-to-bottom order.
+    it(`inline owner write + queued commit: order = blocks, owner, commit, frame — ${s.name}`, async () => {
+      const { c, vs, internals } = await makeRig(s);
+      const stdout = (c as any).stdout as NodeJS.WriteStream;
+      const labels: string[] = [];
+      for (let i = 0; i < s.fill; i++) {
+        const label = `FILL-${String(i).padStart(2, '0')}`;
+        labels.push(label);
+        c.commitAbove(`${label}\n`);
+        internals.repaint();
+      }
+      c.commitAbove('BLOCK-A\n');
+      c.commitAbove('BLOCK-B\n');
+      labels.push('BLOCK-A', 'BLOCK-B');
+      internals.repaint();
+
+      c.suspendInput();
+      // Two CR+LF-terminated owner writes (non-scrolling: S==0, R = P+2).
+      stdout.write('OWNER-OUT-A\r\n');
+      stdout.write('OWNER-OUT-B\r\n');
+      // Queue a commit while the owner holds the TTY.
+      c.commitAbove('QUEUED-COMMIT\n');
+      c.resumeInput();
+
+      const all = [...vs.scrollbackLines(), ...vs.visibleLines()];
+      const dump = dumpScreen(vs);
+      // Prior blocks appear exactly once.
+      for (const label of labels) {
+        const count = all.filter((l) => l.trim() === label).length;
+        expect(count, `[${s.name} (owner-write-queue)] "${label}" must appear once (found ${count}):\n${dump}`).toBe(1);
+      }
+      // Owner lines must each appear exactly once.
+      const oaCount = all.filter((l) => l.trim() === 'OWNER-OUT-A').length;
+      const obCount = all.filter((l) => l.trim() === 'OWNER-OUT-B').length;
+      expect(oaCount, `[${s.name} (owner-write-queue)] OWNER-OUT-A must appear once (found ${oaCount}):\n${dump}`).toBe(1);
+      expect(obCount, `[${s.name} (owner-write-queue)] OWNER-OUT-B must appear once (found ${obCount}):\n${dump}`).toBe(1);
+      // Queued commit must appear exactly once.
+      const qCount = all.filter((l) => l.trim() === 'QUEUED-COMMIT').length;
+      expect(qCount, `[${s.name} (owner-write-queue)] QUEUED-COMMIT must appear once (found ${qCount}):\n${dump}`).toBe(1);
+      // Order: prior blocks → owner lines → queued commit.
+      const lastBlockIdx = Math.max(...labels.map((lb) => all.findIndex((l) => l.trim() === lb)));
+      const ownerIdx = all.findIndex((l) => l.trim() === 'OWNER-OUT-A');
+      const qIdx = all.findIndex((l) => l.trim() === 'QUEUED-COMMIT');
+      expect(lastBlockIdx < ownerIdx, `[${s.name} (owner-write-queue)] blocks must precede owner lines:\n${dump}`).toBe(true);
+      expect(ownerIdx < qIdx, `[${s.name} (owner-write-queue)] owner lines must precede queued commit:\n${dump}`).toBe(true);
+      c.disarm();
+    });
+
+    // Counted-handoff: owner writes enough newline-terminated lines to cause
+    // terminal scroll (S>0). The compositor forgets the band model and advances
+    // the anchor. After resume every prior block and every SCROLL-LINE-* must
+    // appear exactly once across scrollback + viewport (no missing, no duplicate).
+    it(`owner scrolls (S>0): all content appears exactly once, in order — ${s.name}`, async () => {
+      const { c, vs, internals: _ } = await makeRig(s);
+      const stdout = (c as any).stdout as NodeJS.WriteStream;
+      const labels: string[] = [];
+      for (let i = 0; i < s.fill; i++) {
+        const label = `FILL-${String(i).padStart(2, '0')}`;
+        labels.push(label);
+        c.commitAbove(`${label}\n`);
+        (c as any).repaint();
+      }
+      c.commitAbove('BLOCK-A\n');
+      c.commitAbove('BLOCK-B\n');
+      labels.push('BLOCK-A', 'BLOCK-B');
+      (c as any).repaint();
+
+      c.suspendInput();
+      // Write enough CR+LF-terminated lines to scroll ≥3 rows (S >= 3).
+      // CR resets the column to 0 before LF so each label starts at column 1,
+      // avoiding the soft-wrap indent the VirtualScreen would see with LF-only.
+      const scrollLabels: string[] = [];
+      for (let i = 0; i < ROWS + 3; i++) {
+        const sl = `SC-${String(i).padStart(3, '0')}`;
+        scrollLabels.push(sl);
+        stdout.write(`${sl}\r\n`);
+      }
+      c.commitAbove('QUEUED-S\n');
+      c.resumeInput();
+
+      const all = [...vs.scrollbackLines(), ...vs.visibleLines()];
+      const dump = dumpScreen(vs);
+      // Every prior block must appear exactly once.
+      for (const label of labels) {
+        const count = all.filter((l) => l.trim() === label).length;
+        expect(count, `[${s.name} (scroll)] "${label}" must appear exactly once (found ${count}):\n${dump}`).toBe(1);
+      }
+      // QUEUED-S must appear exactly once.
+      const qCount = all.filter((l) => l.trim() === 'QUEUED-S').length;
+      expect(qCount, `[${s.name} (scroll)] QUEUED-S must appear exactly once (found ${qCount}):\n${dump}`).toBe(1);
+      // All SCROLL-LINE-* rows must each appear exactly once.
+      for (const sl of scrollLabels) {
+        const count = all.filter((l) => l.trim() === sl).length;
+        expect(count, `[${s.name} (scroll)] "${sl}" must appear exactly once (found ${count}):\n${dump}`).toBe(1);
+      }
       c.disarm();
     });
   }
