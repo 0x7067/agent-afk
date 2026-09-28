@@ -11,6 +11,40 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.261.4] - 2026-09-27
+
+### Fixed
+- prefer context.sessionId over registration-time id in command hooks (#2392) (12eaee43)
+- dispose() marks buffered jobs delivered; clarify truncateBytes JSDoc (f355f975)
+- trim query() invariant comment to pass funcsize ratchet (65d9999b)
+- clear resetArmed in stream.retry branch of PlanTextTracker (9c20a166)
+- deliver background subagent results to chat and next turn (68c9a1d0)
+- refuse exit_plan_mode when the plan was never written as visible text (e3fb66bc)
+- pass the resolved session id to the tool dispatcher (d4692df5)
+
+### Changed
+- Merge pull request #2380 from griffinwork40/afk/issue-2364-opk9 (f6ec52e4)
+- Merge pull request #2362 from griffinwork40/afk/debug-advocate-output (210910d7)
+- Merge pull request #2354 from griffinwork40/afk/oai-dispatcher-sessionid (836507df)
+- Merge branch 'main' into afk/oai-dispatcher-sessionid (c019a80d)
+
+## [5.261.3] - 2026-09-27
+
+### Fixed
+- regenerate env-registry docs after AFK_WHATIF_ALLOW_MCP description update (9c1aa0b1)
+
+### Changed
+- Merge pull request #2356 from griffinwork40/afk/issue-2349-q8x3 (919975c8)
+- fix stale comments and tighten tests from #2324–#2333 triage batch (d237819c)
+
+## [5.261.2] - 2026-09-27
+
+### Fixed
+- correct overlayTallEnoughToStrand analysis after adversarial review (d64cce8c)
+
+### Changed
+- Merge pull request #2384 from griffinwork40/afk/issue-2369-correction (4965ae74)
+
 ## [5.261.1] - 2026-09-27
 
 ### Fixed

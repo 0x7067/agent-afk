@@ -134,6 +134,88 @@ function enterAltScreen(compositor: TerminalCompositor): () => void {
 }
 
 /**
+ * Consume the subagent's output stream and write each event to the alt-screen.
+ *
+ * Contract: content chunks are streaming token deltas (a few words each).
+ * Writing each chunk as its own line produces the one-word-per-line wrapping
+ * bug. Instead, content is buffered into the current line and flushed only when:
+ *   (a) the chunk contains a newline (model intended a line break), or
+ *   (b) a non-content event arrives (tool_use_detail, error, message).
+ * stream_retry discards the in-progress buffer WITHOUT flushing so stale
+ * content is never committed to the terminal. Swallows any iterator error so
+ * the caller's finally block always runs (Esc / abort / stream-end are all
+ * handled the same way by the caller).
+ */
+async function tailOutputStream(params: {
+  stream: AsyncIterable<OutputEvent>;
+  signal: AbortSignal;
+  stdout: NodeJS.WriteStream;
+  clamp: (s: string) => string;
+  renderPrompt: () => void;
+}): Promise<void> {
+  const { stream, signal, stdout, clamp, renderPrompt } = params;
+  let lineBuf = '';
+
+  // Invariant: lineBuf never contains \n -- segments are split before accumulation.
+  // `force` emits a blank line even when lineBuf is empty -- used for model-
+  // intended newlines so consecutive \n produce visible paragraph breaks.
+  const flushLineBuf = (force = false): void => {
+    if (!lineBuf && !force) return;
+    stdout.write(`\r\x1b[K${lineBuf}\n`);
+    lineBuf = '';
+    renderPrompt();
+  };
+
+  try {
+    for await (const event of stream) {
+      if (signal.aborted) break;
+
+      if (event.type === 'chunk' && event.chunk.type === 'content') {
+        const raw = stripEscapeSequences(event.chunk.content);
+        const segments = raw.split('\n');
+        for (let i = 0; i < segments.length; i++) {
+          lineBuf += segments[i]!;
+          // Flush on every embedded newline (all segments except the last).
+          // force=true preserves blank lines from consecutive \n.
+          if (i < segments.length - 1) flushLineBuf(true);
+        }
+        // Live preview: show the in-progress line on the prompt row so the
+        // user sees text accumulate in real time (overwritten by renderPrompt
+        // or the next flushLineBuf). \r\x1b[K clears the prompt line first.
+        if (lineBuf) {
+          stdout.write(`\r\x1b[K${clamp(lineBuf)}`);
+        }
+        continue;
+      }
+
+      // stream_retry: the model is re-streaming from scratch — discard the
+      // stale in-progress buffer WITHOUT flushing so the old content is not
+      // committed to the terminal. Matches the pattern in turn-handler.ts:455.
+      if (event.type === 'stream_retry') {
+        lineBuf = '';
+        stdout.write('\r\x1b[K');
+        renderPrompt();
+        continue;
+      }
+
+      // Non-content event: flush any buffered content first, then emit the
+      // event on its own line (tool badges, errors are discrete lines).
+      flushLineBuf();
+      const text = formatOutputEvent(event);
+      if (text !== null) {
+        stdout.write(`\r\x1b[K${clamp(text)}\n`);
+        renderPrompt();
+      }
+    }
+  } catch {
+    // Abort or stream error — exit cleanly.
+  } finally {
+    // Flush any trailing content that didn't end with a newline.
+    flushLineBuf();
+  }
+}
+
+/**
  * Launch a mid-turn task view for the most recently dispatched running
  * subagent. The compositor's input is suspended (no keypresses reach the
  * compositor's dispatch chain) and a raw stdin listener handles Esc to
@@ -294,79 +376,21 @@ export async function launchMidTurnTaskView(
   stdout.write(clamp(palette.dim('  Type a message + Enter to send, Esc to return')) + '\n');
   renderPrompt();
 
-  // Contract: content chunks are streaming token deltas (a few words each).
-  // Writing each chunk as its own line produces the one-word-per-line wrapping
-  // bug. Instead, buffer content into the current line and flush only when:
-  //   (a) the chunk contains a newline (model intended a line break), or
-  //   (b) a non-content event arrives (tool_use_detail, error, message).
-  // The buffer is also flushed on stream end and on Esc exit.
-  let lineBuf = '';
-
-  // Invariant: lineBuf never contains \n -- segments are split before accumulation.
-  // `force` emits a blank line even when lineBuf is empty -- used for model-
-  // intended newlines so consecutive \n produce visible paragraph breaks.
-  const flushLineBuf = (force = false): void => {
-    if (!lineBuf && !force) return;
-    stdout.write(`\r\x1b[K${lineBuf}\n`);
-    lineBuf = '';
-    renderPrompt();
-  };
-
   try {
-    for await (const event of handle.session.getOutputStream() as AsyncIterable<OutputEvent>) {
-      if (signal.aborted) break;
-
-      // Content chunks: accumulate into lineBuf, flushing on embedded newlines.
-      if (event.type === 'chunk' && event.chunk.type === 'content') {
-        const raw = stripEscapeSequences(event.chunk.content);
-        const segments = raw.split('\n');
-        for (let i = 0; i < segments.length; i++) {
-          lineBuf += segments[i]!;
-          // Flush on every embedded newline (all segments except the last).
-          // force=true preserves blank lines from consecutive \n.
-          if (i < segments.length - 1) flushLineBuf(true);
-        }
-        // Live preview: show the in-progress line on the prompt row so the
-        // user sees text accumulate in real time (overwritten by renderPrompt
-        // or the next flushLineBuf). \r\x1b[K clears the prompt line first.
-        if (lineBuf) {
-          stdout.write(`\r\x1b[K${clamp(lineBuf)}`);
-        }
-        continue;
-      }
-
-      // stream_retry: the model is re-streaming from scratch — discard the
-      // stale in-progress buffer WITHOUT flushing so the old content is not
-      // committed to the terminal. Matches the pattern in turn-handler.ts:455.
-      // Erase the stale live-preview text and restore the input prompt.
-      if (event.type === 'stream_retry') {
-        lineBuf = '';
-        stdout.write('\r\x1b[K');
-        renderPrompt();
-        continue;
-      }
-
-      // Non-content event: flush any buffered content first, then emit the
-      // event on its own line (tool badges, errors are discrete lines).
-      flushLineBuf();
-      const text = formatOutputEvent(event);
-      if (text !== null) {
-        stdout.write(`\r\x1b[K${clamp(text)}\n`);
-        renderPrompt();
-      }
-    }
-  } catch {
-    // Abort or stream error — exit cleanly.
-  } finally {
-    // Flush any trailing content that didn't end with a newline.
-    flushLineBuf();
-    process.stdin.removeListener('data', onData);
+    await tailOutputStream({
+      stream: handle.session.getOutputStream() as AsyncIterable<OutputEvent>,
+      signal,
+      stdout,
+      clamp,
+      renderPrompt,
+    });
 
     if (!signal.aborted) {
       stdout.write('\r\x1b[K\n' + clamp(palette.dim('  Subagent completed. Press Esc to return.')) + '\n');
       await waitForEsc();
     }
-
+  } finally {
+    process.stdin.removeListener('data', onData);
     // Item 1: restore cooked mode before handing terminal back to compositor.
     try { process.stdin.setRawMode?.(false); } catch { /* non-TTY */ }
     // FIX-1: Clear the reentrancy guard so a subsequent Tab is accepted.

@@ -97,6 +97,15 @@ export interface PlanExitControls {
    * {@link import('../../session/agent-session.js').AgentSession.setPlanExitQueueCheck}.
    */
   hasPendingUserMessage?: () => boolean;
+  /**
+   * Optional visible-plan-text gate, wired by `AgentSession` to its
+   * `PlanTextTracker`. Called by the `exit_plan_mode` handler before the
+   * approval picker: `'ok'` shows the picker, `'refuse'` returns a tool result
+   * telling the model to write its plan as visible text first, and `'warn'`
+   * (refusal budget spent) shows the picker with a warning. Absent means no
+   * gate (the picker always shows), which keeps custom bridges working.
+   */
+  checkPlanText?: () => 'ok' | 'refuse' | 'warn';
 }
 
 /** Agent session configuration */

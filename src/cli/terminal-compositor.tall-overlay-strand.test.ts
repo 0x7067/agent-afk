@@ -2,69 +2,43 @@
  * Compositor-level regression for issue #2369 — tall-overlay gap fix
  * (`overlayTallEnoughToStrand` in commit-mode.ts).
  *
- * MUTATION-INSENSITIVITY FINDING (from the investigation for #2369):
+ * MUTATION-INSENSITIVITY FINDING (corrected — see #2382):
  *
  * Forcing `overlayTallEnoughToStrand` to `false` fails exactly TWO
- * pure-function tests in commit-mode.test.ts (as the issue documents) but
- * DOES NOT change the compositor's observable output for any reachable
- * scenario. This is because `overlayTallEnoughToStrand` is effectively
- * redundant with the pre-existing `runExceedsCurrentRoom` guard added in
- * commit 4898a2c3 (#539, A2 — unified retained model).
+ * pure-function tests in commit-mode.test.ts but DOES NOT change the
+ * compositor's observable output for commits that arrive while the frame
+ * is on screen. These tests are therefore not sensitive to the strand
+ * check, and that is the correct outcome.
  *
- * Why the two guards are equivalent in all reachable cases:
+ * Why the tests are insensitive (frame-on-screen cases):
  *
- *   `overlayTallEnoughToStrand` fires when:
- *     fitsAboveFrame=true && room < maxBandModel
- *     (implies the overlay is taller than the collapsed-frame minimum)
+ *   For commits where `runExceedsCurrentRoom=false` (the only range where
+ *   `overlayTallEnoughToStrand` could be the sole decider), and when
+ *   `overflowPriorContiguous=true` (requires `anchorRow <= 1`, the same
+ *   gate the strand check requires): `bandOverflow=0`, so Phase 1 scrolls
+ *   nothing to scrollback, and both fits-path and band-hold produce identical
+ *   screen output. Stripping the check changes the routing label but not
+ *   what the terminal receives.
  *
- *   `runExceedsCurrentRoom` fires when:
- *     overflowRun.length > room
+ * Why the check is NOT dead (see #2382):
  *
- *   For `overlayTallEnoughToStrand` to be the SOLE reason for band-hold
- *   (i.e., `runExceedsCurrentRoom=false`), we need:
- *     overflowRun.length <= room
- *
- *   When `overflowPriorContiguous=true` (requires `anchorRow <= 1`, which
- *   is the same gate `overlayTallEnoughToStrand` requires):
- *     overflowRun.length = committedBand.length + lineCount
- *     Phase-1 bandOverflow = max(0, committedBand.length + lineCount - room)
- *     bandOverflow > 0  iff  overflowRun.length > room  iff  runExceedsCurrentRoom
- *   So bandOverflow=0 whenever runExceedsCurrentRoom=false —
- *   Phase 1 scrolls NOTHING to scrollback in that case, making the
- *   fits-path and band-hold paths produce identical screen output.
- *
- *   When `overflowPriorContiguous=false` (requires `anchorRow > 1`):
- *     `overlayTallEnoughToStrand` requires `anchorRow <= 1` → it is false.
- *     The case is unreachable.
- *
- *   When `fitsAboveFrame=false` (BLOCKER-1 — first commit, overlay up):
- *     `overlayTallEnoughToStrand` requires `fitsAboveFrame=true` → it is false.
- *     The `!fitsAboveFrame && maxBandModel > 0` guard covers these commits.
- *
- *   Conclusion: `overlayTallEnoughToStrand` is defence-in-depth that
- *   documents intent but has no testable effect on compositor output
- *   given the current codebase. It was added (commit d30622fe) on the
- *   same day as the present branch, seemingly unaware that `runExceedsCurrentRoom`
- *   (added in commit 4898a2c3, ~10 weeks earlier) already covered the case.
+ *   An adversarial check found one reachable scenario the analysis above
+ *   missed: a commitAbove that arrives while suspendInput is active.
+ *   suspendInput sets logUpdate.topRow to 0 and repaint becomes a no-op,
+ *   so commit geometry still reports fitsAboveFrame=true. Phase 3 takes
+ *   the newTopRow<=1 branch, and there `overlayTallEnoughToStrand` is the
+ *   SOLE router to commitPhase3HoldStore (band-hold) instead of
+ *   clearCommittedBand, which would drop the block. This is tracked in
+ *   #2382 and fixed in a separate branch. Re-evaluate after #2382 lands.
  *
  * DELIVERABLE:
  *
- * Per the fallback clause of issue #2369 ("if no such scenario can be
- * constructed after a genuine attempt, document why the check is still
- * needed, or show it is dead and propose removal"), the present test file:
- *
- *   (I) Provides a compositor-level regression guard that verifies the
- *       core tall-overlay invariants (no stranding void, no lost rows)
- *       hold in both bottom-pin and content-hug-after-hugSlack-0 modes.
- *       These tests PASS both with the check on AND with it forced off —
- *       that is the correct outcome given the above analysis.
- *
- *   (II) Documents the mutation-insensitivity finding and proposes that
- *        `overlayTallEnoughToStrand` may be a candidate for removal in a
- *        future cleanup pass (the check carries no observable production
- *        benefit and adds cognitive load). Removal is NOT done here per
- *        the issue's explicit instruction ("do not remove the check
- *        yourself"). A tracking comment is added to commit-mode.ts.
+ * These tests assert the screen invariants (no blank top rows after
+ * collapse, every committed row exactly once) in both bottom-pin and
+ * content-hug-after-hugSlack-0 modes. They pass with the check on AND
+ * with it forced off because neither scenario exercises the suspend path.
+ * That is the expected outcome; the tests are retained as compositor-level
+ * regression guards for the frame-on-screen tall-overlay cases.
  *
  * Uses VirtualScreen (repo-native synchronous ANSI interpreter) rather
  * than @xterm/headless because vi.useFakeTimers() stalls headless terminal
