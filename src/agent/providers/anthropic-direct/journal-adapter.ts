@@ -14,6 +14,12 @@
  * recorded as a labelled text block so the audit record keeps their content;
  * on resume they replay as text, which the API always accepts.
  *
+ * Provenance (#2464): `fromJournalMessages` records which journal messages
+ * built each native message (a merge of consecutive same-role messages, plus
+ * any message that mapped to nothing), and `adopt` hands those originals back
+ * while the native is unedited. Thinking is stamped `origin: 'anthropic'`,
+ * and signed thinking from another family is not replayed.
+ *
  * @module agent/providers/anthropic-direct/journal-adapter
  */
 
@@ -32,7 +38,11 @@ import type {
   JournalMessage,
   JournalResultPart,
 } from '../../journal/index.js';
+import { JournalProvenance } from '../../journal/index.js';
 import { filterContentBlocks } from './resolve-params.js';
+
+/** Provider family stamped on thinking blocks this adapter writes. */
+export const ANTHROPIC_ORIGIN = 'anthropic';
 
 type ImageMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
 type ResultContentBlock = Exclude<ToolResultBlockParam['content'], string | undefined>[number];
@@ -91,8 +101,8 @@ function toolResultToJournal(block: ToolResultBlockParam): JournalBlock {
 function blockToJournal(block: ContentBlockParam): JournalBlock {
   switch (block.type) {
     case 'text': return { type: 'text', text: block.text };
-    case 'thinking': return { type: 'thinking', thinking: block.thinking, signature: block.signature };
-    case 'redacted_thinking': return { type: 'redacted_thinking', data: block.data };
+    case 'thinking': return { type: 'thinking', thinking: block.thinking, signature: block.signature, origin: ANTHROPIC_ORIGIN };
+    case 'redacted_thinking': return { type: 'redacted_thinking', data: block.data, origin: ANTHROPIC_ORIGIN };
     case 'tool_use': return { type: 'tool_use', id: block.id, name: block.name, input: block.input };
     case 'tool_result': return toolResultToJournal(block);
     case 'image': return imageToJournal(block);
@@ -145,15 +155,22 @@ function resultContentFromJournal(parts: readonly JournalResultPart[]): ResultCo
   return parts.map(resultPartFromJournal).filter((p): p is ResultContentBlock => p !== undefined);
 }
 
-/** Returns `null` for blocks this provider cannot replay (unsigned thinking). */
+/** Anthropic-written, or legacy (pre-#2464, no origin recorded). */
+function ownOrigin(origin: string | undefined): boolean {
+  return origin === undefined || origin === ANTHROPIC_ORIGIN;
+}
+
+/** Returns `null` for blocks this provider cannot replay (unsigned or foreign-signed thinking). */
 function blockFromJournal(block: JournalBlock): ContentBlockParam | null {
   switch (block.type) {
     case 'text': return { type: 'text', text: block.text };
     case 'text_ref': return { type: 'text', text: block.preview };
     case 'thinking':
       // Cross-provider thinking has no Anthropic signature; the API rejects it.
-      return block.signature ? { type: 'thinking', thinking: block.thinking, signature: block.signature } : null;
-    case 'redacted_thinking': return { type: 'redacted_thinking', data: block.data };
+      return block.signature && ownOrigin(block.origin)
+        ? { type: 'thinking', thinking: block.thinking, signature: block.signature }
+        : null;
+    case 'redacted_thinking': return ownOrigin(block.origin) ? { type: 'redacted_thinking', data: block.data } : null;
     case 'tool_use': return { type: 'tool_use', id: block.id, name: block.name, input: block.input };
     case 'tool_result': {
       const content = resultContentFromJournal(block.content);
@@ -176,7 +193,12 @@ function messageFromJournal(message: JournalMessage): MessageParam | null {
   return content.length > 0 ? { role: message.role, content } : null;
 }
 
-/** The anthropic-direct {@link JournalAdapter}. Stateless; share one instance. */
+const provenance = new JournalProvenance<MessageParam>();
+
+/**
+ * The anthropic-direct {@link JournalAdapter}. Share one instance: its only
+ * state is the identity-keyed provenance map, which is safe across runtimes.
+ */
 export const anthropicJournalAdapter: JournalAdapter<MessageParam> = {
   toJournal(message: MessageParam): JournalMessage {
     const content: JournalBlock[] = typeof message.content === 'string'
@@ -187,18 +209,36 @@ export const anthropicJournalAdapter: JournalAdapter<MessageParam> = {
 
   fromJournalMessages(messages: readonly JournalMessage[]): MessageParam[] {
     const out: MessageParam[] = [];
+    // sources[i]: the journal messages native out[i] stands for. A message
+    // that maps to nothing rides with the native before it (or the first one).
+    const sources: JournalMessage[][] = [];
+    let pending: JournalMessage[] = [];
     for (const m of messages) {
       const native = messageFromJournal(m);
-      if (!native) continue;
+      const last = sources[sources.length - 1];
+      if (!native) {
+        if (last) last.push(m);
+        else pending.push(m);
+        continue;
+      }
       const prev = out[out.length - 1];
       // Anthropic requires role alternation: merge consecutive same-role
       // messages (cross-provider journals, or a message emptied above).
-      if (prev && prev.role === native.role) {
+      if (prev && last && prev.role === native.role) {
         prev.content = [...(prev.content as ContentBlockParam[]), ...(native.content as ContentBlockParam[])];
+        last.push(m);
       } else {
         out.push(native);
+        sources.push([...pending, m]);
+        pending = [];
       }
     }
+    // After the loop: a merge reassigns `content`, and record() captures shape.
+    out.forEach((native, i) => provenance.record(sources[i]!, [native]));
     return out;
+  },
+
+  adopt(messages: readonly MessageParam[], at: number) {
+    return provenance.adopt(messages, at);
   },
 };

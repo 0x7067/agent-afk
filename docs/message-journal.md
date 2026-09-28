@@ -83,10 +83,24 @@ array at ~10 sites and more keep appearing). Instead each provider wraps
 
 `sync` diffs by object reference against the last snapshot and emits
 `truncate(k)` + `append`s for everything after the first divergence. Pushes
-become appends; compaction, rewind, orphan repair, `/clear`, and provider
-switches become truncate + re-append. `seed(messages)` declares the starting
-array (`[]` fresh, the seeded messages on resume); if it does not match the
-journal's folded length, the journal is resynced.
+become appends; compaction, rewind, orphan repair, and `/clear` become
+truncate + re-append. `seed(messages)` declares the starting array (`[]`
+fresh, the seeded messages on resume); if it does not match the journal's
+folded length, the journal is resynced from the first message that is not an
+adopted original (see Provenance below), so a crash-resume repair appends its
+synthetic tool results instead of rewriting the file.
+
+**Provenance (#2464):** each adapter's `fromJournalMessages` records, in a
+`WeakMap` keyed by the native object (`src/agent/journal/provenance.ts`), the
+span it built: the contiguous native messages and the journal messages they
+came from (OpenAI fans one user message out to N `tool` messages; Anthropic
+merges consecutive same-role messages). `JournalAdapter.adopt` hands the
+ORIGINAL journal messages back while the span is present in order and
+unedited, so `seed()` counts match and `snapshot()` is lossless. A divergence
+or `invalidateFrom` inside an adopted span backs off to the span's start, so
+the span re-maps whole and tool pairing is never split. Edit detection is a
+two-level shallow shape compare (message properties, then each block's own
+properties), never a stringify, so it does not scale with tool-result size.
 
 **Known gap:** an in-place edit of an already-synced message object is not
 diff-visible (the diff is by reference), so the journal keeps the pre-edit
@@ -100,11 +114,17 @@ before every model call rather than committed to the array, so the fold keeps
 the pre-degradation form for those: the audit holds more than the model was
 sent, and a resume re-applies the same transforms.
 
-**Cross-provider resume:** resuming a session on another provider seeds that
-provider's adapter from the fold, and its first sync rewrites the fold into
-what that provider can send (thinking signatures, redacted thinking, and
-unsupported document blocks are dropped). The earlier records remain in the
-file, so the pre-switch form is still readable from the raw records.
+**Cross-provider resume and switch:** resuming or switching onto another
+provider seeds that provider's adapter from the fold. Adopted spans map back
+to their originals, so the switch writes nothing and switching back keeps
+thinking signatures, redacted thinking, and documents the other wire could
+not carry. Only messages the new provider creates are journaled in its form.
+Thinking blocks carry `origin` (provider family); Anthropic replays signed
+thinking only when `origin` is `anthropic` or absent (pre-#2464 records). If
+Anthropic still rejects a recovered signature with a 400, the round retries
+once with thinking stripped from earlier turns
+(`anthropic-direct/loop/signature-retry.ts`). Whether that retry fires on
+every A→B→A switch is unverified against the live API.
 
 **Mid-session `/model` swap:** a cross-provider switch rebuilds the provider
 runtime through the router (`src/agent/providers/router/provider-router.ts`).
