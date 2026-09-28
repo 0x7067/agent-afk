@@ -260,12 +260,14 @@ export interface RateComparison {
   n: { baseline: number; candidate: number };
 }
 
-export type Verdict = 'confirmed' | 'refuted' | 'unclear';
+export type Verdict = 'confirmed' | 'refuted' | 'unclear' | 'unobservable';
 
 export interface VerifiedPrediction {
   prediction: Prediction;
   rates: RateComparison;
   verdict: Verdict;
+  /** Why the verdict is `'unobservable'` (e.g. intercepted in both arms). Optional, additive. */
+  unobservableReason?: string;
 }
 
 export interface DiscoveredDifference {
@@ -312,64 +314,13 @@ export interface WhatifReport {
 // Orchestration
 // ---------------------------------------------------------------------------
 
-export type WhatifStage =
-  | 'compile'
-  | 'sandbox'
-  | 'snapshot'
-  | 'predict'
-  | 'episodes'
-  | 'run'
-  | 'judge'
-  | 'discover'
-  | 'report';
-
-export interface WhatifProgress {
-  stage: WhatifStage;
-  message: string;
-  /** Optional completed/total for the current stage. */
-  done?: number;
-  total?: number;
-}
-
-/** Text-in/text-out model call used for predict, compile, judge, discover. */
-export type CompleteFn = (req: {
-  system: string;
-  user: string;
-  maxTokens: number;
-  model: string;
-  signal?: AbortSignal;
-}) => Promise<{ text: string; costUsd: number }>;
-
-export interface WhatifOptions {
-  spec: ChangeSpec;
-  realHome: string;
-  realCwd: string;
-  /** Model the agent under test uses (default: session / config model). */
-  agentModel: string;
-  /** Model for predict / compile / discover / Claude judge. */
-  analystModel: string;
-  verify: boolean;
-  /** Real turns to replay. */
-  turns: number;
-  /** Samples per episode per environment. */
-  samples: number;
-  maxUsd: number;
-  judge: 'auto' | 'jev' | 'claude';
-  concurrency: number;
-  maxTurns: number;
-  episodeTimeoutMs: number;
-  /** Keep sandboxes on disk after the run (debugging). */
-  keepSandboxes: boolean;
-}
-
-export interface WhatifDeps {
-  runner: AgentRunner;
-  complete: CompleteFn;
-  /** Resolves the judge for `options.judge`. */
-  makeJudge(choice: WhatifOptions['judge']): Promise<Judge>;
-  /** Claude judge used for the cross-check sample (may equal the main judge). */
-  makeCrossCheckJudge(): Promise<Judge | undefined>;
-  onProgress?: (p: WhatifProgress) => void;
-  signal?: AbortSignal;
-  now?: () => Date;
-}
+// Orchestration types (stages, progress, options, deps) live in their own
+// module and are re-exported here so every consumer keeps importing from
+// `./types.js`.
+export type {
+  WhatifStage,
+  WhatifProgress,
+  CompleteFn,
+  WhatifOptions,
+  WhatifDeps,
+} from './types.orchestration.js';

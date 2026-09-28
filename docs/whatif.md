@@ -25,6 +25,11 @@ engine:
    run in isolated sandboxes for both the baseline and candidate environments.
    Rates are measured (P(yes) per prediction), each prediction is marked
    Confirmed / Refuted / Unclear, and unpredicted differences are proposed.
+   A prediction that would read as Refuted is marked **Unobservable** instead
+   when both arms requested a tool the episode gate stopped (for example
+   `agent` or `write_file`): the behavior lies past the episode boundary, so
+   the run cannot tell. Unobservable rows show the reason and are left out of
+   accuracy counts.
 
 4. **Records calibration**: every prediction + verified outcome is appended to
    `~/.afk/state/whatif/ledger.jsonl` to improve future predictions.

@@ -177,6 +177,30 @@ describe('predictionAccuracy', () => {
     const items = [{ verdict: 'refuted' as const }];
     expect(predictionAccuracy(items)).toBe(0);
   });
+
+  it('excludes unobservable from numerator and denominator', () => {
+    const items = [
+      { verdict: 'confirmed' as const },
+      { verdict: 'refuted' as const },
+      { verdict: 'unobservable' as const },
+    ];
+    // unobservable should not count — accuracy = 1 confirmed / (1 + 1) = 0.5
+    const acc = predictionAccuracy(items);
+    expect(acc).toBeCloseTo(0.5);
+  });
+
+  it('returns undefined when all are unobservable', () => {
+    const items = [{ verdict: 'unobservable' as const }];
+    expect(predictionAccuracy(items)).toBeUndefined();
+  });
+
+  it('returns undefined when mix of unclear and unobservable only', () => {
+    const items = [
+      { verdict: 'unclear' as const },
+      { verdict: 'unobservable' as const },
+    ];
+    expect(predictionAccuracy(items)).toBeUndefined();
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -26,6 +26,7 @@
  */
 
 import { extractJson } from '../json-extract.js';
+import { INTERCEPTED_INTENT_RULE } from '../observability.js';
 import type { Judge, JudgeInput, JudgeQuestion, JudgeResult } from '../types.js';
 
 // ---------------------------------------------------------------------------
@@ -170,7 +171,7 @@ const JEV_TOOL_NAME = 'mcp__jev__jev_ask';
  */
 function buildJevArgs(input: JudgeInput): Record<string, unknown> {
   return {
-    state: `## User prompt\n${input.prompt}\n\n## Agent output\n${input.output}`,
+    state: `## Grading note\n${INTERCEPTED_INTENT_RULE}\n\n## User prompt\n${input.prompt}\n\n## Agent output\n${input.output}`,
     questions: input.questions.map((q) => ({
       id: q.id,
       type: 'check',

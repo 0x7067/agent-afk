@@ -19,6 +19,7 @@ import type {
   WhatifReport,
 } from './types.js';
 import { describeChange } from './operators/index.js';
+import { verdictEmoji, verdictLabel, isResolved } from './report-verdict.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -30,12 +31,6 @@ function pct(n: number): string {
 
 function ciStr(ci: [number, number]): string {
   return `[${pct(ci[0])}, ${pct(ci[1])}]`;
-}
-
-function verdictEmoji(v: 'confirmed' | 'refuted' | 'unclear'): string {
-  if (v === 'confirmed') return '✅';
-  if (v === 'refuted') return '❌';
-  return '⚪';
 }
 
 /** Truncate a string to at most `maxLines` lines, appending a note if cut. */
@@ -95,9 +90,7 @@ export function buildHeadline(report: Omit<WhatifReport, 'headline'>): string {
     }
   }
 
-  const totalResolved = verified.filter(
-    (vp) => vp.verdict === 'confirmed' || vp.verdict === 'refuted',
-  ).length;
+  const totalResolved = verified.filter((vp) => isResolved(vp.verdict)).length;
   const confirmed = verified.filter((vp) => vp.verdict === 'confirmed').length;
 
   const accStr =
@@ -204,7 +197,7 @@ export function renderMarkdown(report: WhatifReport): string {
         continue;
       }
       lines.push(
-        `| ${pred.id} | ${pred.behavior} | ${pred.direction} | ${pct(vp.rates.baseline)} | ${pct(vp.rates.candidate)} | ${ciStr(vp.rates.ci)} | ${verdictEmoji(vp.verdict)} ${vp.verdict} |`,
+        `| ${pred.id} | ${pred.behavior} | ${pred.direction} | ${pct(vp.rates.baseline)} | ${pct(vp.rates.candidate)} | ${ciStr(vp.rates.ci)} | ${verdictEmoji(vp.verdict)} ${verdictLabel(vp)} |`,
       );
     }
   }
@@ -305,7 +298,7 @@ export function renderTerminal(report: WhatifReport, palette: ThemePalette): str
       out.push(
         `  ${palette.dim(pred.id)} ${pred.behavior}` +
           `  ${palette.meta(`${pct(vp.rates.baseline)} → ${pct(vp.rates.candidate)}` )}` +
-          `  ${verdictColor(vp.verdict)}`,
+          `  ${verdictEmoji(vp.verdict)} ${verdictColor(verdictLabel(vp))}`,
       );
     }
   } else {

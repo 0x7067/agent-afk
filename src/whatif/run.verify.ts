@@ -15,6 +15,8 @@ import { compareRates, verdictFor, predictionAccuracy, agreementRate } from './s
 import { discoverDifferences, type OutputPair } from './discover.js';
 import { appendCalibration, type CalibrationRecord } from './ledger.js';
 import { BudgetTracker } from './cost.js';
+import { applyObservability } from './observability.js';
+import { renderTrace } from './trace-render.js';
 import type {
   AgentRunner,
   CompleteFn,
@@ -30,32 +32,6 @@ import type {
   VerifyResult,
   WhatifProgress,
 } from './types.js';
-
-// ---------------------------------------------------------------------------
-// Output rendering (for judge input)
-// ---------------------------------------------------------------------------
-
-/** Truncate long input JSON to prevent judge overload. */
-function truncInput(v: unknown, maxChars: number): string {
-  const s = JSON.stringify(v) ?? '';
-  return s.length <= maxChars ? s : s.slice(0, maxChars) + '…[truncated]';
-}
-
-/**
- * Render an episode trace into a compact text for the judge.
- * Shows assistant text then a compact tool-request list.
- */
-function renderTrace(trace: EpisodeTrace): string {
-  const parts: string[] = [trace.text];
-  for (const t of trace.tools) {
-    if (t.verdict === 'recorded') {
-      parts.push(`[tool requested: ${t.tool} (not executed)] ${truncInput(t.input, 200)}`);
-    } else {
-      parts.push(`[tool used: ${t.tool}]`);
-    }
-  }
-  return parts.join('\n');
-}
 
 // ---------------------------------------------------------------------------
 // Cross-check sample indices
@@ -383,7 +359,11 @@ export async function verifyRun(input: VerifyRunInput): Promise<VerifyRunOutput>
     const bScores = scoresForQuestion(p.id, 'baseline', goodTraces, judgeResults);
     const cScores = scoresForQuestion(p.id, 'candidate', goodTraces, judgeResults);
     const rates = compareRates(bScores, cScores);
-    return { prediction: p, rates, verdict: verdictFor(p, rates) };
+    const rawVerdict = verdictFor(p, rates);
+    // Episodes that targeted this prediction (synthetic probes have ep.targets === p.id).
+    const targetEpIds = episodes.filter((ep) => ep.targets === p.id).map((ep) => ep.id);
+    const { verdict, unobservableReason } = applyObservability(rawVerdict, targetEpIds, goodTraces);
+    return { prediction: p, rates, verdict, ...(unobservableReason !== undefined ? { unobservableReason } : {}) };
   });
 
   const verifiedDiscovered = discovered
