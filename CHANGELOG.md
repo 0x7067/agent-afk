@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.266.0] - 2026-09-28
+
+### Added
+- per-session message journal (full tool results, resume/fork source) (#2452) (416a11d1)
+
 ## [5.265.3] - 2026-09-28
 
 ### Fixed
