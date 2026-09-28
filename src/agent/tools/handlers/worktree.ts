@@ -318,9 +318,11 @@ export function createWorktreeHandler(
               };
             }
             if (outcome.reason === 'ignored-local-state') {
+              const detail = outcome.because === 'git-failed'
+                ? `the ignored-file probe failed (${outcome.detail}), so removal would be a guess`
+                : `ignored local state \`git status\` cannot see: ${outcome.detail}`;
               return {
-                content: `Refused: ${entry.path} holds non-rebuildable ignored files (e.g. .env, a gitignored plan) that ` +
-                  `\`git status\` cannot see, so removal would silently delete them. Move/back up what you need, or ` +
+                content: `Refused: ${entry.path} holds non-rebuildable ignored files — ${detail}. Move/back up what you need, or ` +
                   'pass force: true to discard them along with the checkout.',
                 isError: true,
               };
