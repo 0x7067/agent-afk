@@ -143,7 +143,6 @@ const INSPECTABLE_REBUILDABLE_DIRS: readonly RegExp[] = [
   // the compiled artifacts; the scoped expansion guards against that before
   // reaping. DerivedData (outside the repo) is deliberately excluded — it
   // lives in ~/Library and is never git-ignored inside a checkout.
-  /(?:^|\/)\._build\//,  // intermediate scratch used on some CI setups — never user-authored
   /(?:^|\/)\.build\//,
   // Elixir/Erlang Mix build output (analogous to target/ in Rust/Java).
   /(?:^|\/)_build\//,
