@@ -35,3 +35,19 @@ export {
 
 export type { CombinerInput, CombinerResult } from './combine.js';
 export { combine, computeConfidence } from './combine.js';
+
+export type { UpsertVotesOptions } from './store.js';
+export { readRecord, writeRecord, listRecords, upsertVotes, appendArtifacts } from './store.js';
+
+export { createOutcomeSessionEndHook } from './session-end-hook.js';
+export { createChildAttributionHook } from './child-attribution.js';
+export { lfReask, normalizeTokens, jaccardSimilarity, REASK_THRESHOLD } from './lf-reask.js';
+
+export type { ExecFnCi } from './lf-ci.js';
+export { lfCi, realExecFnCi } from './lf-ci.js';
+
+export type { ExecFnFof } from './lf-fof.js';
+export { lfFixOfFix as lfFixOfFixDelayed, realExecFnFof } from './lf-fof.js';
+
+export type { RelabelDeps, RelabelJobOptions, RelabelJobResult, ProcessResult } from './relabel-job.js';
+export { runRelabelJob, processRecord, realRelabelDeps } from './relabel-job.js';
