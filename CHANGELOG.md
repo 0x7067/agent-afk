@@ -11,6 +11,16 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.265.0] - 2026-09-28
+
+### Added
+- capture resultTail on verification events; parse pass/fail from tail (e0d90c2a)
+
+### Changed
+- intercepted actions are scored as 'did not happen', so unobservable predictions show as refuted (#2436) (3f6bd6cb)
+- Merge pull request #2437 from griffinwork40/afk/verified-outcome-capture (c433b43c)
+- Merge remote-tracking branch 'origin/main' into afk/sync-capture (fe274377)
+
 ## [5.264.0] - 2026-09-28
 
 ### Added
