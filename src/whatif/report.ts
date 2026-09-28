@@ -223,6 +223,27 @@ export function renderMarkdown(report: WhatifReport): string {
   lines.push('');
 
   if (verify) {
+    // ── 4.5. Arm imbalance warning + failed episodes (#2411) ──────────────
+    if (verify.armImbalance) {
+      lines.push(`> [!WARNING]`);
+      lines.push(`> **${verify.armImbalance.summary}**`);
+      lines.push('');
+    }
+
+    const recs = verify.failedEpisodeRecords ?? [];
+    if (recs.length > 0) {
+      lines.push(`## Failed Episodes\n`);
+      lines.push('| Episode | Arm | Sample | Class | Duration | Message |');
+      lines.push('|---------|-----|--------|-------|----------|---------|');
+      for (const r of recs) {
+        const probeCell = r.probe ? ` (${r.probe})` : '';
+        lines.push(
+          `| ${r.episodeId}${probeCell} | ${r.arm} | ${r.sample} | ${r.errorClass} | ${(r.durationMs / 1000).toFixed(1)}s | ${r.errorMessage} |`,
+        );
+      }
+      lines.push('');
+    }
+
     // ── 5. Unexpected differences ─────────────────────────────────────────
     if (verify.discovered.length > 0) {
       lines.push(`## Unexpected Differences\n`);
@@ -294,6 +315,12 @@ export function renderMarkdown(report: WhatifReport): string {
 export function renderTerminal(report: WhatifReport, palette: ThemePalette): string[] {
   const { headline, predictions, verify, costUsd, limits } = report;
   const out: string[] = [];
+
+  // Arm-imbalance banner — shown before everything else so it cannot be missed.
+  if (verify?.armImbalance) {
+    out.push(palette.warning(`⚠ ${verify.armImbalance.summary}`));
+    out.push('');
+  }
 
   // Headline.
   out.push(palette.brand(headline));
