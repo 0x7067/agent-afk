@@ -98,9 +98,8 @@ import { DenialCircuitBreakerError, HookBlockedError, errorMessage } from '../..
 import {
   COMPACT_SYSTEM_PROMPT,
   wrapTranscriptForSummary,
-  resolveMicrocompactOptions,
 } from '../shared/compaction.js';
-import { compactOpenAIHistory, readShrinkFraction, microcompactToolResults } from './compact.js';
+import { compactOpenAIHistory, readShrinkFraction } from './compact.js';
 import {
   oneShotChatCompletion,
   oneShotResponses,
@@ -1077,21 +1076,8 @@ export class OpenAICompatibleQuery implements ProviderQuery {
       // which overshoots "no-op cheaply" into "guarantee an eventual overflow".
       // Mirrors the fallback `compactOpenAIHistory` runs on its own no-op
       // reasons (compact.ts) — same options source, same result shape.
-      const microOpts = resolveMicrocompactOptions(
-        env.AFK_MICROCOMPACT_TOOL_RESULT_BYTES,
-        env.AFK_MICROCOMPACT_KEEP_LAST,
-        env.AFK_MICROCOMPACT_DELEGATION_BYTES,
-      );
-      const { blocksCleared, bytesReclaimed } = microcompactToolResults(this.priorTurns, microOpts);
-      if (blocksCleared > 0) {
-        return {
-          compacted: false,
-          reason: 'microcompacted',
-          messagesBefore,
-          messagesAfter: this.priorTurns.length,
-          microcompaction: { blocksCleared, bytesReclaimed },
-        };
-      }
+      const micro = this.journal.microcompactFallback(this.priorTurns);
+      if (micro) return micro;
       return {
         compacted: false,
         reason: 'responses-compaction-unavailable',
@@ -1138,7 +1124,7 @@ export class OpenAICompatibleQuery implements ProviderQuery {
       trigger,
       traceWriter: this.traceWriter,
     });
-    if (compactResult.compacted) this.journal.sync(this.priorTurns, true);
+    this.journal.afterCompact(this.priorTurns, compactResult); // splice or in-place microcompaction
     return compactResult;
   }
 
@@ -1317,6 +1303,9 @@ export class OpenAICompatibleQuery implements ProviderQuery {
       error: `${PROVIDER_NAME} provider does not support file checkpoint rewind yet.`,
     };
   }
+
+  /** Live conversation in journal form (router `/model` swap carry); undefined without a journal. */
+  journalSnapshot(): ReturnType<OpenAIJournalWiring['snapshot']> { return this.journal.snapshot(this.priorTurns); }
 
   close(): void {
     // Invariant: the `closed` flag and the close promise must be updated

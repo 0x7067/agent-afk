@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { JournalMessage } from '../../journal/index.js';
 import type { OpenAIMessage } from './messages.js';
-import { openAIJournalAdapter as adapter } from './journal-adapter.js';
+import { INTERRUPTED_TOOL_RESULT, openAIJournalAdapter as adapter } from './journal-adapter.js';
 
 const asMsg = (m: Record<string, unknown>): OpenAIMessage => m as unknown as OpenAIMessage;
 
@@ -113,3 +113,48 @@ describe('openAIJournalAdapter.fromJournalMessages', () => {
     ]);
   });
 });
+
+describe('openAIJournalAdapter.fromJournalMessages — unanswered tool calls', () => {
+  const call = (id: string) => ({ type: 'tool_use' as const, id, name: 'read', input: {} });
+  const result = (id: string) => ({ type: 'tool_result' as const, toolUseId: id, content: [{ type: 'text' as const, text: `r-${id}` }] });
+
+  it('answers a trailing tool call with no recorded result with a synthetic error', () => {
+    const out = adapter.fromJournalMessages([
+      { role: 'user', content: [{ type: 'text', text: 'go' }] },
+      { role: 'assistant', content: [call('c1')] },
+    ]);
+    expect(out.map((m) => m.role)).toEqual(['user', 'assistant', 'tool']);
+    expect(out[2]).toEqual({ role: 'tool', tool_call_id: 'c1', content: INTERRUPTED_TOOL_RESULT });
+    expect(INTERRUPTED_TOOL_RESULT.startsWith('[error] ')).toBe(true);
+  });
+
+  it('inserts the synthetic result after the call\'s existing tool messages, before any user message', () => {
+    const out = adapter.fromJournalMessages([
+      { role: 'user', content: [{ type: 'text', text: 'go' }] },
+      { role: 'assistant', content: [call('c1'), call('c2')] },
+      { role: 'user', content: [result('c1'), { type: 'text', text: 'note' }] },
+      { role: 'assistant', content: [{ type: 'text', text: 'done' }] },
+    ]);
+    expect(out).toEqual([
+      { role: 'user', content: 'go' },
+      expect.objectContaining({ role: 'assistant' }),
+      { role: 'tool', tool_call_id: 'c1', content: 'r-c1' },
+      { role: 'tool', tool_call_id: 'c2', content: INTERRUPTED_TOOL_RESULT },
+      { role: 'user', content: 'note' },
+      { role: 'assistant', content: 'done' },
+    ]);
+  });
+
+  it('leaves fully answered tool rounds untouched', () => {
+    const journal: JournalMessage[] = [
+      { role: 'user', content: [{ type: 'text', text: 'go' }] },
+      { role: 'assistant', content: [call('c1')] },
+      { role: 'user', content: [result('c1')] },
+      { role: 'assistant', content: [{ type: 'text', text: 'done' }] },
+    ];
+    const out = adapter.fromJournalMessages(journal);
+    expect(out.map((m) => m.role)).toEqual(['user', 'assistant', 'tool', 'assistant']);
+    expect(out.some((m) => m.content === INTERRUPTED_TOOL_RESULT)).toBe(false);
+  });
+});
+

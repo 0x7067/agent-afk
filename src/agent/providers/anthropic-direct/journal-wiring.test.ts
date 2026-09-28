@@ -164,6 +164,39 @@ describe('anthropic-direct journal wiring — compaction and rewind', () => {
     expect(JSON.stringify(journal.arr)).toContain('SUMMARY');
   });
 
+  it('microcompaction-only re-journals from the first cleared message so the fold shows the placeholder', async () => {
+    vi.stubEnv('AFK_MICROCOMPACT_TOOL_RESULT_BYTES', '100');
+    vi.stubEnv('AFK_MICROCOMPACT_KEEP_LAST', '0');
+    try {
+      const big = 'X'.repeat(5_000);
+      const toolUse = (id: string): MessageParam => ({ role: 'assistant', content: [{ type: 'tool_use', id, name: 'bash', input: {} }] });
+      const toolResult = (id: string): MessageParam => ({ role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: big }] });
+      const journal = new FakeJournal();
+      const state = createSessionState({
+        model: 'claude-sonnet-4-5', permissionMode: 'default', userSystem: null, toolDispatcher: dispatcher,
+        initialMessages: [u('q1'), toolUse('t1'), toolResult('t1'), a('a1')],
+        messageJournal: journal,
+      });
+      expect(JSON.stringify(journal.arr)).toContain(big);
+      // Summarizer unavailable: the summary step fails, microcompaction still runs.
+      const retry = {
+        authMode: 'api-key',
+        client: { messages: { create: () => { throw new Error('summarizer down'); } } },
+      } as unknown as RetryLayer;
+      const res = await compactQueryHistory({ state, abort: new AbortCoordinator(), retry, initSessionId: 's' });
+      expect(res.compacted).toBe(false);
+      expect(res.microcompaction?.blocksCleared).toBeGreaterThan(0);
+
+      const truncate = journal.records.find((r) => r.kind === 'truncate');
+      expect(truncate).toEqual({ kind: 'truncate', length: 2, reason: 'compact' });
+      // The fold now matches what the model will be sent: no full result left.
+      expect(journal.arr).toHaveLength(state.messages.length);
+      expect(JSON.stringify(journal.arr)).not.toContain(big);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('rewind emits truncate(rewind) at the divergence and a rewind mark', () => {
     const journal = new FakeJournal();
     const state = createSessionState({

@@ -15,6 +15,8 @@
  * An in-place mutation of an already-synced message object (e.g. the
  * wind-down note appended into the last user message's content array) is
  * NOT detected; that is an accepted, documented gap (docs/message-journal.md).
+ * A caller that KNOWS it edited synced messages in place (microcompaction)
+ * calls {@link JournalSync.invalidateFrom} so the next sync re-appends them.
  *
  * @module agent/journal/sync
  */
@@ -86,6 +88,28 @@ export class JournalSync<T> {
     tail.entries.forEach((m, i) => journal.append(baseLen + i, m));
     this.committed = [...messages];
     this.lenAfter = [...this.lenAfter.slice(0, k), ...tail.lenAfter];
+  }
+
+  /**
+   * Forget the committed snapshot from provider index `index` on, so the next
+   * {@link sync} emits `truncate` + re-append from there. For callers that
+   * mutated already-synced message objects IN PLACE (microcompaction), which
+   * the by-reference diff cannot see. Out-of-range indices are clamped; a
+   * no-op before the first seed/sync.
+   */
+  invalidateFrom(index: number): void {
+    const at = Math.max(0, Math.min(Number.isFinite(index) ? Math.floor(index) : 0, this.committed.length));
+    this.committed.length = at;
+    this.lenAfter.length = at;
+  }
+
+  /**
+   * The last-synced conversation in journal form (the committed native
+   * messages mapped through the adapter). Callers wanting the CURRENT array
+   * `sync` first. Empty when no journal is wired or nothing was synced.
+   */
+  snapshot(): JournalMessage[] {
+    return this.mapAll(this.committed, 0).entries;
   }
 
   private mapAll(messages: readonly T[], startLen: number): { entries: JournalMessage[]; lenAfter: number[] } {

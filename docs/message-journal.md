@@ -106,6 +106,15 @@ what that provider can send (thinking signatures, redacted thinking, and
 unsupported document blocks are dropped). The earlier records remain in the
 file, so the pre-switch form is still readable from the raw records.
 
+**Mid-session `/model` swap:** a cross-provider switch rebuilds the provider
+runtime through the router (`src/agent/providers/router/provider-router.ts`).
+The router takes the outgoing runtime's `ProviderQuery.journalSnapshot()` (the
+live conversation in journal form) and seeds the new runtime with it as
+`resumeMessages`, so the new model continues with tool calls and full results
+rather than a text summary. The process-start `resumeMessages` is never
+carried into a swap (it would be stale). Without a journal the router falls
+back to its text `shadowHistory`, as before.
+
 ## Sessions, subagents, lifecycle
 
 - The session layer builds the journal (`createMessageJournal`) with a lazy
@@ -118,6 +127,26 @@ file, so the pre-switch form is still readable from the raw records.
   config: `fork-child-config.ts` overwrites any inherited journal with
   `parent.messageJournal?.forSubagent(id)` and clears `resumeMessages`, so a
   child can never write its parent's file.
+- Coverage: every fork of a journaled session gets its own subagent journal.
+  - Top-level parents: all executor wiring sites (REPL `bootstrap-infra.ts`,
+    `afk chat`, daemon/scheduler `daemon-session-factory.ts`, Telegram, web
+    server) hand the executors a deferred parent whose `messageJournal` getter
+    reads the live session (`IAgentSession.messageJournal`).
+  - `agent`, `skill` and `compose` forks. DAG nodes fork with
+    `{ sessionId, messageJournal }` (`dag-subagent.ts`), so each node journals
+    to its own file.
+  - Depth-2+ `agent` forks: after the fork returns, `subagent-executor.ts`
+    backfills the child executor's stub parent with the child's own journal
+    (`handle.session.messageJournal`) next to the `sessionId` backfill.
+  - Depth-2+ skill forks: `fork-dispatch.ts` passes a `JournalParentHolder`
+    through `buildForkedChildConfig` and fills it the same way. The nested
+    skill factory (`nesting.ts`) reads it lazily.
+  - Layout is flat: every descendant shares the root session id, so a
+    grandchild writes `sessions/<rootId>/subagents/<grandchildId>.jsonl`, a
+    different file from its parent's `subagents/<childId>.jsonl`. The tree
+    shape is not encoded in the path.
+  - Remaining gap: a stub parent with no journal source (tests, bare harnesses,
+    unjournaled sessions) still produces unjournaled children.
 - `/clear` closes the journal and opens a fresh one before the provider
   runtime is rebuilt (non-CLI surfaces mint a new session id on reset, so the
   old journal must not capture the new conversation). On the CLI the id is
@@ -184,6 +213,4 @@ Import everything from `src/agent/journal/index.ts`.
 
 - `AFK_CAPTURE_SUBAGENT_OUTPUT` / `AFK_CAPTURE_SUBAGENT_PROMPTS` are subsumed by
   subagent journals and can be retired.
-- The provider router's text-only `shadowHistory` on a cross-provider `/model`
-  switch could seed the new provider from the journal instead.
 - Facets / harvest could read the journal instead of sidecar `toolEvents`.

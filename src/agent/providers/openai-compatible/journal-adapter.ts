@@ -20,6 +20,10 @@
  * any remaining text / images, so Anthropic-written journals (which batch
  * tool_results into one user message) replay with valid OpenAI alternation.
  *
+ * Every replayed assistant tool call gets a `tool` message: a call the
+ * journal never recorded a result for (session died mid-dispatch) is answered
+ * with a synthetic `[error]` result, since the API rejects an unanswered one.
+ *
  * Tool-call arguments are parsed to an object for the journal; a payload that
  * is not valid JSON is preserved verbatim as `{ _raw: <string> }` and replayed
  * as the same string. Images stay `image_url` parts; buildMessages() already
@@ -196,13 +200,45 @@ function assistantFromJournal(msg: JournalMessage): OpenAIMessage {
   return out as unknown as OpenAIMessage;
 }
 
+/** Synthetic result for a tool call the journal never recorded a result for. */
+export const INTERRUPTED_TOOL_RESULT = ERROR_PREFIX + 'tool call was interrupted before a result was recorded';
+
+/**
+ * Pair every assistant `tool_calls` id with a `tool` message before the next
+ * assistant message: the API rejects an unanswered call (HTTP 400). A journal
+ * ends in one when the session died mid-tool-dispatch. The synthetic `tool`
+ * message goes right after that assistant's existing `tool` messages.
+ */
+function repairUnansweredToolCalls(msgs: OpenAIMessage[]): OpenAIMessage[] {
+  const out: OpenAIMessage[] = [];
+  for (let i = 0; i < msgs.length; i++) {
+    const msg = msgs[i]!;
+    out.push(msg);
+    const calls = msg.role === 'assistant' ? toolCallsOf(msg) : undefined;
+    if (!calls) continue;
+    const answered = new Set<string>();
+    let j = i + 1;
+    for (; j < msgs.length && msgs[j]!.role !== 'assistant'; j++) {
+      const id = msgs[j]!.tool_call_id;
+      if (msgs[j]!.role === 'tool' && id !== undefined) answered.add(id);
+    }
+    let k = i + 1;
+    while (k < j && msgs[k]!.role === 'tool') out.push(msgs[k++]!);
+    for (const tc of calls) {
+      if (!answered.has(tc.id)) out.push({ role: 'tool', tool_call_id: tc.id, content: INTERRUPTED_TOOL_RESULT });
+    }
+    i = k - 1;
+  }
+  return out;
+}
+
 function fromJournalMessages(messages: readonly JournalMessage[]): OpenAIMessage[] {
   const out: OpenAIMessage[] = [];
   for (const msg of messages) {
     if (msg.role === 'assistant') out.push(assistantFromJournal(msg));
     else userFromJournal(msg, out);
   }
-  return out;
+  return repairUnansweredToolCalls(out);
 }
 
 export const openAIJournalAdapter: JournalAdapter<OpenAIMessage> = { toJournal, fromJournalMessages };

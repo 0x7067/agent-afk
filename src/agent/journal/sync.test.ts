@@ -131,4 +131,49 @@ describe('JournalSync', () => {
     s.seed([u('x'), a('y')]);
     expect(texts(j)).toEqual(['x', 'y']);
   });
+
+  it('invalidateFrom re-appends from the index after an in-place edit', () => {
+    const j = new FakeJournal();
+    const s = new JournalSync(j, adapter);
+    const arr: Msg[] = [u('1'), a('2'), u('3'), a('4')];
+    s.sync(arr);
+    arr[2]!.text = '3-cleared'; // in-place: invisible to the by-reference diff
+    s.sync(arr);
+    expect(texts(j)).toEqual(['1', '2', '3', '4']);
+    s.invalidateFrom(2);
+    s.sync(arr, { reason: 'compact' });
+    expect(j.records.slice(4)).toEqual([
+      { kind: 'truncate', length: 2, reason: 'compact' },
+      { kind: 'append', index: 2, text: '3-cleared' },
+      { kind: 'append', index: 3, text: '4' },
+    ]);
+    expect(texts(j)).toEqual(['1', '2', '3-cleared', '4']);
+  });
+
+  it('invalidateFrom clamps out-of-range indices and maps skipped messages correctly', () => {
+    const j = new FakeJournal();
+    const s = new JournalSync(j, adapter);
+    const arr: Msg[] = [{ role: 'system', text: 'sys' }, u('1'), a('2')];
+    s.sync(arr);
+    s.invalidateFrom(99); // past the end: nothing to re-append
+    s.sync(arr);
+    expect(j.records.filter((r) => r.kind === 'truncate')).toEqual([]);
+    s.invalidateFrom(-5); // negative clamps to 0
+    s.sync(arr);
+    expect(j.records.filter((r) => r.kind === 'truncate')).toEqual([{ kind: 'truncate', length: 0, reason: 'resync' }]);
+    expect(texts(j)).toEqual(['1', '2']);
+  });
+
+  it('snapshot returns the last-synced conversation in journal form', () => {
+    const s0 = new JournalSync<Msg>(undefined, adapter);
+    expect(s0.snapshot()).toEqual([]);
+    const j = new FakeJournal();
+    const s = new JournalSync(j, adapter);
+    const arr: Msg[] = [{ role: 'system', text: 'sys' }, u('1'), a('2')];
+    s.sync(arr);
+    arr.push(u('3')); // not synced yet
+    expect(s.snapshot().map((m) => m.content[0])).toEqual([{ type: 'text', text: '1' }, { type: 'text', text: '2' }]);
+    s.sync(arr);
+    expect(s.snapshot()).toHaveLength(3);
+  });
 });

@@ -13,6 +13,7 @@
 import type { ProviderQuery, ProviderQueryArgs } from '../../provider.js';
 import { AnthropicDirectQuery } from './query-runtime.js';
 import { anthropicJournalAdapter } from './journal-adapter.js';
+import { resumeSeedInputTokens } from '../shared/resume-usage-seed.js';
 import {
   resolveAnthropicTemperature,
   resolveAutoCompactThreshold,
@@ -63,13 +64,11 @@ export function buildProviderQuery(
   const initialMessages = config.resumeMessages !== undefined && config.resumeMessages.length > 0
     ? anthropicJournalAdapter.fromJournalMessages(config.resumeMessages)
     : resumeHistoryToMessages(config.resumeHistory);
-  // Seed the context-overflow guard from the last stored turn's token count
-  // (#1294). The last turn of resumeHistory carries `inputTokens` when the
-  // session was saved with a recent enough sidecar; absent on legacy sidecars.
-  // Conservative: prefer over-estimate (triggers compaction) over under-estimate
-  // (lets a full context reach the wire and get rejected with HTTP 400).
-  const lastResumedTurn = config.resumeHistory?.at(-1);
-  const initialUsageInputTokens = lastResumedTurn?.inputTokens;
+  // Seed the context-overflow guard (#1294): the last stored turn's token
+  // count when the sidecar has one, else an estimate over resumeMessages
+  // (journal-only resume / router swap). Conservative: prefer over-estimate
+  // (triggers compaction) over under-estimate (HTTP 400 on a full context).
+  const initialUsageInputTokens = resumeSeedInputTokens(config);
 
   const cwdDependentsFactory = ctx.externalTools
     ? undefined

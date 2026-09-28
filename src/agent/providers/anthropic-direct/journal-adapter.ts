@@ -130,13 +130,19 @@ function documentFromJournal(source: JournalBinary, title?: string): DocumentBlo
   return binaryFallback('document', title);
 }
 
-function resultPartFromJournal(part: JournalResultPart): ResultContentBlock {
+/** Returns `undefined` for a part type this version does not know (newer writer); callers drop it. */
+function resultPartFromJournal(part: JournalResultPart): ResultContentBlock | undefined {
   switch (part.type) {
     case 'text': return { type: 'text', text: part.text };
     case 'text_ref': return { type: 'text', text: part.preview };
     case 'image': return imageFromJournal(part.source);
     case 'document': return documentFromJournal(part.source, part.title);
+    default: return undefined;
   }
+}
+
+function resultContentFromJournal(parts: readonly JournalResultPart[]): ResultContentBlock[] {
+  return parts.map(resultPartFromJournal).filter((p): p is ResultContentBlock => p !== undefined);
 }
 
 /** Returns `null` for blocks this provider cannot replay (unsigned thinking). */
@@ -149,13 +155,15 @@ function blockFromJournal(block: JournalBlock): ContentBlockParam | null {
       return block.signature ? { type: 'thinking', thinking: block.thinking, signature: block.signature } : null;
     case 'redacted_thinking': return { type: 'redacted_thinking', data: block.data };
     case 'tool_use': return { type: 'tool_use', id: block.id, name: block.name, input: block.input };
-    case 'tool_result':
+    case 'tool_result': {
+      const content = resultContentFromJournal(block.content);
       return {
         type: 'tool_result',
         tool_use_id: block.toolUseId,
         ...(block.isError !== undefined ? { is_error: block.isError } : {}),
-        ...(block.content.length > 0 ? { content: block.content.map(resultPartFromJournal) } : {}),
+        ...(content.length > 0 ? { content } : {}),
       };
+    }
     case 'image': return imageFromJournal(block.source);
     case 'document': return documentFromJournal(block.source, block.title);
   }

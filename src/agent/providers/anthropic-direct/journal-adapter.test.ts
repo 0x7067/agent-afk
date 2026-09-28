@@ -117,4 +117,25 @@ describe('anthropicJournalAdapter', () => {
       { type: 'text', text: '[document: z unavailable on resume]' },
     ]);
   });
+
+  it('drops tool_result parts of an unknown type instead of replaying undefined', () => {
+    const unknownPart = { type: 'video', url: 'x' } as unknown as JournalMessage['content'][number];
+    const out = adapter.fromJournalMessages([
+      { role: 'assistant', content: [{ type: 'tool_use', id: 't1', name: 'read', input: {} }] },
+      {
+        role: 'user',
+        content: [{
+          type: 'tool_result',
+          toolUseId: 't1',
+          content: [{ type: 'text', text: 'ok' }, unknownPart] as never,
+        }],
+      },
+    ]);
+    expect(out[1]!.content).toEqual([{ type: 'tool_result', tool_use_id: 't1', content: [{ type: 'text', text: 'ok' }] }]);
+    const allUnknown = adapter.fromJournalMessages([
+      { role: 'user', content: [{ type: 'tool_result', toolUseId: 't2', content: [unknownPart] as never }] },
+    ]);
+    expect(allUnknown[0]!.content).toEqual([{ type: 'tool_result', tool_use_id: 't2' }]);
+  });
 });
+
