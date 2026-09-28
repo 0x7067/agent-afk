@@ -22,6 +22,7 @@ import { divider } from '../../render/divider.js';
 import { statusBadge } from '../../render/status-badge.js';
 import type { BadgeStatus } from '../../render/status-badge.js';
 import { formatOutputEvent } from '../../output-event-format.js';
+import { stripEscapeSequences } from '../../../utils/terminal-sanitize.js';
 import { SubagentLogReader } from '../../../agent/subagent/log.js';
 import type { SubagentManager } from '../../../agent/subagent.js';
 import type { SlashContext } from '../../slash/types.js';
@@ -77,8 +78,8 @@ export function renderTaskViewHeader(
   agentType?: string,
 ): string {
   const parts: string[] = [
-    palette.bold(`Subagent: ${id.slice(0, 20)}`),
-    ...(agentType ? [palette.dim(`type: ${agentType}`)] : []),
+    palette.bold(`Subagent: ${stripEscapeSequences(id).slice(0, 20)}`),
+    ...(agentType ? [palette.dim(`type: ${stripEscapeSequences(agentType)}`)] : []),
     `status: ${statusBadge(taskStatusToBadge(status))}`,
   ];
   return [divider(undefined, 80), parts.join('  '), divider(undefined, 80)].join('\n');
