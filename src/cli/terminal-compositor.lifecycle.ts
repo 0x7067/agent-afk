@@ -473,7 +473,6 @@ export function disarm(self: LifecycleHost): void {
     self.suspendObserver = null;
     const P = self.lastMeasuredFrameTop > 0 ? self.lastMeasuredFrameTop : 1;
     disarmOwnerWrote = observerState.cursorRow !== P || observerState.scrollCount !== 0;
-    self.debugLog('disarm:observer', { P, R: observerState.cursorRow, S: observerState.scrollCount, ownerWrote: disarmOwnerWrote });
   }
 
   // Contract (queue-and-replay, issue #2382 counted handoff): handle the
