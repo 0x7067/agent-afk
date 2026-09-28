@@ -293,6 +293,12 @@ export interface PredictionScope {
   /** Episodes written to target this prediction (before failures/judging). */
   targetedEpisodes: number;
   /**
+   * Total graded sample observations across both arms (#2404).
+   * `rates.n` reports unique episodes; this shows how many individual
+   * samples fed into those episode means. Absent in pre-#2404 results.
+   */
+  totalSamples?: number;
+  /**
    * The same question graded on every non-targeted episode. Context only:
    * shows whether the behavior shifted outside its probes. Absent when an
    * arm had no graded non-targeted output.

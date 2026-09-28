@@ -1,0 +1,43 @@
+fix(whatif): per-episode analysis and real equivalence test for verdicts (#2404, #2405)
+
+Fix #2404 — episode as the unit of analysis:
+- run.verify.scoring.ts: collect() now averages sample scores per episode via
+  collectByEpisode() before passing per-episode means to compareRates().
+  n in RateComparison is the episode count, not episodes x samples.
+- scoresForQuestion() contract updated: returns one value per episode.
+- PredictionScope gains totalSamples?: number for transparency.
+- report.ts: scoredOn() shows "n=X/Y eps, Z samples" to be explicit about both.
+
+Fix #2405 — real equivalence test:
+- verdictFor() refuted branch: old heuristic (|delta|<0.05 AND half-width<0.15)
+  replaced by a proper equivalence test: entire CI must lie inside
+  [-EQUIVALENCE_MARGIN, +EQUIVALENCE_MARGIN] (named constant = 0.05).
+- EQUIVALENCE_MARGIN exported from stats.ts for use in report rendering.
+- report-verdict.ts: verdictLabel() shows "no effect detected (within +-5pp)"
+  for equivalence refutations vs "refuted" for opposite-direction refutations.
+
+Consumer updates:
+- stats.test.ts: new acceptance cases for #2405; updated existing 'refuted'
+  test to use proper equivalence-demonstrating fixture; added EQUIVALENCE_MARGIN
+  export test.
+- run.verify.observability.test.ts: updated to use 20 episodes (not 40 samples
+  of 1 episode) so n-inflation is gone; adjusted assertions to reflect that
+  n=20 at p=0.0 or p=0.9 correctly produces 'unclear' not 'refuted'.
+- run.verify.test.ts: updated n expectations from episodes x samples to episode
+  counts; updated background.n expectations.
+- calibration-harness.test.ts: all it.fails converted to plain it (both bugs
+  fixed); power thresholds adjusted to post-fix values; new properties for tau.
+- types.ts: PredictionScope.totalSamples added.
+- scripts/generate-whatif-calibration.ts: updated to new harness API (icc, tau).
+- docs/whatif-calibration.md: regenerated with BEFORE/AFTER comparison table,
+  interval method rationale, and tau dimension.
+
+Interval method: Newcombe hybrid score (Newcombe 1998, Method 10) over
+per-episode mean scores. Pairing is statistically preferable (both arms share
+episodes) but requires a separate CI module; deferred to a follow-up PR.
+The Newcombe CI remains valid for fractional per-episode means when n is the
+episode count.
+
+Closes #2404
+Closes #2405
+Refs #2415

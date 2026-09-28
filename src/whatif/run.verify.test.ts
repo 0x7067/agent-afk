@@ -132,14 +132,15 @@ describe('verifyRun: prediction scoring is scoped to targeted probes (#2403)', (
     expect(vp.rates.delta).toBeCloseTo(1.0, 5);
     expect(vp.rates.baseline).toBe(0);
     expect(vp.rates.candidate).toBe(1);
-    expect(vp.rates.n).toEqual({ baseline: 6, candidate: 6 }); // 2 probes × 3 samples
+    // After #2404 fix: n = episode count (2 episodes), not episodes × samples.
+    expect(vp.rates.n).toEqual({ baseline: 2, candidate: 2 });
     expect(vp.verdict).toBe('confirmed');
 
     expect(vp.scope?.episodes).toEqual({ baseline: ['s1', 's2'], candidate: ['s1', 's2'] });
     expect(vp.scope?.targetedEpisodes).toBe(2);
-    // The 18 untargeted episodes are reported separately, not pooled.
+    // After #2404 fix: background n = untargeted episode count (18 episodes).
     expect(vp.scope?.background?.delta).toBe(0);
-    expect(vp.scope?.background?.n).toEqual({ baseline: 54, candidate: 54 });
+    expect(vp.scope?.background?.n).toEqual({ baseline: 18, candidate: 18 });
   });
 
   it('the old pooled computation would have diluted the same data to ~0.1', async () => {
@@ -194,8 +195,9 @@ describe('verifyRun: prediction with zero graded probes', () => {
     expect(vp2.rates.n).toEqual({ baseline: 0, candidate: 0 });
     expect(vp2.scope?.episodes).toEqual({ baseline: [], candidate: [] });
     expect(vp2.scope?.targetedEpisodes).toBe(0);
-    // It still gets a background row from the other episodes.
-    expect(vp2.scope?.background?.n.baseline).toBe(60);
+    // It still gets a background row from the other (non-targeted) episodes.
+    // After #2404 fix: n = episode count (20 episodes for p2, which has none targeted).
+    expect(vp2.scope?.background?.n.baseline).toBe(20);
   });
 
   it('is unclear when every targeted probe failed to run', async () => {

@@ -2,16 +2,18 @@
  * Tests for `src/whatif/stats.ts`.
  *
  * Numeric sanity checks:
- *   - identical inputs → refuted (delta ~= 0, CI tight)
+ *   - identical inputs → refuted (delta ~= 0, CI tight enough for equivalence)
  *   - clear shift → confirmed
  *   - borderline → unclear
  *   - agreementRate and predictionAccuracy helpers
+ *   - verdictFor acceptance cases from #2405
  */
 
 import { describe, expect, it } from 'vitest';
 import {
   agreementRate,
   compareRates,
+  EQUIVALENCE_MARGIN,
   predictionAccuracy,
   verdictFor,
 } from './stats.js';
@@ -115,14 +117,30 @@ describe('verdictFor', () => {
     expect(v).toBe('refuted');
   });
 
-  it('refuted: identical inputs (delta ~0, CI tight)', () => {
-    // Large identical samples → tight CI around 0 → refuted for either direction
-    const base = repeat(0.5, 100);
-    const cand = repeat(0.5, 100);
-    const r = compareRates(base, cand);
-    const v = verdictFor(pred('strengthened'), r);
-    // |delta| < 0.05 AND CI halfWidth < 0.15 → refuted
-    expect(v).toBe('refuted');
+  it('refuted: identical inputs with CI explicitly inside ±5pp → refuted by equivalence', () => {
+    // Construct a rate comparison where delta=0 and CI is tightly inside ±5pp.
+    // With n=500 identical fractional values of 0.5 the Newcombe CI ≈ ±0.062,
+    // which is OUTSIDE ±0.05 (the equivalence margin). We instead verify the
+    // property directly using a hand-crafted rate comparison that represents
+    // n=500 episodes at exactly p=0.5 with a very tight CI (use the functional
+    // path via compareRates with equal deterministic fractions).
+    // At n=500, Wilson CI half-width ≈ 0.044, so CI ≈ [-0.062, +0.062] — just
+    // slightly outside ±0.05. We verify 'refuted' only when we construct rates
+    // with CI known to lie inside ±0.05.
+    const customRates = {
+      baseline: 0.5,
+      candidate: 0.5,
+      delta: 0.0,
+      ci: [-0.04, 0.04] as [number, number],
+      n: { baseline: 1000, candidate: 1000 },
+    };
+    // CI [-0.04, 0.04] is entirely inside [-0.05, 0.05] → refuted by equivalence.
+    expect(verdictFor(pred('strengthened'), customRates)).toBe('refuted');
+    // Also verify at very large n the equivalence fires:
+    const veryLargeN = compareRates(repeat(0.5, 10000), repeat(0.5, 10000));
+    expect(veryLargeN.ci[0]).toBeGreaterThanOrEqual(-EQUIVALENCE_MARGIN);
+    expect(veryLargeN.ci[1]).toBeLessThanOrEqual(EQUIVALENCE_MARGIN);
+    expect(verdictFor(pred('strengthened'), veryLargeN)).toBe('refuted');
   });
 
   it('unclear: symmetric small n — delta=0 but CI too wide for refuted', () => {
@@ -141,6 +159,65 @@ describe('verdictFor', () => {
     const v = verdictFor(pred('strengthened'), r);
     // delta = 0.1, but CI likely crosses 0 with n=10
     expect(['unclear', 'confirmed'].includes(v)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// verdictFor — #2405 acceptance cases
+// ---------------------------------------------------------------------------
+
+describe('verdictFor — #2405 equivalence test', () => {
+  // Issue acceptance case 1: underpowered run with large CI should be unclear.
+  // verdictFor(removed, {delta: +0.003, ci: [-0.137, +0.144]}) → unclear
+  it('#2405 case 1: large CI around near-zero delta → unclear (was incorrectly refuted)', () => {
+    const r: Parameters<typeof verdictFor>[1] = {
+      baseline: 0.497,
+      candidate: 0.5,
+      delta: 0.003,
+      ci: [-0.137, 0.144],
+      n: { baseline: 20, candidate: 20 },
+    };
+    expect(verdictFor(pred('removed'), r)).toBe('unclear');
+  });
+
+  // Issue acceptance case 2: entire CI inside equivalence margin → refuted.
+  // verdictFor(added, {delta: 0.01, ci: [-0.03, 0.04]}) → refuted (equivalence)
+  it('#2405 case 2: CI entirely inside ±5pp → refuted (equivalence)', () => {
+    const r: Parameters<typeof verdictFor>[1] = {
+      baseline: 0.49,
+      candidate: 0.5,
+      delta: 0.01,
+      ci: [-0.03, 0.04],
+      n: { baseline: 200, candidate: 200 },
+    };
+    expect(verdictFor(pred('added'), r)).toBe('refuted');
+  });
+
+  // Issue acceptance case 3: CI excludes zero in opposite direction → refuted.
+  // verdictFor(added, {ci: [-0.2, -0.05]}) → refuted (opposite direction)
+  it('#2405 case 3: CI excludes zero in opposite direction → refuted', () => {
+    const r: Parameters<typeof verdictFor>[1] = {
+      baseline: 0.7,
+      candidate: 0.58,
+      delta: -0.12,
+      ci: [-0.2, -0.05],
+      n: { baseline: 50, candidate: 50 },
+    };
+    expect(verdictFor(pred('added'), r)).toBe('refuted');
+  });
+
+  // Regression: the old half-width rule fired on underpowered nulls.
+  // With n=22 identical 0.5 values, old code returned 'refuted'; new returns 'unclear'
+  // because the CI is approximately [-0.14, +0.14] — outside the ±5pp margin.
+  it('underpowered null (n=22 identical): unclear, not refuted (#2405 regression)', () => {
+    const r = compareRates(repeat(0.5, 22), repeat(0.5, 22));
+    // CI half-width was <0.15 with old rule; equivalence margin is ±0.05 — much tighter.
+    const v = verdictFor(pred('added'), r);
+    expect(v).toBe('unclear');
+  });
+
+  it('EQUIVALENCE_MARGIN exported as 0.05', () => {
+    expect(EQUIVALENCE_MARGIN).toBe(0.05);
   });
 });
 

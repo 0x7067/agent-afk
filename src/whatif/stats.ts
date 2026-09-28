@@ -5,12 +5,11 @@
  *
  * ## Statistical approach
  *
- * Inputs to {@link compareRates} are per-output values in [0,1].  They are
- * treated as fractional successes: a value `p` at position i represents
- * `p * 1` successes out of `1` trial at that position, so mean(values) is
- * the overall rate and n = values.length is the effective trial count.  This
- * lets calibrated judge probabilities (e.g. 0.73) participate in the same
- * interval arithmetic as hard 0/1 indicators.
+ * Inputs to {@link compareRates} are per-episode mean scores in [0,1].  With
+ * the #2404 fix, each value represents the average of the samples taken for
+ * that episode, so n = number of episodes (not episodes × samples).  A value
+ * `p` at position i represents the average judge score for episode i in that
+ * arm.
  *
  * The 95% confidence interval on the delta uses the **Newcombe hybrid score**
  * (Newcombe 1998, Method 10): Wilson score intervals on each proportion
@@ -20,8 +19,8 @@
  *   CI_hi = δ + sqrt((hi_b - p̂_b)² + (p̂_c - lo_c)²)
  *
  * This is conservative relative to the normal approximation, handles p ≈ 0
- * and p ≈ 1 correctly, and requires no distributional assumptions beyond i.i.d
- * Bernoulli observations.
+ * and p ≈ 1 correctly, and is well-defined for fractional per-episode means.
+ * See {@link compareRates} for notes on when this remains appropriate.
  *
  * @module whatif/stats
  */
@@ -57,11 +56,21 @@ function wilsonInterval(successes: number, n: number, z = 1.96): [number, number
 // ---------------------------------------------------------------------------
 
 /**
- * Compare per-output rate arrays (values in [0,1]) between baseline and
- * candidate.  See module-level doc for statistical details.
+ * Compare per-episode mean score arrays (values in [0,1]) between baseline
+ * and candidate.  See module-level doc for statistical details.
  *
- * @param baseline   Array of per-output values for the baseline condition.
- * @param candidate  Array of per-output values for the candidate condition.
+ * Contract (#2404): each element in `baseline` / `candidate` is the
+ * average score for one episode (averaged across samples before this call).
+ * n is the episode count, not episodes × samples.  Passing flat per-sample
+ * arrays here violates the i.i.d. assumption when ICC > 0 and inflates n.
+ *
+ * The Newcombe CI is valid for fractional per-episode means (values between
+ * 0 and 1) as long as n is interpreted as the number of unit-weight
+ * observations (episodes), not as a raw Bernoulli n.  This is consistent
+ * with the "fractional successes" convention in the original module doc.
+ *
+ * @param baseline   Array of per-episode mean scores for the baseline arm.
+ * @param candidate  Array of per-episode mean scores for the candidate arm.
  */
 export function compareRates(
   baseline: number[],
@@ -94,6 +103,21 @@ export function compareRates(
 }
 
 // ---------------------------------------------------------------------------
+// Equivalence margin (#2405)
+// ---------------------------------------------------------------------------
+
+/**
+ * Named equivalence margin for the `verdictFor` equivalence test (#2405).
+ *
+ * A prediction is `refuted` on the equivalence branch only when the **entire**
+ * 95% CI lies inside [-EQUIVALENCE_MARGIN, +EQUIVALENCE_MARGIN], meaning the
+ * data are inconsistent with any effect at least this large in magnitude.
+ * This is a standard equivalence test (TOST-adjacent), not a "small delta AND
+ * narrow CI" heuristic.
+ */
+export const EQUIVALENCE_MARGIN = 0.05;
+
+// ---------------------------------------------------------------------------
 // verdictFor
 // ---------------------------------------------------------------------------
 
@@ -106,32 +130,36 @@ export function compareRates(
  *
  * Rules (in order):
  * 1. **confirmed** — CI excludes 0 in the expected direction.
- * 2. **refuted**   — CI excludes 0 in the OPPOSITE direction, OR
- *                    (|delta| < 0.05 AND CI half-width < 0.15).
+ * 2. **refuted**   — CI excludes 0 in the OPPOSITE direction (wrong sign), OR
+ *                    the entire CI lies within [-EQUIVALENCE_MARGIN, +EQUIVALENCE_MARGIN]
+ *                    (equivalence test: data are inconsistent with any effect ≥5pp).
  * 3. **unclear**   — otherwise.
+ *
+ * Change from pre-#2405: the previous "refuted" branch required only
+ * |delta| < 0.05 AND CI half-width < 0.15, which fires on any underpowered
+ * run with n ≥ 22, without requiring the CI to actually exclude the
+ * equivalence margin. The new rule requires the CI to lie entirely inside
+ * [-0.05, +0.05] — a proper equivalence test.
  */
 export function verdictFor(pred: Prediction, rates: RateComparison): Verdict {
   const { direction } = pred;
   const expectedPositive = direction === 'added' || direction === 'strengthened';
   const [ciLo, ciHi] = rates.ci;
-  const delta = rates.delta;
-
-  const halfWidth = (ciHi - ciLo) / 2;
 
   // CI excludes zero → the difference is statistically significant.
   const ciExcludesZeroPositive = ciLo > 0;
   const ciExcludesZeroNegative = ciHi < 0;
 
+  // Equivalence test (#2405): entire CI inside [-margin, +margin].
+  const ciInsideEquivalenceMargin =
+    ciLo >= -EQUIVALENCE_MARGIN && ciHi <= EQUIVALENCE_MARGIN;
+
   if (expectedPositive) {
     if (ciExcludesZeroPositive) return 'confirmed';
-    if (ciExcludesZeroNegative || (Math.abs(delta) < 0.05 && halfWidth < 0.15)) {
-      return 'refuted';
-    }
+    if (ciExcludesZeroNegative || ciInsideEquivalenceMargin) return 'refuted';
   } else {
     if (ciExcludesZeroNegative) return 'confirmed';
-    if (ciExcludesZeroPositive || (Math.abs(delta) < 0.05 && halfWidth < 0.15)) {
-      return 'refuted';
-    }
+    if (ciExcludesZeroPositive || ciInsideEquivalenceMargin) return 'refuted';
   }
 
   return 'unclear';
