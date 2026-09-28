@@ -10,6 +10,7 @@
  */
 
 import { palette } from './palette.js';
+import { stripAnsi } from './display.js';
 import { renderStatusLine, type ImageAttachment } from './input/attachments.js';
 import type { SpinnerController } from './input/spinner.js';
 import type { CompositorScrollRegionGuard } from './terminal-compositor.types.js';
@@ -88,8 +89,48 @@ export function truncateOverlayPreservingHead(lines: string[], budget: number): 
   // tailCount >= 2 for any budget >= 4: headCount >= 1, so budget - 1 - 1 >= 2.
   const tailCount = budget - headCount - 1;
   const hidden = lines.length - headCount - tailCount;
-  const indicator = palette.dim(`      ${hidden} earlier ${hidden === 1 ? 'line' : 'lines'} hidden`);
-  return [...lines.slice(0, headCount), indicator, ...lines.slice(-tailCount)];
+  const head = lines.slice(0, headCount);
+  const tail = lines.slice(-tailCount);
+  const below = tail.find((l) => stripAnsi(l).trim().length > 0);
+  const gutter = hiddenIndicatorGutter(head[head.length - 1], below);
+  const indicator = palette.dim(`${gutter}${hidden} earlier ${hidden === 1 ? 'line' : 'lines'} hidden`);
+  return [...head, indicator, ...tail];
+}
+
+/** Glyphs whose rail continues UP out of their cell (so the row above must draw `│`). */
+const RAIL_UP = new Set(['│', '├', '╰', '└', '┤', '┼', '┴']);
+/** Glyphs whose rail continues DOWN out of their cell. */
+const RAIL_DOWN = new Set(['│', '├', '╭', '┌', '┤', '┼', '┬']);
+/** Tree node glyphs that sit ON a parent rail (e.g. nested `◉ → Agent(...)`). */
+const NODE = new Set(['◉', '○', '●', '◆', '◇']);
+
+/**
+ * Contract: derive the leading gutter for the synthetic "N earlier lines hidden"
+ * row from its neighbours so it neither breaks the tree spine nor escapes the
+ * content margin.
+ *
+ * Scans the leading run of `below` (the first non-blank row after the
+ * indicator) cell by cell: spaces are copied, any glyph whose rail connects
+ * upward becomes `│`, horizontal `─` becomes a space. The scan stops at the
+ * first content glyph; if that glyph is a tree node sitting on a rail that the
+ * row `above` carries down, a `│` is drawn in its column. Returns a string
+ * ending in whitespace (or empty) so the indicator text never touches a rail.
+ * Box-drawing glyphs are single-cell, so code-point index == column.
+ */
+export function hiddenIndicatorGutter(above: string | undefined, below: string | undefined): string {
+  const a = [...stripAnsi(above ?? '')];
+  const b = [...stripAnsi(below ?? '')];
+  let out = '';
+  for (let i = 0; i < b.length; i++) {
+    const ch = b[i]!;
+    if (ch === ' ') { out += ' '; continue; }
+    if (RAIL_UP.has(ch)) { out += '│'; continue; }
+    if (ch === '─') { out += ' '; continue; }
+    const up = a[i];
+    if (NODE.has(ch) && up !== undefined && RAIL_DOWN.has(up)) out += '│';
+    break;
+  }
+  return out.length === 0 || out.endsWith(' ') ? out : out + ' ';
 }
 
 /**
