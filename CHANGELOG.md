@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.261.6] - 2026-09-28
+
+### Fixed
+- gate report headline on significance, scale adverb, name total predictions (#2433) (4ff87436)
+
 ## [5.261.5] - 2026-09-28
 
 ### Fixed
