@@ -156,6 +156,7 @@ export async function compactHistory(
     'anthropic-direct',
     sessionSummarize,
     env.AFK_COMPACT_MODEL,
+    retry,
   );
 
   let result: ProviderCompactResult;

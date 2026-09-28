@@ -1119,6 +1119,7 @@ export class OpenAICompatibleQuery implements ProviderQuery {
       'openai-compatible',
       sessionSummarize,
       env.AFK_COMPACT_MODEL,
+      this,
     );
 
     const compactResult = await compactOpenAIHistory({
