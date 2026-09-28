@@ -8,43 +8,62 @@
  * ## Data model (hierarchical, as required)
  *
  * For each episode `e` in a grid cell:
- *   - Draw a per-episode baseline rate: `p_b_e ~ clip(Normal(baseRate, between))`.
- *   - Candidate rate: `p_c_e = clip(p_b_e + trueDelta, [0, 1])`.
+ *   - Draw a per-episode baseline latent: `p_b_e ~ Beta(mean, ICC)`.
+ *   - Per-episode effect delta_e ~ Normal(trueDelta, tau), clamped so
+ *     `p_c_e = clip(p_b_e + delta_e)` stays in [0,1].
  *   - Each sample `s` draws a Bernoulli(p_arm_e) score (the judge result).
  *
  * This hierarchy makes #2404 visible: samples from the same episode are
  * correlated through their shared `p_e`. Feeding independent arrays into
  * `compareRates` directly would hide the intra-cluster correlation.
  *
+ * ## Latent distribution — Beta parameterised by (mean, ICC)
+ *
+ * Using a Beta instead of a clamped Normal avoids the artefact where
+ * ~21% of episodes pile up at exactly 0 or 1 (from Normal clipping), which
+ * mechanically suppressed false confirms and hid the Monte Carlo symptom of
+ * #2404.
+ *
+ * Given `mean` (μ) and `ICC` (ρ = σ²_b / (σ²_b + σ²_w)), and setting
+ * σ²_w = μ(1-μ) (Bernoulli variance at the latent rate), the Beta
+ * parameters are derived as:
+ *
+ *   σ²_b = ρ · μ(1-μ) / (1-ρ)
+ *   α    = μ   · (μ(1-μ)/σ²_b - 1)
+ *   β    = (1-μ) · (μ(1-μ)/σ²_b - 1)
+ *
+ * When ICC → 0, σ²_b → 0 and the Beta concentrates at μ (no between-episode
+ * variance). When ICC → 1, α = β = 0 and the Beta is a Bernoulli (each
+ * episode is entirely at 0 or 1).
+ *
+ * ## Effect heterogeneity — tau dimension
+ *
+ * `tau` (τ) is the standard deviation of the per-episode effect.  When τ > 0:
+ *
+ *   delta_e = delta + Normal(0, tau)
+ *   p_c_e   = clip(p_b_e + delta_e, [0, 1])
+ *
+ * tau > 0 is the scenario where #2404 hurts most: samples are clustered
+ * within episodes, AND the effect varies across episodes, so the precision
+ * of the pooled estimate degrades faster than n_episodes would imply.
+ *
  * ## Intra-class correlation (ICC)
  *
- * The between-episode variability is controlled by `betweenEpisodeSd` (σ_b).
- * The resulting ICC is:
+ * The between-episode variability is controlled by the ICC parameter (ρ).
+ * Two ICC presets are provided:
  *
- *   ICC ≈ σ_b² / (σ_b² + σ_w²)
+ *   - LOW_ICC  = 0.083   (nearly independent episodes, σ_b ≈ 0.15)
+ *   - HIGH_ICC = 0.390   (strongly correlated replays, σ_b ≈ 0.40)
  *
- * where σ_w² ≈ p(1-p) ≈ 0.25 is the within-episode (Bernoulli) variance at
- * baseRate=0.5.  Two ICC settings are pre-defined:
- *
- *   - LOW_ICC_SD  = 0.15 → ICC ≈ 0.083   (nearly independent episodes)
- *   - HIGH_ICC_SD = 0.40 → ICC ≈ 0.390   (strongly correlated replays)
- *
- * The high-ICC setting is required to expose #2404: when episodes are
- * strongly correlated, n-inflation from repeated samples artificially narrows
- * the CI and produces false refutes on null data.  At low ICC the between-
- * episode variance is too small to make the inflation consequential in
- * Monte Carlo, though the deterministic mechanism (n=30 vs n=6) is still
- * observable regardless of ICC.
- *
- * The realized ICC for each setting is reported in docs/whatif-calibration.md.
+ * These reproduce the original LOW_ICC_SD=0.15 and HIGH_ICC_SD=0.40 points.
  *
  * ## Usage
  *
  * ```ts
- * import { runGrid, HIGH_ICC_SD, type GridCell } from
+ * import { runGrid, HIGH_ICC, type GridCell } from
  *   '../__test-utils__/calibration-harness.js';
  *
- * const cells = runGrid({ reps: 200, seed: 42, betweenEpisodeSd: HIGH_ICC_SD });
+ * const cells = runGrid({ reps: 200, seed: 42, icc: HIGH_ICC });
  * ```
  *
  * @module whatif/__test-utils__/calibration-harness
@@ -79,19 +98,54 @@ function clamp01(x: number): number {
 }
 
 // ---------------------------------------------------------------------------
+// Beta distribution sampler — Johnk's method (α,β > 0)
+// ---------------------------------------------------------------------------
+
+/**
+ * Draw one sample from Beta(alpha, beta) using Johnk's method.
+ * Suitable for α, β > 0.5 (harness uses α,β ≥ 0.5 by construction).
+ */
+function betaSample(rand: () => number, alpha: number, beta: number): number {
+  // Johnk's method: generate X=U^(1/alpha), Y=V^(1/beta); accept if X+Y≤1.
+  for (let i = 0; i < 1000; i++) {
+    const u = rand();
+    const v = rand();
+    const x = u ** (1 / alpha);
+    const y = v ** (1 / beta);
+    if (x + y <= 1) return x / (x + y);
+  }
+  // Fallback: return mean (extremely rare at these α,β values)
+  return alpha / (alpha + beta);
+}
+
+// ---------------------------------------------------------------------------
 // ICC presets
 // ---------------------------------------------------------------------------
 
 /**
- * Low ICC between-episode σ.  ICC ≈ 0.15² / (0.15² + 0.25) ≈ 0.083.
+ * Low ICC ≈ 0.083 (σ_b ≈ 0.15).
  * Episodes are nearly independent.  Use as a baseline / sanity check.
+ */
+export const LOW_ICC = 0.083;
+
+/**
+ * High ICC ≈ 0.390 (σ_b ≈ 0.40).
+ * Episodes share substantial latent variance, mirroring real agent replay
+ * behaviour.  Required to expose the Monte Carlo consequence of #2404.
+ */
+export const HIGH_ICC = 0.390;
+
+// Legacy σ_b constants retained for compatibility with existing tests.
+
+/**
+ * Low ICC between-episode σ.  ICC ≈ 0.15² / (0.15² + 0.25) ≈ 0.083.
+ * @deprecated Use LOW_ICC instead.
  */
 export const LOW_ICC_SD = 0.15;
 
 /**
  * High ICC between-episode σ.  ICC ≈ 0.40² / (0.40² + 0.25) ≈ 0.390.
- * Episodes share substantial latent variance, mirroring real agent replay
- * behaviour.  Required to expose the Monte Carlo consequence of #2404.
+ * @deprecated Use HIGH_ICC instead.
  */
 export const HIGH_ICC_SD = 0.40;
 
@@ -108,16 +162,46 @@ export function theoreticalICC(betweenEpisodeSd: number, baseRate = 0.5): number
 }
 
 // ---------------------------------------------------------------------------
+// Beta parameters from ICC and mean
+// ---------------------------------------------------------------------------
+
+interface BetaParams {
+  alpha: number;
+  beta: number;
+}
+
+/**
+ * Derive Beta(alpha, beta) parameters from a target mean and ICC.
+ *
+ * σ²_b = ρ · μ(1-μ) / (1-ρ)
+ * α    = μ   · (μ(1-μ)/σ²_b - 1)   [clamped to ≥0.5 to keep sampler valid]
+ * β    = (1-μ) · (μ(1-μ)/σ²_b - 1) [clamped to ≥0.5]
+ */
+function betaFromICC(mean: number, icc: number): BetaParams {
+  const mu = clamp01(mean);
+  const rho = Math.max(1e-6, Math.min(1 - 1e-6, icc));
+  const sigmaWSq = mu * (1 - mu);
+  const sigmaBSq = (rho * sigmaWSq) / (1 - rho);
+  const concentration = Math.max(0, sigmaWSq / sigmaBSq - 1);
+  // Clamp to 0.5 to keep Johnk's method efficient; any ≥0.5 works.
+  const alpha = Math.max(0.5, mu * concentration);
+  const beta = Math.max(0.5, (1 - mu) * concentration);
+  return { alpha, beta };
+}
+
+// ---------------------------------------------------------------------------
 // Grid axes
 // ---------------------------------------------------------------------------
 
 export const TRUE_DELTAS = [0, 0.1, 0.3] as const;
 export const EPISODE_COUNTS = [3, 6, 12] as const;
 export const SAMPLE_COUNTS = [1, 3, 5] as const;
+export const TAU_VALUES = [0, 0.05] as const;
 
 export type TrueDelta = (typeof TRUE_DELTAS)[number];
 export type EpisodeCount = (typeof EPISODE_COUNTS)[number];
 export type SampleCount = (typeof SAMPLE_COUNTS)[number];
+export type Tau = (typeof TAU_VALUES)[number];
 
 // ---------------------------------------------------------------------------
 // Cell result
@@ -137,6 +221,8 @@ export interface GridCell {
   trueDelta: TrueDelta;
   episodes: EpisodeCount;
   samples: SampleCount;
+  /** Effect heterogeneity σ. 0 = homogeneous effect. */
+  tau: Tau;
   dist: VerdictDistribution;
   /** P(confirmed | cell). */
   pConfirmed: number;
@@ -167,11 +253,15 @@ export interface HarnessOptions {
    */
   baseRate?: number;
   /**
+   * Intra-class correlation ρ ∈ (0,1).  Controls the Beta spread.
+   * Use {@link LOW_ICC} (≈0.083) or {@link HIGH_ICC} (≈0.390).
+   * Higher ICC makes the #2404 n-inflation effect visible in Monte Carlo.
+   * @default LOW_ICC (0.083)
+   */
+  icc?: number;
+  /**
+   * @deprecated Pass `icc` instead. If both are supplied, `icc` wins.
    * Between-episode std-dev of latent rates (spread around baseRate).
-   * Controls intra-cluster correlation (ICC).  Use {@link LOW_ICC_SD} (0.15,
-   * ICC≈0.08) or {@link HIGH_ICC_SD} (0.40, ICC≈0.39).  Higher ICC makes the
-   * #2404 n-inflation effect visible in Monte Carlo.
-   * @default LOW_ICC_SD (0.15)
    */
   betweenEpisodeSd?: number;
   /**
@@ -180,6 +270,12 @@ export interface HarnessOptions {
    * @default 'added'
    */
   direction?: 'added' | 'removed';
+  /**
+   * Effect heterogeneity dimension: per-episode effect tau values to sweep.
+   * When supplied, a separate grid is run for each tau value.
+   * @default [0] (no heterogeneity, homogeneous effect)
+   */
+  tauValues?: readonly number[];
 }
 
 // ---------------------------------------------------------------------------
@@ -192,8 +288,9 @@ function simulateOnce(
   trueDelta: number,
   numEpisodes: number,
   numSamples: number,
-  baseRate: number,
-  betweenEpisodeSd: number,
+  alpha: number,
+  betaParam: number,
+  tau: number,
   direction: 'added' | 'removed',
 ): Verdict {
   const predId = 'p_cal';
@@ -218,10 +315,15 @@ function simulateOnce(
     // Mark as targeted synthetic probe so scorePrediction counts it.
     episodes.push({ id: epId, source: 'synthetic', prompt: `probe ${e}`, targets: predId });
 
-    // Per-episode latent rates (hierarchical model).
-    const latent = clamp01(baseRate + stdNormal(rand) * betweenEpisodeSd);
-    const pBaseline = latent;
-    const pCandidate = clamp01(latent + signedDelta);
+    // Per-episode latent rates (Beta hierarchical model).
+    const pBaseline = betaSample(rand, alpha, betaParam);
+
+    // Per-episode effect: delta_e ~ Normal(signedDelta, tau), bounded to keep
+    // candidate in [0,1] (|delta_e| ≤ 1, clamped to the feasible range).
+    const deltaE = tau > 0
+      ? clamp01(pBaseline + signedDelta + stdNormal(rand) * tau) - pBaseline
+      : signedDelta;
+    const pCandidate = clamp01(pBaseline + deltaE);
 
     for (let s = 0; s < numSamples; s++) {
       // Baseline trace + judge result.
@@ -270,49 +372,62 @@ function simulateOnce(
 
 /**
  * Run the full calibration grid and return one {@link GridCell} per
- * (trueDelta × episodes × samples) combination.
+ * (trueDelta × episodes × samples × tau) combination.
  */
 export function runGrid(opts: HarnessOptions = {}): GridCell[] {
   const {
     reps = 400,
     seed = 42,
     baseRate = 0.5,
-    betweenEpisodeSd = LOW_ICC_SD,
     direction = 'added',
+    tauValues = [0],
   } = opts;
+
+  // Resolve ICC: explicit `icc` wins over legacy `betweenEpisodeSd`.
+  const resolvedICC = opts.icc !== undefined
+    ? opts.icc
+    : opts.betweenEpisodeSd !== undefined
+      ? theoreticalICC(opts.betweenEpisodeSd)
+      : LOW_ICC;
+
+  const { alpha, beta: betaParam } = betaFromICC(baseRate, resolvedICC);
 
   const rand = mulberry32(seed);
   const cells: GridCell[] = [];
 
-  for (const trueDelta of TRUE_DELTAS) {
-    for (const episodes of EPISODE_COUNTS) {
-      for (const samples of SAMPLE_COUNTS) {
-        const dist: VerdictDistribution = { confirmed: 0, refuted: 0, unclear: 0, reps };
+  for (const tau of tauValues as Tau[]) {
+    for (const trueDelta of TRUE_DELTAS) {
+      for (const episodes of EPISODE_COUNTS) {
+        for (const samples of SAMPLE_COUNTS) {
+          const dist: VerdictDistribution = { confirmed: 0, refuted: 0, unclear: 0, reps };
 
-        for (let r = 0; r < reps; r++) {
-          const v = simulateOnce(
-            rand,
+          for (let r = 0; r < reps; r++) {
+            const v = simulateOnce(
+              rand,
+              trueDelta,
+              episodes,
+              samples,
+              alpha,
+              betaParam,
+              tau,
+              direction,
+            );
+            if (v === 'confirmed') dist.confirmed++;
+            else if (v === 'refuted') dist.refuted++;
+            else dist.unclear++;
+          }
+
+          cells.push({
             trueDelta,
             episodes,
             samples,
-            baseRate,
-            betweenEpisodeSd,
-            direction,
-          );
-          if (v === 'confirmed') dist.confirmed++;
-          else if (v === 'refuted') dist.refuted++;
-          else dist.unclear++;
+            tau,
+            dist,
+            pConfirmed: dist.confirmed / reps,
+            pRefuted: dist.refuted / reps,
+            pUnclear: dist.unclear / reps,
+          });
         }
-
-        cells.push({
-          trueDelta,
-          episodes,
-          samples,
-          dist,
-          pConfirmed: dist.confirmed / reps,
-          pRefuted: dist.refuted / reps,
-          pUnclear: dist.unclear / reps,
-        });
       }
     }
   }
@@ -328,25 +443,32 @@ export function findCell(
   trueDelta: TrueDelta,
   episodes: EpisodeCount,
   samples: SampleCount,
+  tau: Tau = 0,
 ): GridCell | undefined {
   return cells.find(
-    (c) => c.trueDelta === trueDelta && c.episodes === episodes && c.samples === samples,
+    (c) => c.trueDelta === trueDelta && c.episodes === episodes && c.samples === samples && c.tau === tau,
   );
 }
 
 /**
  * Render the grid as a Markdown table.
- * Columns: trueDelta | episodes | samples | P(confirmed) | P(refuted) | P(unclear)
+ * Columns: trueDelta | episodes | samples | tau | P(confirmed) | P(refuted) | P(unclear)
  */
-export function renderMarkdownTable(cells: GridCell[]): string {
+export function renderMarkdownTable(cells: GridCell[], includeTau = false): string {
   const pct = (v: number): string => `${(v * 100).toFixed(1)}%`;
-  const header = [
-    '| true_delta | episodes | samples | P(confirmed) | P(refuted) | P(unclear) |',
-    '|:----------:|:--------:|:-------:|:------------:|:----------:|:----------:|',
-  ];
-  const rows = cells.map(
-    (c) =>
-      `| ${c.trueDelta.toFixed(1)} | ${c.episodes} | ${c.samples} | ${pct(c.pConfirmed)} | ${pct(c.pRefuted)} | ${pct(c.pUnclear)} |`,
+  const header = includeTau
+    ? [
+        '| true_delta | episodes | samples | tau | P(confirmed) | P(refuted) | P(unclear) |',
+        '|:----------:|:--------:|:-------:|:---:|:------------:|:----------:|:----------:|',
+      ]
+    : [
+        '| true_delta | episodes | samples | P(confirmed) | P(refuted) | P(unclear) |',
+        '|:----------:|:--------:|:-------:|:------------:|:----------:|:----------:|',
+      ];
+  const rows = cells.map((c) =>
+    includeTau
+      ? `| ${c.trueDelta.toFixed(1)} | ${c.episodes} | ${c.samples} | ${c.tau.toFixed(2)} | ${pct(c.pConfirmed)} | ${pct(c.pRefuted)} | ${pct(c.pUnclear)} |`
+      : `| ${c.trueDelta.toFixed(1)} | ${c.episodes} | ${c.samples} | ${pct(c.pConfirmed)} | ${pct(c.pRefuted)} | ${pct(c.pUnclear)} |`,
   );
   return [...header, ...rows].join('\n');
 }
