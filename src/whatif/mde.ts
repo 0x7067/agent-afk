@@ -96,8 +96,8 @@ export function preflightMdeMessage(episodesPerArm: number): string {
  * Computes the per-arm episode count for one verified prediction.
  *
  * Prefers `scope.episodes.{baseline,candidate}` lengths (episode-level count,
- * as recommended by the issue), falling back to `min(rates.n)` divided by the
- * number of samples only when scope is absent (pre-#2403 results).
+ * as recommended by the issue), falling back to `min(rates.n)` only when
+ * scope is absent (pre-#2403 results).
  */
 function predEpisodesPerArm(
   vp: import('./types.js').VerifiedPrediction,
@@ -107,8 +107,8 @@ function predEpisodesPerArm(
     const nc = vp.scope.episodes.candidate.length;
     return Math.min(nb, nc);
   }
-  // Fallback: rates.n is graded-output count (episodes × samples); use the
-  // smaller arm and treat it as an episode count (conservative).
+  // Fallback: rates.n counts graded outputs (episodes × samples), so this can
+  // overstate the episode count and understate the MDE for multi-sample runs.
   return Math.min(vp.rates.n.baseline, vp.rates.n.candidate);
 }
 
@@ -116,8 +116,7 @@ function predEpisodesPerArm(
  * Returns limit bullets for predictions whose per-arm MDE exceeds
  * {@link MDE_REPORT_THRESHOLD}.
  *
- * One bullet per prediction (or a combined bullet when many predictions share
- * the same n, to keep the report readable).
+ * One bullet per prediction over the threshold.
  */
 export function mdeLimits(v: VerifyResult): string[] {
   const bullets: string[] = [];

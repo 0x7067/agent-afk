@@ -67,6 +67,11 @@ function makeProgressThrottle(ctx: SlashContext): (stage: string, message: strin
       ctx.out.info(`[whatif] ${stage}: ${message}`);
       return;
     }
+    // Milestone lines (no done counter, e.g. the preflight MDE note) always show.
+    if (done === undefined) {
+      ctx.out.info(`[whatif] ${stage}: ${message}`);
+      return;
+    }
     if (stage === 'episodes' || stage === 'run') {
       episodeCount++;
       if (done !== undefined && episodeCount % 10 === 0) {
