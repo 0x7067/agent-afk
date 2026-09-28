@@ -87,21 +87,28 @@ export function readBlob(ref: BlobRef): Buffer | null {
 }
 
 /**
- * Writes pending blobs, deduplicating in-flight and already-written payloads
- * within this process. One store is shared by a session's top-level journal
- * and all of its subagent journals.
+ * Writes pending blobs, deduplicating IN-FLIGHT payloads within this process.
+ * One store is shared by a session's top-level journal and all of its
+ * subagent journals.
+ *
+ * Invariant: a settled write is NOT cached. Completed dedup is the on-disk
+ * `stat` in {@link writeBlobExclusive}, so a blob whose directory was removed
+ * after it was written (a sweep in another process, a manual `rm`) is written
+ * again by the next record that references it rather than being assumed present.
  */
 export class BlobStore {
-  private readonly written = new Map<string, Promise<void>>();
+  private readonly inFlight = new Map<string, Promise<void>>();
 
   /** Write (or reuse) a blob. Rejects on I/O failure; the caller decides the fallback. */
   write(blob: PendingBlob): Promise<void> {
-    const existing = this.written.get(blob.absPath);
+    const existing = this.inFlight.get(blob.absPath);
     if (existing) return existing;
     const p = writeBlobExclusive(blob);
-    this.written.set(blob.absPath, p);
-    // A failed write must be retryable by a later record.
-    p.catch(() => this.written.delete(blob.absPath));
+    this.inFlight.set(blob.absPath, p);
+    const settle = (): void => {
+      if (this.inFlight.get(blob.absPath) === p) this.inFlight.delete(blob.absPath);
+    };
+    p.then(settle, settle);
     return p;
   }
 }
@@ -116,7 +123,14 @@ async function writeBlobExclusive(blob: PendingBlob): Promise<void> {
     // absent: write below
   }
   const tmp = `${blob.absPath}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`;
-  await fsp.writeFile(tmp, blob.data, { mode: 0o600, flag: 'wx' });
+  try {
+    await fsp.writeFile(tmp, blob.data, { mode: 0o600, flag: 'wx' });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    // The dir was removed between mkdir and write: recreate it and retry once.
+    await fsp.mkdir(dir, { recursive: true, mode: 0o700 });
+    await fsp.writeFile(tmp, blob.data, { mode: 0o600, flag: 'wx' });
+  }
   try {
     await fsp.link(tmp, blob.absPath);
   } catch (err) {

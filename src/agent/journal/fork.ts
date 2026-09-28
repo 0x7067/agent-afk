@@ -2,10 +2,12 @@
  * `/fork` support: seed a new session's journal from a source journal's
  * current fold (docs/message-journal.md).
  *
- * Invariant: the new file is written whole to a temp file and renamed into
+ * Invariant: the new file is written whole to a temp file and hard-linked into
  * place, so a reader (or the new session's writer resolving its resume
  * length) never sees a half-written fork. An existing destination journal is
- * never overwritten: that would silently destroy a live session's record.
+ * never overwritten: that would silently destroy a live session's record. The
+ * no-clobber check IS the `link` (EEXIST -> false), not a prior `existsSync`,
+ * so a destination created concurrently can never be replaced.
  *
  * @module agent/journal/fork
  */
@@ -40,7 +42,7 @@ export function forkJournal(sourceSessionId: string, newSessionId: string): bool
   let tmp: string | undefined;
   try {
     const dst = getSessionJournalPath(newSessionId);
-    if (fs.existsSync(dst)) return false;
+    if (fs.existsSync(dst)) return false; // cheap early-out; the link below is authoritative
     const ts = Date.now();
     const src = fold.meta;
     const records: JournalRecord[] = [
@@ -61,15 +63,14 @@ export function forkJournal(sourceSessionId: string, newSessionId: string): bool
     fs.mkdirSync(dirname(dst), { recursive: true, mode: 0o700 });
     tmp = `${dst}.${process.pid}.${randomUUID().slice(0, 8)}.tmp`;
     fs.writeFileSync(tmp, records.map((r) => JSON.stringify(r) + '\n').join(''), { mode: 0o600, flag: 'wx' });
-    fs.renameSync(tmp, dst);
-    tmp = undefined;
+    fs.linkSync(tmp, dst); // throws EEXIST instead of clobbering a racing writer
     return true;
   } catch {
     return false;
   } finally {
     if (tmp !== undefined) {
       try {
-        fs.unlinkSync(tmp);
+        fs.unlinkSync(tmp); // success: drops the temp name; failure: cleanup
       } catch {
         // best-effort cleanup
       }

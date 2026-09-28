@@ -5,7 +5,9 @@
  *     task is reported and the queue moves on, so one bad write never stalls
  *     the ones behind it (the journal must never wedge a session).
  *   - {@link JsonlFileAppender}: O_APPEND writes to one JSONL file, creating
- *     the parent dir (0700) and the file (0600) on first write.
+ *     the parent dir (0700) and the file (0600) on first write. If the dir
+ *     vanishes later (a sweep in another process, a manual `rm`), the ENOENT
+ *     write recreates it and retries once instead of failing forever.
  *   - {@link createOnceReporter}: the ledger's error posture (stderr, once).
  *
  * Invariant: the appender does NOT hold a file descriptor between writes.
@@ -67,10 +69,25 @@ export class JsonlFileAppender {
   constructor(readonly path: string) {}
 
   async write(data: string): Promise<void> {
-    if (!this.dirReady) {
-      await fsp.mkdir(dirname(this.path), { recursive: true, mode: 0o700 });
-      this.dirReady = true;
+    await this.ensureDir();
+    try {
+      await this.append(data);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+      // The dir was removed under us: recreate it and retry once.
+      this.dirReady = false;
+      await this.ensureDir();
+      await this.append(data);
     }
-    await fsp.appendFile(this.path, data, { encoding: 'utf8', mode: 0o600, flag: 'a' });
+  }
+
+  private async ensureDir(): Promise<void> {
+    if (this.dirReady) return;
+    await fsp.mkdir(dirname(this.path), { recursive: true, mode: 0o700 });
+    this.dirReady = true;
+  }
+
+  private append(data: string): Promise<void> {
+    return fsp.appendFile(this.path, data, { encoding: 'utf8', mode: 0o600, flag: 'a' });
   }
 }

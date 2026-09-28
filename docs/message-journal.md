@@ -75,8 +75,8 @@ array at ~10 sites and more keep appearing). Instead each provider wraps
 `config.messageJournal` in a `JournalSync<T>` with its adapter and calls
 `sync(messages)` at **commit points**:
 
-1. immediately before each model request (after orphan repair, compaction,
-   image degradation: the journal records what was actually sent);
+1. immediately before each model request (after orphan repair and
+   compaction; see the known gap below for per-request transforms);
 2. after the assistant message is appended, before tool dispatch (so a child
    killed mid-tool still leaves its tool calls on disk);
 3. at turn end (captures the final assistant message).
@@ -89,8 +89,22 @@ array (`[]` fresh, the seeded messages on resume); if it does not match the
 journal's folded length, the journal is resynced.
 
 **Known gap:** an in-place edit of an already-synced message object is not
-detected (today: the wind-down note appended into the last user message). The
-next divergence or resync corrects it; audit loses only that harness note.
+diff-visible (the diff is by reference), so the journal keeps the pre-edit
+form until the next divergence or resync re-appends that message. Harness
+notes pushed into a message that has not been synced yet (e.g. the wind-down
+note) are captured normally. Microcompaction, which does edit synced messages
+in place, is handled explicitly: it calls `JournalSync.invalidateFrom(index)`
+so the next sync re-appends from the first edited message. Many-image
+degradation and the tool-result hoist are re-applied to the outgoing request
+before every model call rather than committed to the array, so the fold keeps
+the pre-degradation form for those: the audit holds more than the model was
+sent, and a resume re-applies the same transforms.
+
+**Cross-provider resume:** resuming a session on another provider seeds that
+provider's adapter from the fold, and its first sync rewrites the fold into
+what that provider can send (thinking signatures, redacted thinking, and
+unsupported document blocks are dropped). The earlier records remain in the
+file, so the pre-switch form is still readable from the raw records.
 
 ## Sessions, subagents, lifecycle
 
@@ -99,11 +113,19 @@ next divergence or resync corrects it; audit loses only that harness note.
   buffer in memory until the id resolves.
 - Subagent forks resume the parent's session id, so they must NOT write the
   parent's journal. The fork config gets `parent.forSubagent(subagentId)`,
-  writing `subagents/<subagentId>.jsonl`. This covers every dispatch path
-  (agent fg/bg, worktree, compose, skill forks) because they all build child
-  config in `fork-child-config.ts`.
-- `/clear` rebuilds the provider runtime: its fresh `JournalSync` seeds `[]`,
-  which truncates the journal to 0 (plus a `mark('clear')`).
+  writing `subagents/<subagentId>.jsonl`. The journal travels on the fork
+  PARENT (`JournalParent.messageJournal` in `fork-types.ts`), not on the child
+  config: `fork-child-config.ts` overwrites any inherited journal with
+  `parent.messageJournal?.forSubagent(id)` and clears `resumeMessages`, so a
+  child can never write its parent's file.
+- `/clear` closes the journal and opens a fresh one before the provider
+  runtime is rebuilt (non-CLI surfaces mint a new session id on reset, so the
+  old journal must not capture the new conversation). On the CLI the id is
+  unchanged, so the new writer resumes the on-disk file; `mark('clear')` plus
+  the new runtime's `seed([])` truncate the fold to 0. Lifecycle glue:
+  `src/agent/session/journal-lifecycle.ts`.
+- A resumed session gets `mark('resume')`; `/model` gets `mark('model_switch')`
+  only when the resolved model actually changes.
 - Journal `length` is read from the on-disk fold on first access after the id
   resolves, so a resumed process appends at the right index.
 
@@ -126,9 +148,13 @@ next divergence or resync corrects it; audit loses only that harness note.
 ## Retention
 
 `sessions/<id>/` directories (ledger, journal, blobs, subagents) are swept by
-the session sidecar sweep using the same age knob as sidecars, judged by the
-newest mtime of their contents, with the active session and a grace window
-excluded (same rules as the witness sweep).
+`sweepSessionDirs` (`src/agent/session-sidecar-sweep.dirs.ts`), called from the
+session sidecar sweep and using the same `AFK_SESSION_MAX_AGE_DAYS` knob. Age is
+the newest mtime across a directory's contents (POSIX does not bump a
+directory's mtime on appends), the active session and anything touched in the
+last hour are kept, and each directory is re-walked just before removal. A
+directory named by a surviving journal's `forkedFrom` chain is also kept,
+because a fork's blob refs point into its parent's `blobs/` rather than copies.
 
 ## Concurrency
 

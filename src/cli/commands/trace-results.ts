@@ -30,7 +30,7 @@ const RESULT_INDENT = ' '.repeat(23) + '│ ';
 
 /** Control bytes other than tab / newline, which would corrupt the terminal. */
 // eslint-disable-next-line no-control-regex
-const CONTROL_RE = /[\x00-\x08\x0b-\x1f\x7f]/g;
+const CONTROL_RE = /[\x00-\x08\x0b-\x1f\x7f-\x9f]/g;
 
 export interface TraceResultsContext {
   /** Rendered block for one tool call, or `null` to print nothing extra. */

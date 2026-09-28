@@ -80,6 +80,13 @@ describe('renderResultBlock', () => {
     expect(out).not.toContain('\x07');
   });
 
+  it('strips C1 controls, including an 8-bit OSC (U+009D ... U+009C)', () => {
+    const out = renderResultBlock('a\u009d0;pwned\u009cb\u0085c\u009bd', 0);
+    expect(out).not.toMatch(/[\u0080-\u009f]/);
+    expect(out).toContain('a');
+    expect(out).toContain('pwned'); // payload text survives as inert characters
+  });
+
   it('tags error results and subagent provenance', () => {
     const out = renderResultBlock('boom', 0, { isError: true, subagentId: 'child-1' });
     expect(out).toContain('error result');
