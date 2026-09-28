@@ -11,6 +11,15 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.265.2] - 2026-09-28
+
+### Fixed
+- address PR #2448 review findings (F1/F2/F3/F5) (0a026366)
+- strip escape sequences from task-view header and error events (#2445) (11137394)
+
+### Changed
+- Merge pull request #2448 from griffinwork40/afk/issue-2445-escape-sanitize (48807429)
+
 ## [5.265.1] - 2026-09-28
 
 ### Fixed
