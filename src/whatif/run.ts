@@ -26,7 +26,12 @@ import { verifyShortfallLimits, hookIsolationLimits, specTargetsHooksOrPlugins }
 import { keepContextHooksInEpisode } from '../agent/whatif-episode-gate.js';
 import { trackRecordSummary } from './ledger.js';
 import { predictChanges } from './predict.js';
-import { collectRealTurns, syntheticEpisodes, loadSuiteEpisodes } from './episodes.js';
+import {
+  collectRealTurns,
+  syntheticEpisodes,
+  loadSuiteEpisodes,
+  type CorpusExclusions,
+} from './episodes.js';
 import { estimateVerifyCost } from './cost.js';
 import { buildHeadline, standardLimits } from './report.js';
 import { persistRun } from './run.persist.js';
@@ -128,18 +133,20 @@ async function runPredictPhase(
 async function collectVerifyEpisodes(
   options: WhatifOptions & { sessionsDir?: string },
   predictions: import('./types.js').Prediction[],
-): Promise<import('./types.js').Episode[]> {
+): Promise<{ episodes: import('./types.js').Episode[]; corpusExclusions: CorpusExclusions }> {
+  const corpusExclusions: CorpusExclusions = {
+    whatifSessions: 0, excludedSessionIds: 0,
+    nonStandaloneTurns: 0, whatifTopicTurns: 0,
+  };
   const realTurns = await collectRealTurns({
     limit: options.turns,
     sessionsDir: options.sessionsDir,
+    stats: corpusExclusions,
   });
-
   const synthetic = syntheticEpisodes(predictions);
-
   const suitesDir = path.join(options.realHome, 'whatif', 'suites');
   const suiteEps = await loadSuiteEpisodes(suitesDir).catch(() => []);
-
-  return [...realTurns, ...synthetic, ...suiteEps];
+  return { episodes: [...realTurns, ...synthetic, ...suiteEps], corpusExclusions };
 }
 
 // ---------------------------------------------------------------------------
@@ -260,7 +267,7 @@ export async function runWhatif(
 
     deps.onProgress?.({ stage: 'episodes', message: 'Collecting episodes' });
 
-    const episodes = await collectVerifyEpisodes(options, predictions);
+    const { episodes, corpusExclusions } = await collectVerifyEpisodes(options, predictions);
 
     // Resolve judge BEFORE preflight estimate (so we know if it's external)
     const resolvedJudge = await deps.makeJudge(options.judge);
@@ -345,6 +352,7 @@ export async function runWhatif(
       costUsd: totalCostUsd,
       runDir,
       limits,
+      corpusExclusions,
     };
     const headline = buildHeadline(partialReport);
     const report: WhatifReport = { ...partialReport, headline };
