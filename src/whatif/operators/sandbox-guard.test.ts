@@ -80,4 +80,17 @@ describe('assertInsideSandbox', () => {
       /sandbox containment violation/,
     );
   });
+
+  it('throws ENOENT from realpathSync when env.home does not exist', () => {
+    // realpathSync(env.home) is called without creating env.home first.
+    // The function must propagate the ENOENT rather than swallowing it.
+    const nonExistentHome = join(tmp, 'does-not-exist');
+    const cwd = join(tmp, 'cwd');
+    mkdirSync(cwd, { recursive: true });
+    const dir = join(cwd, 'subdir');
+    mkdirSync(dir, { recursive: true });
+    expect(() => assertInsideSandbox(dir, makeEnv(nonExistentHome, cwd))).toThrow(
+      /ENOENT/,
+    );
+  });
 });

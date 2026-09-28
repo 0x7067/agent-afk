@@ -51,14 +51,12 @@ export function assertInsideSandbox(dir: string, env: Environment): void {
 /**
  * Returns true if `child` is `root` itself or is contained within `root`.
  * Uses `path.relative` so it is separator-aware on all platforms.
+ *
+ * `rel === ''` means child equals root (covered by the fast-path above, but
+ * also included here to match the repo's containment idiom).
  */
 function isInside(root: string, child: string): boolean {
   if (root === child) return true;
   const rel = path.relative(root, child);
-  return (
-    rel !== '' &&
-    rel !== '..' &&
-    !rel.startsWith('..' + path.sep) &&
-    !path.isAbsolute(rel)
-  );
+  return rel === '' || (!rel.startsWith('..' + path.sep) && rel !== '..' && !path.isAbsolute(rel));
 }
