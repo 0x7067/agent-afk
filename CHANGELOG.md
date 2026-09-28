@@ -11,6 +11,17 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.266.1] - 2026-09-28
+
+### Fixed
+- isolate arm sandboxes so episodes cannot reach the other arm (#2466) (05b263ac)
+
+### Changed
+- Merge pull request #2467 from griffinwork40/afk/iso-agent-tool-1-aafzkj (3a3e203e)
+- Merge pull request #2465 from griffinwork40/afk/iso-compose-harness-1-oxi4or (43cbeab3)
+- calibration harness: add ICC dimension, regenerate docs (beb2e90c)
+- model-free calibration harness for verify verdicts (#2404, #2405) (5ca9806e)
+
 ## [5.266.0] - 2026-09-28
 
 ### Added
