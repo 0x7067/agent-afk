@@ -11,6 +11,17 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.262.0] - 2026-09-28
+
+### Added
+- M0 backfill — verified_outcome labeling functions and distribution report (1aec6259)
+
+### Fixed
+- M0 precision fixes; exit check now honestly FAILS (887b194d)
+
+### Changed
+- Merge pull request #2429 from griffinwork40/afk/verified-outcome-m0 (cd192e9c)
+
 ## [5.261.7] - 2026-09-28
 
 ### Fixed

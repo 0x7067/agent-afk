@@ -248,6 +248,62 @@ the real problem, though.
    session JSON still existing. An events.jsonl reader could extend the
    backfill to the older history (follow-up).
 
+### History extension (2026-09-28)
+
+Implemented an `events.jsonl` reader (`scripts/outcomes-backfill-events.ts`)
+that maps the per-session event stream into the same `Turn[]` shape the
+immediate LFs consume. Key measurement results before implementation:
+
+| Signal | Events-only sessions | Recovery rate |
+|---|---|---|
+| `cwd` (from `meta` record) | 16,248 / 16,248 | 100% |
+| Git commit SHA (from `tool_result` content) | 336 | 2% |
+| PR URL from `gh pr create` (from `tool_result`) | 121 | 0.7% |
+| `closed.reason=abort` (closure LF) | 175 | 1% |
+| Self-report Done/Blocked (from `assistant` records) | 2,388 / 63 | ~15% |
+| Facet coverage (yield_tracking / commits) | 3,556 (22%) | 0 with pr_url or commits |
+
+**Strategies chosen:**
+- **SHA/PR recovery**: `tool_result` records carry the actual command output
+  (not a 90-char truncated preview), so the same regex patterns work verbatim.
+  Facets were rejected — none of the 3,556 facets covering events sessions
+  carry `pr_url` or `world_changes.commits`.
+- **Commit subject matching**: rejected. Only 36% of commits use `-m "..."`;
+  `-F file` (31%) and heredocs (25%) make the subject invisible in inputs, and
+  `git log --grep` matching on truncated subjects would cause false attributions.
+- **PR branch matching (`gh pr create --head`)**: rejected. `--head` is never
+  visible in the sampled inputs; the bare `--title` is present in 87% but is
+  not unique enough for safe matching.
+- **Closure LF**: events `closed.reason=abort` gives a direct closure signal,
+  so events-only sessions get closure LF coverage that JSON-sidecar sessions
+  lack in M0.
+
+**New distribution** (16,255 total sessions; `--source all`):
+
+| Label | Count | % |
+|---|---|---|
+| succeeded | 270 | 2% |
+| failed | 18 | 0.1% |
+| interrupted | 166 | 1% |
+| blocked | 63 | 0.4% |
+| unknown | 15,738 | 97% |
+
+**Per-source breakdown:**
+
+| Source | Sessions | succeeded | failed | interrupted | blocked | unknown |
+|---|---|---|---|---|---|---|
+| json (M0) | 1,000 | 258 | 5 | 0 | 8 | 729 |
+| events (new) | 15,255 | 12 | 13 | 166 | 55 | 15,009 |
+
+**Exit check: PASS** (517 non-unknown, up from 272). The 166 new `interrupted`
+labels come entirely from the `closure` LF fired on `closed.reason=abort`
+events. The `failed` count is 18 (was 5) — still far below the 200 required
+for the router experiment. The primary blocker remains: explicit feedback
+(`/good`, `/bad`) is the only viable path to 200 `failed` labels. The events
+history adds 13 new `failed` from `error_tail` (3+ consecutive tool errors at
+session end) and `in_session_correction`, but scaling to 200 via bulk history
+alone is not feasible given the 97% `unknown` rate.
+
 ### What this changes in M2 (re-prioritised)
 
 Negative evidence is now the critical path. Build these before anything that
