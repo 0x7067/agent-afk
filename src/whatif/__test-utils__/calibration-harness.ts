@@ -16,13 +16,35 @@
  * correlated through their shared `p_e`. Feeding independent arrays into
  * `compareRates` directly would hide the intra-cluster correlation.
  *
+ * ## Intra-class correlation (ICC)
+ *
+ * The between-episode variability is controlled by `betweenEpisodeSd` (σ_b).
+ * The resulting ICC is:
+ *
+ *   ICC ≈ σ_b² / (σ_b² + σ_w²)
+ *
+ * where σ_w² ≈ p(1-p) ≈ 0.25 is the within-episode (Bernoulli) variance at
+ * baseRate=0.5.  Two ICC settings are pre-defined:
+ *
+ *   - LOW_ICC_SD  = 0.15 → ICC ≈ 0.083   (nearly independent episodes)
+ *   - HIGH_ICC_SD = 0.40 → ICC ≈ 0.390   (strongly correlated replays)
+ *
+ * The high-ICC setting is required to expose #2404: when episodes are
+ * strongly correlated, n-inflation from repeated samples artificially narrows
+ * the CI and produces false refutes on null data.  At low ICC the between-
+ * episode variance is too small to make the inflation consequential in
+ * Monte Carlo, though the deterministic mechanism (n=30 vs n=6) is still
+ * observable regardless of ICC.
+ *
+ * The realized ICC for each setting is reported in docs/whatif-calibration.md.
+ *
  * ## Usage
  *
  * ```ts
- * import { runGrid, type GridCell } from
+ * import { runGrid, HIGH_ICC_SD, type GridCell } from
  *   '../__test-utils__/calibration-harness.js';
  *
- * const cells = runGrid({ reps: 200, seed: 42 });
+ * const cells = runGrid({ reps: 200, seed: 42, betweenEpisodeSd: HIGH_ICC_SD });
  * ```
  *
  * @module whatif/__test-utils__/calibration-harness
@@ -54,6 +76,35 @@ function stdNormal(rand: () => number): number {
 
 function clamp01(x: number): number {
   return Math.max(0, Math.min(1, x));
+}
+
+// ---------------------------------------------------------------------------
+// ICC presets
+// ---------------------------------------------------------------------------
+
+/**
+ * Low ICC between-episode σ.  ICC ≈ 0.15² / (0.15² + 0.25) ≈ 0.083.
+ * Episodes are nearly independent.  Use as a baseline / sanity check.
+ */
+export const LOW_ICC_SD = 0.15;
+
+/**
+ * High ICC between-episode σ.  ICC ≈ 0.40² / (0.40² + 0.25) ≈ 0.390.
+ * Episodes share substantial latent variance, mirroring real agent replay
+ * behaviour.  Required to expose the Monte Carlo consequence of #2404.
+ */
+export const HIGH_ICC_SD = 0.40;
+
+/**
+ * Compute the theoretical ICC for a given between-episode σ, assuming
+ * baseRate=0.5 (maximises within-episode Bernoulli variance = 0.25).
+ *
+ * ICC = σ_b² / (σ_b² + σ_w²),  σ_w² ≈ baseRate*(1-baseRate).
+ */
+export function theoreticalICC(betweenEpisodeSd: number, baseRate = 0.5): number {
+  const sigmaBSq = betweenEpisodeSd ** 2;
+  const sigmaWSq = baseRate * (1 - baseRate);
+  return sigmaBSq / (sigmaBSq + sigmaWSq);
 }
 
 // ---------------------------------------------------------------------------
@@ -117,8 +168,10 @@ export interface HarnessOptions {
   baseRate?: number;
   /**
    * Between-episode std-dev of latent rates (spread around baseRate).
-   * Controls intra-cluster correlation. Higher = stronger #2404 effect.
-   * @default 0.15
+   * Controls intra-cluster correlation (ICC).  Use {@link LOW_ICC_SD} (0.15,
+   * ICC≈0.08) or {@link HIGH_ICC_SD} (0.40, ICC≈0.39).  Higher ICC makes the
+   * #2404 n-inflation effect visible in Monte Carlo.
+   * @default LOW_ICC_SD (0.15)
    */
   betweenEpisodeSd?: number;
   /**
@@ -224,7 +277,7 @@ export function runGrid(opts: HarnessOptions = {}): GridCell[] {
     reps = 400,
     seed = 42,
     baseRate = 0.5,
-    betweenEpisodeSd = 0.15,
+    betweenEpisodeSd = LOW_ICC_SD,
     direction = 'added',
   } = opts;
 
