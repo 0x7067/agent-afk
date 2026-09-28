@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.269.0] - 2026-09-28
+
+### Added
+- paired per-probe sign-flip analysis (#2477 step 3) (#2498) (2a9d4503)
+
 ## [5.268.1] - 2026-09-28
 
 ### Fixed
