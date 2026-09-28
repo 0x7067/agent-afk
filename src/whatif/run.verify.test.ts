@@ -132,14 +132,15 @@ describe('verifyRun: prediction scoring is scoped to targeted probes (#2403)', (
     expect(vp.rates.delta).toBeCloseTo(1.0, 5);
     expect(vp.rates.baseline).toBe(0);
     expect(vp.rates.candidate).toBe(1);
-    expect(vp.rates.n).toEqual({ baseline: 6, candidate: 6 }); // 2 probes × 3 samples
+    // After #2404 fix: n = episode count (2 episodes), not episodes × samples.
+    expect(vp.rates.n).toEqual({ baseline: 2, candidate: 2 });
     expect(vp.verdict).toBe('confirmed');
 
     expect(vp.scope?.episodes).toEqual({ baseline: ['s1', 's2'], candidate: ['s1', 's2'] });
     expect(vp.scope?.targetedEpisodes).toBe(2);
-    // The 18 untargeted episodes are reported separately, not pooled.
+    // After #2404 fix: background n = untargeted episode count (18 episodes).
     expect(vp.scope?.background?.delta).toBe(0);
-    expect(vp.scope?.background?.n).toEqual({ baseline: 54, candidate: 54 });
+    expect(vp.scope?.background?.n).toEqual({ baseline: 18, candidate: 18 });
   });
 
   it('the old pooled computation would have diluted the same data to ~0.1', async () => {
@@ -194,8 +195,9 @@ describe('verifyRun: prediction with zero graded probes', () => {
     expect(vp2.rates.n).toEqual({ baseline: 0, candidate: 0 });
     expect(vp2.scope?.episodes).toEqual({ baseline: [], candidate: [] });
     expect(vp2.scope?.targetedEpisodes).toBe(0);
-    // It still gets a background row from the other episodes.
-    expect(vp2.scope?.background?.n.baseline).toBe(60);
+    // It still gets a background row from the other (non-targeted) episodes.
+    // After #2404 fix: n = episode count (20 episodes for p2, which has none targeted).
+    expect(vp2.scope?.background?.n.baseline).toBe(20);
   });
 
   it('is unclear when every targeted probe failed to run', async () => {
@@ -259,6 +261,128 @@ describe('scorePrediction', () => {
     const vp = scorePrediction(pred('p1'), episodes, traces, results);
     expect(vp.scope?.episodes).toEqual({ baseline: ['s1', 's2'], candidate: ['s1'] });
     expect(vp.rates.n).toEqual({ baseline: 2, candidate: 1 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Cross-check agreement downgrade (#2413)
+// ---------------------------------------------------------------------------
+
+describe('verifyRun: cross-check agreement downgrade (#2413)', () => {
+  /**
+   * A cross-check judge that always DISAGREES with the primary judge:
+   * primary returns 1 for BEHAVIOR, cross-check returns 0, and vice versa.
+   * With enough sampled traces this produces agreement = 0.0.
+   */
+  function disagreeingCrossCheckJudge(): Judge {
+    return {
+      name: 'claude',
+      external: false,
+      grade: vi.fn(async (inp: JudgeInput): Promise<JudgeResult> => {
+        const out: JudgeResult = {};
+        for (const q of inp.questions) {
+          // opposite of the keyword judge: no BEHAVIOR → 1, BEHAVIOR → 0
+          out[q.id] = inp.output.includes('BEHAVIOR') ? 0 : 1;
+        }
+        return out;
+      }),
+    };
+  }
+
+  /**
+   * A cross-check judge that always AGREES with the primary judge.
+   */
+  function agreeingCrossCheckJudge(): Judge {
+    return {
+      name: 'claude',
+      external: false,
+      grade: vi.fn(async (inp: JudgeInput): Promise<JudgeResult> => {
+        const out: JudgeResult = {};
+        for (const q of inp.questions) {
+          out[q.id] = inp.output.includes('BEHAVIOR') ? 1 : 0;
+        }
+        return out;
+      }),
+    };
+  }
+
+  /**
+   * Run with enough episodes so that the ~10% cross-check sample picks up
+   * CROSS_CHECK_MIN_ITEMS (5) items for the prediction's question.
+   * We use 60 total episodes (2 targeted + 58 real) so ~6 get cross-checked
+   * across all questions.
+   */
+  function manyEpisodes(): Episode[] {
+    const eps: Episode[] = [
+      { id: 's1', source: 'synthetic', prompt: 'probe one', targets: 'p1' },
+      { id: 's2', source: 'synthetic', prompt: 'probe two', targets: 'p1' },
+    ];
+    for (let i = 1; i <= 58; i++) eps.push({ id: `r${i}`, source: 'real', prompt: `real turn ${i}` });
+    return eps;
+  }
+
+  it('disagreeing cross-check judge with enough items: confirmed → unclear (judges disagree)', async () => {
+    const episodes = manyEpisodes();
+    const crossCheckJudge = disagreeingCrossCheckJudge();
+    const { verifyResult } = await verifyRun(
+      input(episodes, [pred('p1')], { crossCheckJudge }),
+    );
+    const vp = verifyResult.predictions[0]!;
+    // Without cross-check this would be confirmed (delta = 1.0).
+    // With a disagreeing cross-check and enough items it should be unclear.
+    expect(vp.verdict).toBe('unclear');
+    expect(vp.verdictReason).toBe('judges disagree');
+    expect(vp.crossCheckAgreement).toBeDefined();
+    expect(vp.crossCheckAgreement!).toBeLessThan(0.75);
+  });
+
+  it('agreeing cross-check judge: verdict stays confirmed', async () => {
+    const episodes = manyEpisodes();
+    const crossCheckJudge = agreeingCrossCheckJudge();
+    const { verifyResult } = await verifyRun(
+      input(episodes, [pred('p1')], { crossCheckJudge }),
+    );
+    const vp = verifyResult.predictions[0]!;
+    expect(vp.verdict).toBe('confirmed');
+    expect(vp.verdictReason).toBeUndefined();
+    expect(vp.crossCheckAgreement).toBeGreaterThanOrEqual(0.75);
+  });
+
+  it('too few cross-check items: does not downgrade, sets crossCheckTooFew', async () => {
+    // With only 2 episodes total and ~10% sample ≈ 1 trace cross-checked,
+    // fewer than CROSS_CHECK_MIN_ITEMS items per prediction → flag only.
+    const episodes: Episode[] = [
+      { id: 's1', source: 'synthetic', prompt: 'probe one', targets: 'p1' },
+      { id: 's2', source: 'synthetic', prompt: 'probe two', targets: 'p1' },
+    ];
+    const crossCheckJudge = disagreeingCrossCheckJudge();
+    const { verifyResult } = await verifyRun(
+      input(episodes, [pred('p1')], { crossCheckJudge }),
+    );
+    const vp = verifyResult.predictions[0]!;
+    // Should NOT be downgraded (too few cross-check items).
+    expect(vp.verdict).toBe('confirmed');
+    expect(vp.crossCheckTooFew).toBe(true);
+    expect(vp.crossCheckAgreement).toBeUndefined();
+  });
+
+  it('per-prediction crossCheckAgreement appears in results.json when present', async () => {
+    const episodes = manyEpisodes();
+    const crossCheckJudge = agreeingCrossCheckJudge();
+    const { verifyResult } = await verifyRun(
+      input(episodes, [pred('p1')], { crossCheckJudge }),
+    );
+    const json = JSON.parse(JSON.stringify(verifyResult)) as typeof verifyResult;
+    const vp = json.predictions[0]!;
+    expect(typeof vp.crossCheckAgreement).toBe('number');
+  });
+
+  it('no cross-check judge: crossCheckAgreement and crossCheckTooFew absent', async () => {
+    const episodes = acceptanceEpisodes();
+    const { verifyResult } = await verifyRun(input(episodes, [pred('p1')]));
+    const vp = verifyResult.predictions[0]!;
+    expect(vp.crossCheckAgreement).toBeUndefined();
+    expect(vp.crossCheckTooFew).toBeUndefined();
   });
 });
 

@@ -423,4 +423,35 @@ describe('standardLimits', () => {
     const limits = standardLimits({ verified: false, judgeExternal: true });
     expect(limits.some((l) => l.toLowerCase().includes('jev') || l.includes('external'))).toBe(true);
   });
+
+  it('verified with small n: includes MDE limit bullet for underpowered predictions', () => {
+    // n=20 per arm → MDE ≈ 62pp > 10pp → limit line should appear
+    const vp = makeVerifiedPred('p1', 'unclear');
+    const limits = standardLimits({ verified: true, judgeExternal: false, verifiedPredictions: [vp] });
+    const mdeLimits = limits.filter((l) => l.includes('p1'));
+    expect(mdeLimits.length).toBeGreaterThan(0);
+    expect(mdeLimits[0]).toContain('undetectable');
+    expect(mdeLimits[0]).toContain('n=20');
+  });
+
+  it('verified with large n: no MDE limit bullet when powered', () => {
+    // n=769 per arm → MDE ≈ 10pp = threshold → no limit
+    const vpLarge: VerifiedPrediction = {
+      prediction: makePred('p2'),
+      rates: {
+        baseline: 0.5, candidate: 0.5, delta: 0, ci: [-0.1, 0.1],
+        n: { baseline: 769, candidate: 769 },
+      },
+      verdict: 'unclear',
+    };
+    const limits = standardLimits({ verified: true, judgeExternal: false, verifiedPredictions: [vpLarge] });
+    const mdeLimits = limits.filter((l) => l.includes('p2'));
+    expect(mdeLimits.length).toBe(0);
+  });
+
+  it('no verifiedPredictions: no MDE bullets', () => {
+    const limits = standardLimits({ verified: true, judgeExternal: false });
+    const mdeLimits = limits.filter((l) => l.includes('undetectable'));
+    expect(mdeLimits.length).toBe(0);
+  });
 });

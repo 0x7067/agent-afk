@@ -20,6 +20,7 @@ import type {
 } from './types.js';
 import { describeChange } from './operators/index.js';
 import { verdictEmoji, verdictLabel } from './report-verdict.js';
+import { mdeLimitLine } from './mde.js';
 export { buildHeadline } from './report.headline.js';
 
 // ---------------------------------------------------------------------------
@@ -45,13 +46,19 @@ function truncateLines(text: string, maxLines: number): string {
 // Verified prediction table (#2403)
 // ---------------------------------------------------------------------------
 
-/** "2 probes, n=6/6" : how many episodes and graded outputs back a verdict. */
+/**
+ * "2 probes (n=6 eps, 18 samples)" — episodes are the unit of analysis
+ * (#2404); sample count shown separately for transparency.
+ */
 function scoredOn(vp: VerifiedPrediction): string {
-  const n = `n=${vp.rates.n.baseline}/${vp.rates.n.candidate}`;
-  if (!vp.scope) return n; // pre-#2403 result: pooled over every episode
+  const nEps = `n=${vp.rates.n.baseline}/${vp.rates.n.candidate} eps`;
+  if (!vp.scope) return nEps; // pre-#2403 result: pooled over every episode
   const eps = new Set([...vp.scope.episodes.baseline, ...vp.scope.episodes.candidate]).size;
   if (eps === 0) return `no graded probes (${vp.scope.targetedEpisodes} planned)`;
-  return `${eps} probe${eps === 1 ? '' : 's'}, ${n}`;
+  const samplesNote = vp.scope.totalSamples !== undefined
+    ? `, ${vp.scope.totalSamples} samples`
+    : '';
+  return `${eps} probe${eps === 1 ? '' : 's'}, ${nEps}${samplesNote}`;
 }
 
 function backgroundStr(vp: VerifiedPrediction): string {
@@ -65,6 +72,16 @@ function episodeList(vp: VerifiedPrediction): string {
   if (baseline.length === 0 && candidate.length === 0) return 'none graded';
   if (baseline.join(',') === candidate.join(',')) return baseline.join(', ');
   return `baseline ${baseline.join(', ') || 'none'}; candidate ${candidate.join(', ') || 'none'}`;
+}
+
+/** Render per-prediction cross-check agreement cell (#2413). */
+function crossCheckCell(vp: VerifiedPrediction): string {
+  if (vp.crossCheckTooFew) return '⚠ too few cross-checks';
+  if (vp.crossCheckAgreement !== undefined) {
+    const flag = vp.crossCheckAgreement < 0.75 ? ' ⚠ low' : '';
+    return `${pct(vp.crossCheckAgreement)}${flag}`;
+  }
+  return '—';
 }
 
 /**
@@ -81,18 +98,37 @@ function renderVerifiedPredictionTable(
 ): string[] {
   const lines: string[] = [];
   const vpMap = new Map(verified.map((vp) => [vp.prediction.id, vp]));
+  const hasCrossCheck = verified.some(
+    (vp) => vp.crossCheckAgreement !== undefined || vp.crossCheckTooFew,
+  );
   lines.push('> Before / After / CI / Result use only the probes written for each prediction. "Other episodes" is the same question on every other episode, for context; it does not affect the result.\n');
-  lines.push('| # | Behavior | Direction | Before | After | CI | Scored on | Other episodes | Result |');
-  lines.push('|---|----------|-----------|--------|-------|----|-----------|----------------|--------|');
+  if (hasCrossCheck) {
+    lines.push('| # | Behavior | Direction | Before | After | CI | Scored on | Other episodes | Judge agree | Result |');
+    lines.push('|---|----------|-----------|--------|-------|----|-----------|----------------|-------------|--------|');
+  } else {
+    lines.push('| # | Behavior | Direction | Before | After | CI | Scored on | Other episodes | Result |');
+    lines.push('|---|----------|-----------|--------|-------|----|-----------|----------------|--------|');
+  }
   for (const pred of predictions) {
     const vp = vpMap.get(pred.id);
     if (!vp) {
-      lines.push(`| ${pred.id} | ${pred.behavior} | ${pred.direction} | — | — | — | — | — | ⚪ unclear |`);
+      if (hasCrossCheck) {
+        lines.push(`| ${pred.id} | ${pred.behavior} | ${pred.direction} | — | — | — | — | — | — | ⚪ unclear |`);
+      } else {
+        lines.push(`| ${pred.id} | ${pred.behavior} | ${pred.direction} | — | — | — | — | — | ⚪ unclear |`);
+      }
       continue;
     }
-    lines.push(
-      `| ${pred.id} | ${pred.behavior} | ${pred.direction} | ${pct(vp.rates.baseline)} | ${pct(vp.rates.candidate)} | ${ciStr(vp.rates.ci)} | ${scoredOn(vp)} | ${backgroundStr(vp)} | ${verdictEmoji(vp.verdict)} ${verdictLabel(vp)} |`,
-    );
+    const resultCell = `${verdictEmoji(vp.verdict)} ${verdictLabel(vp)}${vp.verdictReason ? ` (${vp.verdictReason})` : ''}`;
+    if (hasCrossCheck) {
+      lines.push(
+        `| ${pred.id} | ${pred.behavior} | ${pred.direction} | ${pct(vp.rates.baseline)} | ${pct(vp.rates.candidate)} | ${ciStr(vp.rates.ci)} | ${scoredOn(vp)} | ${backgroundStr(vp)} | ${crossCheckCell(vp)} | ${resultCell} |`,
+      );
+    } else {
+      lines.push(
+        `| ${pred.id} | ${pred.behavior} | ${pred.direction} | ${pct(vp.rates.baseline)} | ${pct(vp.rates.candidate)} | ${ciStr(vp.rates.ci)} | ${scoredOn(vp)} | ${backgroundStr(vp)} | ${resultCell} |`,
+      );
+    }
   }
   const scoped = predictions.map((p) => vpMap.get(p.id)).filter((vp) => vp?.scope !== undefined);
   if (scoped.length > 0) {
@@ -225,6 +261,9 @@ export function renderMarkdown(report: WhatifReport): string {
         ? ` Claude cross-check agreement: ${pct(verify.judge.crossCheckAgreement)}.`
         : '';
     lines.push(`${judgeDesc}${crossCheck}\n`);
+    lines.push(
+      'The cross-check re-grades a ~10% sample of outputs with a second judge model; per-prediction agreement is shown in the "Judge agree" column and, when fewer than 5 items were sampled, flagged as "too few cross-checks". A confirmed or refuted verdict is automatically downgraded to unclear when per-prediction agreement is below 75% (judges disagree).\n',
+    );
   }
 
   // ── 8. Limits ────────────────────────────────────────────────────────────
@@ -313,8 +352,15 @@ export function renderTerminal(report: WhatifReport, palette: ThemePalette): str
 
 /**
  * Standard caveats that accompany every what-if report.
+ *
+ * When `verifiedPredictions` is supplied (verify runs only), an MDE limit
+ * bullet is added for each prediction whose achieved MDE exceeds 10 pp.
  */
-export function standardLimits(opts: { verified: boolean; judgeExternal: boolean }): string[] {
+export function standardLimits(opts: {
+  verified: boolean;
+  judgeExternal: boolean;
+  verifiedPredictions?: VerifiedPrediction[];
+}): string[] {
   const limits: string[] = [
     'Episodes stop at the first action with side effects, so this shows what the agent decides, not downstream results.',
   ];
@@ -333,6 +379,15 @@ export function standardLimits(opts: { verified: boolean; judgeExternal: boolean
     limits.push(
       'The external judge (Jev) received redacted episode content. Use --judge claude to keep data on Anthropic.',
     );
+  }
+
+  // Per-prediction MDE limit: shown when MDE > 10pp (i.e. small effects are undetectable).
+  if (opts.verifiedPredictions) {
+    for (const vp of opts.verifiedPredictions) {
+      const n = Math.min(vp.rates.n.baseline, vp.rates.n.candidate);
+      const line = mdeLimitLine(n, vp.prediction.id);
+      if (line) limits.push(line);
+    }
   }
 
   return limits;

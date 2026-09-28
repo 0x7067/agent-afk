@@ -29,6 +29,13 @@
  * as the same string. Images stay `image_url` parts; buildMessages() already
  * down-converts them to a text notice for non-vision models.
  *
+ * Provenance (#2464): `fromJournalMessages` records the natives each journal
+ * message fanned out to, and `adopt` hands the ORIGINAL journal message back
+ * while that span is intact, so thinking signatures, redacted thinking and
+ * documents this wire cannot carry survive an A→B→A provider switch. The
+ * synthetic `[error]` results from the repair step have no provenance and are
+ * journaled as new messages.
+ *
  * @module agent/providers/openai-compatible/journal-adapter
  */
 
@@ -39,6 +46,7 @@ import type {
   JournalMessage,
   JournalResultPart,
 } from '../../journal/index.js';
+import { JournalProvenance } from '../../journal/index.js';
 import type { OpenAIContentPart, OpenAIMessage } from './messages.js';
 
 interface NativeToolCall {
@@ -48,6 +56,8 @@ interface NativeToolCall {
 }
 
 const ERROR_PREFIX = '[error] ';
+/** Provider family stamped on thinking this adapter writes (it never has a signature). */
+export const OPENAI_COMPATIBLE_ORIGIN = 'openai-compatible';
 const RAW_KEY = '_raw';
 
 function toolCallsOf(msg: OpenAIMessage): NativeToolCall[] | undefined {
@@ -98,7 +108,7 @@ function contentToBlocks(content: unknown): JournalBlock[] {
 function assistantToJournal(msg: OpenAIMessage): JournalMessage {
   const content: JournalBlock[] = [];
   if (typeof msg.reasoning_content === 'string' && msg.reasoning_content.length > 0) {
-    content.push({ type: 'thinking', thinking: msg.reasoning_content });
+    content.push({ type: 'thinking', thinking: msg.reasoning_content, origin: OPENAI_COMPATIBLE_ORIGIN });
   }
   content.push(...contentToBlocks(msg.content));
   for (const tc of toolCallsOf(msg) ?? []) {
@@ -232,13 +242,25 @@ function repairUnansweredToolCalls(msgs: OpenAIMessage[]): OpenAIMessage[] {
   return out;
 }
 
+const provenance = new JournalProvenance<OpenAIMessage>();
+
 function fromJournalMessages(messages: readonly JournalMessage[]): OpenAIMessage[] {
   const out: OpenAIMessage[] = [];
+  const spans: Array<{ source: JournalMessage; members: OpenAIMessage[] }> = [];
   for (const msg of messages) {
+    const start = out.length;
     if (msg.role === 'assistant') out.push(assistantFromJournal(msg));
     else userFromJournal(msg, out);
+    spans.push({ source: msg, members: out.slice(start) });
   }
+  // Repair can insert a synthetic result INSIDE a span; adopt() then sees the
+  // span as broken and that span maps fresh, which keeps tool pairing valid.
+  for (const { source, members } of spans) provenance.record([source], members);
   return repairUnansweredToolCalls(out);
 }
 
-export const openAIJournalAdapter: JournalAdapter<OpenAIMessage> = { toJournal, fromJournalMessages };
+function adopt(messages: readonly OpenAIMessage[], at: number): ReturnType<typeof provenance.adopt> {
+  return provenance.adopt(messages, at);
+}
+
+export const openAIJournalAdapter: JournalAdapter<OpenAIMessage> = { toJournal, fromJournalMessages, adopt };

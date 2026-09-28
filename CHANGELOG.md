@@ -11,6 +11,42 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.267.0] - 2026-09-28
+
+### Added
+- minimum-detectable-effect preflight, gate, and report limit (#2410) (3c9e04e3)
+- per-prediction judge agreement downgrades verdicts when judges disagree (#2413) (64dd1196)
+
+### Fixed
+- correct power convention and use per-prediction probe count (d5b0c8bd)
+
+### Changed
+- Merge pull request #2476 from griffinwork40/afk/iso-compose-mde-2-plh7j1 (c7aeada0)
+- Merge pull request #2475 from griffinwork40/afk/iso-compose-crosscheck-3-2azvpb (7493ff53)
+- remove stray commit-message files (ae01c313)
+- Merge remote-tracking branch 'origin/afk/iso-compose-stats-1-e7z5zf' into afk/iso-compose-mde-2-plh7j1 (134ea19b)
+
+## [5.266.2] - 2026-09-28
+
+### Fixed
+- per-episode analysis and real equivalence test for verdicts (#2404, #2405) (16345281)
+
+### Changed
+- Merge pull request #2473 from griffinwork40/afk/iso-compose-stats-1-e7z5zf (292422fe)
+- remove stray commit-message files (d2f20703)
+- extend calibration harness — Beta latent, tau dimension, updated thresholds (e500f913)
+
+## [5.266.1] - 2026-09-28
+
+### Fixed
+- isolate arm sandboxes so episodes cannot reach the other arm (#2466) (05b263ac)
+
+### Changed
+- Merge pull request #2467 from griffinwork40/afk/iso-agent-tool-1-aafzkj (3a3e203e)
+- Merge pull request #2465 from griffinwork40/afk/iso-compose-harness-1-oxi4or (43cbeab3)
+- calibration harness: add ICC dimension, regenerate docs (beb2e90c)
+- model-free calibration harness for verify verdicts (#2404, #2405) (5ca9806e)
+
 ## [5.266.0] - 2026-09-28
 
 ### Added

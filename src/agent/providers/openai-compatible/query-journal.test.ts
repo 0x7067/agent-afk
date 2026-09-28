@@ -140,10 +140,11 @@ describe('OpenAICompatibleQuery message journal', () => {
     });
     expect(sent[2]).toEqual({ role: 'tool', tool_call_id: 't1', content: 'A' });
     expect(sent[3]).toEqual({ role: 'tool', tool_call_id: 't2', content: 'B' });
-    // Anthropic-shaped fold (2 tool_results batched in one message) maps to
-    // 2 `tool` messages, so the seed resyncs the journal to the OpenAI shape.
-    expect(journal.truncates).toEqual([{ length: 0, reason: 'resync' }]);
-    expect(journal.arr).toHaveLength(7);
+    // With provenance (#2464): the batched user message is adopted, so seed()
+    // writes nothing. Journal stays in its original Anthropic shape (4 msgs)
+    // and the new turn appends its user message and the reply → 6 total.
+    expect(journal.truncates).toEqual([]);
+    expect(journal.arr).toHaveLength(6);
   });
 
   it('resumes an OpenAI-written journal without a resync', async () => {

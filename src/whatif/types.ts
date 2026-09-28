@@ -293,6 +293,12 @@ export interface PredictionScope {
   /** Episodes written to target this prediction (before failures/judging). */
   targetedEpisodes: number;
   /**
+   * Total graded sample observations across both arms (#2404).
+   * `rates.n` reports unique episodes; this shows how many individual
+   * samples fed into those episode means. Absent in pre-#2404 results.
+   */
+  totalSamples?: number;
+  /**
    * The same question graded on every non-targeted episode. Context only:
    * shows whether the behavior shifted outside its probes. Absent when an
    * arm had no graded non-targeted output.
@@ -312,6 +318,26 @@ export interface VerifiedPrediction {
    * `observable: 'downstream'` at predict time. Optional, additive.
    */
   unobservableReason?: string;
+  /**
+   * Per-prediction cross-check agreement rate (#2413): fraction of cross-checked
+   * items where the primary and cross-check judge agree on this prediction's
+   * question. Absent when no cross-check judge was configured or when fewer than
+   * {@link CROSS_CHECK_MIN_ITEMS} items were sampled for this prediction.
+   */
+  crossCheckAgreement?: number;
+  /**
+   * True when this prediction had cross-check data but fewer than
+   * {@link CROSS_CHECK_MIN_ITEMS} items — agreement is unknown and cannot
+   * be used to downgrade the verdict. The verdict is left unchanged, but
+   * the flag is surfaced in the report.
+   */
+  crossCheckTooFew?: boolean;
+  /**
+   * Set to 'judges disagree' when the verdict was downgraded from confirmed/
+   * refuted to unclear because per-prediction cross-check agreement was below
+   * {@link CROSS_CHECK_MIN_AGREEMENT} (#2413).
+   */
+  verdictReason?: 'judges disagree';
 }
 
 export interface DiscoveredDifference {

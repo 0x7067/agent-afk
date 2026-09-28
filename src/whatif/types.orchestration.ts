@@ -16,6 +16,7 @@ export type WhatifStage =
   | 'snapshot'
   | 'predict'
   | 'episodes'
+  | 'preflight'
   | 'run'
   | 'judge'
   | 'discover'
@@ -58,6 +59,18 @@ export interface WhatifOptions {
   episodeTimeoutMs: number;
   /** Keep sandboxes on disk after the run (debugging). */
   keepSandboxes: boolean;
+  /** Bypass the MDE underpowered hard gate. */
+  force?: boolean;
+  /**
+   * Number of synthetic probe episodes to generate per prediction (1–12).
+   * Defaults to DEFAULT_PROBES (6) when omitted.
+   */
+  probes?: number;
+  /**
+   * Maximum number of predictions to retain from the analyst model's output.
+   * Defaults are resolved by resolveMaxPredictions(probes).
+   */
+  maxPredictions?: number;
 }
 
 export interface WhatifDeps {

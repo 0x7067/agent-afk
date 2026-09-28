@@ -8,7 +8,8 @@ type Found = { block: ToolResultBlock; subagentId?: string } | null;
 const mockFind = vi.fn<(sessionId: string, toolUseId: string) => Found>();
 const mockExists = vi.fn<(sessionId: string) => boolean>();
 
-vi.mock('../agent/journal/index.js', () => ({
+vi.mock('../agent/journal/index.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../agent/journal/index.js')>()),
   findToolResult: (s: string, t: string) => mockFind(s, t),
   journalExists: (s: string) => mockExists(s),
 }));

@@ -16,7 +16,8 @@ engine:
    that each environment sent to the model, which tools were added or removed,
    token-count delta, and per-turn cost delta.
 
-2. **Predicts up to 8 behaviour changes** (~1 cent): an analyst model studies
+2. **Predicts up to `--max-predictions` behaviour changes** (~1 cent; default 3, or 8 with `--probes 2` or fewer), each with
+   `--probes` diverse test requests (default 6, near-duplicates dropped): an analyst model studies
    the diff and produces a labelled list of predicted shifts (added / removed /
    strengthened / weakened), each with a confidence rating and a yes/no test
    question. **Always labelled a guess.**
@@ -148,6 +149,8 @@ is no TTY readline prompt in the REPL.
 | `--analyst-model <id>` | `sonnet` | Model for compile/predict/judge |
 | `--verify` | off | Run episodes and verify predictions |
 | `--quick` | off | Single-turn episodes (sets `--max-turns 1`) |
+| `--probes <n>` | 6 | Synthetic probe episodes per prediction (1–12). More probes give each prediction more statistical power. Near-duplicate probes are dropped automatically. |
+| `--max-predictions <n>` | 3 (when `--probes > 2`), 8 otherwise | Maximum predictions to retain. Concentrating on fewer predictions with more probes improves verdict reliability. |
 | `--turns <n>` | 12 | Real turns to replay |
 | `--samples <n>` | 3 | Samples per episode per environment |
 | `--max-usd <n>` | 5 | Budget cap in USD |
@@ -189,7 +192,13 @@ What differs is which of those grades feed each prediction's result:
 - **Other episodes** is the same question graded on every other episode
   (replayed real turns, suite prompts, other predictions' probes). It is
   context only, for spotting a behavior that leaks outside its probes, and
-  never affects the result.
+  never affects the result. Because of that, every prediction's probes are
+  queued **before** the replayed turns (#2477): when `--max-usd` stops the run
+  early, the dropped tail is background context, not the probes a verdict
+  needs. The preflight prints the estimated spend split into probe episodes
+  and replay/suite episodes; if it exceeds `--max-usd`, raise the cap to the
+  printed amount or cut `--probes`, `--max-predictions`, `--samples`, or
+  `--turns`.
 - **Scored on** shows how many probes contributed and `n` (graded outputs per
   arm, baseline/candidate). A prediction with no graded probe (all failed,
   budget stop, judge failure) shows `no graded probes` and is always Unclear.
