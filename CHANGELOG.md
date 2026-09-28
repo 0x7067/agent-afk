@@ -11,6 +11,21 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.267.0] - 2026-09-28
+
+### Added
+- minimum-detectable-effect preflight, gate, and report limit (#2410) (3c9e04e3)
+- per-prediction judge agreement downgrades verdicts when judges disagree (#2413) (64dd1196)
+
+### Fixed
+- correct power convention and use per-prediction probe count (d5b0c8bd)
+
+### Changed
+- Merge pull request #2476 from griffinwork40/afk/iso-compose-mde-2-plh7j1 (c7aeada0)
+- Merge pull request #2475 from griffinwork40/afk/iso-compose-crosscheck-3-2azvpb (7493ff53)
+- remove stray commit-message files (ae01c313)
+- Merge remote-tracking branch 'origin/afk/iso-compose-stats-1-e7z5zf' into afk/iso-compose-mde-2-plh7j1 (134ea19b)
+
 ## [5.266.2] - 2026-09-28
 
 ### Fixed
