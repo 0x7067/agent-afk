@@ -7,6 +7,7 @@
 
 export * from './types.js';
 export { JournalSync, type SyncOptions } from './sync.js';
+export { JournalProvenance } from './provenance.js';
 export { createMessageJournal, isMessageJournalDisabled, type CreateMessageJournalOptions } from './writer.js';
 export {
   findToolResult,

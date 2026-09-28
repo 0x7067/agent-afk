@@ -54,8 +54,13 @@ export type JournalResultPart =
 export type JournalBlock =
   | { type: 'text'; text: string }
   | { type: 'text_ref'; ref: BlobRef; preview: string }
-  | { type: 'thinking'; thinking: string; signature?: string }
-  | { type: 'redacted_thinking'; data: string }
+  /**
+   * `origin` is the provider family that produced the block (e.g.
+   * `'anthropic'`); a signature is only valid for its own family. Absent on
+   * blocks written before #2464.
+   */
+  | { type: 'thinking'; thinking: string; signature?: string; origin?: string }
+  | { type: 'redacted_thinking'; data: string; origin?: string }
   | { type: 'tool_use'; id: string; name: string; input: unknown }
   | { type: 'tool_result'; toolUseId: string; isError?: boolean; content: JournalResultPart[] }
   | { type: 'image'; source: JournalBinary }
@@ -64,6 +69,12 @@ export type JournalBlock =
 export interface JournalMessage {
   role: 'user' | 'assistant';
   content: JournalBlock[];
+}
+
+/** A span adopted by {@link JournalAdapter.adopt}: its original journal messages and how many natives it covers. */
+export interface JournalAdoption {
+  readonly entries: readonly JournalMessage[];
+  readonly count: number;
 }
 
 /** Why a truncate happened, when the emitter knows. Advisory only. */
@@ -145,8 +156,14 @@ export interface MessageJournal {
  *     accepted and degraded gracefully, e.g. dropping thinking signatures the
  *     provider cannot replay, or rendering images it cannot send as text.
  *   - Input is already hydrated: no `text_ref` / `ref` sources remain.
+ *   - `adopt` (optional, #2464): when the natives starting at `at` are a span
+ *     `fromJournalMessages` built and are unchanged, return the ORIGINAL
+ *     journal messages for the whole span; {@link JournalSync} then uses them
+ *     instead of `toJournal`, so a provider switch writes nothing and hands
+ *     over losslessly. See `JournalProvenance` (provenance.ts).
  */
 export interface JournalAdapter<T> {
   toJournal(message: T): JournalMessage | null;
   fromJournalMessages(messages: readonly JournalMessage[]): T[];
+  adopt?(messages: readonly T[], at: number): JournalAdoption | undefined;
 }

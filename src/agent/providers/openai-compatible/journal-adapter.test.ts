@@ -19,7 +19,7 @@ describe('openAIJournalAdapter.toJournal', () => {
     expect(j).toEqual({
       role: 'assistant',
       content: [
-        { type: 'thinking', thinking: 'think' },
+        { type: 'thinking', thinking: 'think', origin: 'openai-compatible' },
         { type: 'tool_use', id: 'c1', name: 'echo', input: { msg: 'hi' } },
         { type: 'tool_use', id: 'c2', name: 'bad', input: { _raw: '{not json' } },
       ],
