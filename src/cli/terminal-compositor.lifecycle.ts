@@ -484,17 +484,19 @@ export function disarm(self: LifecycleHost): void {
   // uses buildScrollbackArchiveEscape which CUP-writes to anchorFloor — if the
   // band rows were still occupying anchorFloor, they would be silently overwritten.
   //
-  // Owner-wrote path (R!=P or S!=0): band rows MAY already be in native terminal
-  // scrollback (scrolled off by the owner's writes). Re-archiving via endTurnFlush
-  // would emit ANSI sequences that duplicate rows already present in native
-  // scrollback (S2 defect root cause). forgetCommittedBand zeroes the model with
-  // zero writes — no duplicate risk. Pending (never-painted) rows are discarded
-  // without archiving; they have never appeared on screen, and the owner's output
-  // context makes their position unknowable.
+  // Owner-wrote path (R!=P or S!=0): PAINTED band rows MAY already be in native
+  // terminal scrollback (scrolled off by the owner's writes). Re-archiving via
+  // endTurnFlush would emit ANSI sequences that duplicate rows already present in
+  // native scrollback (S2 defect root cause). PENDING rows — those that were in
+  // the model but never reached the terminal — cannot be in native scrollback
+  // (they were never displayed); flushing them before forgetting the model ensures
+  // committed content is not silently lost when the overlay was full-viewport at
+  // suspend time. flushPendingCommittedBand is a no-op when all rows are painted.
   if (self.suspended) {
     if (!disarmOwnerWrote) {
       endTurnFlush(self);
     } else {
+      flushPendingCommittedBand(self);
       self.forgetCommittedBand();
     }
   }
