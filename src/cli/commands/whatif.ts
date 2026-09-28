@@ -110,6 +110,8 @@ export function registerWhatifCommand(program: Command): void {
     .option('--concurrency <n>', 'Parallel episodes (default: 4)')
     .option('--max-turns <n>', 'Max turns per episode (default: 3)')
     .option('--timeout <sec>', 'Episode timeout in seconds (default: 180)')
+    .option('--probes <n>', 'Synthetic probe episodes per prediction (1–12; default 6)')
+    .option('--max-predictions <n>', 'Max predictions to retain (1–8; default 3 when probes>2, else 8)')
     .option('--keep-sandboxes', 'Keep sandbox directories after run')
     .option('--yes', 'Skip confirmation of compiled spec')
     .option('--force', 'Bypass the MDE underpowered gate (--verify only)')
@@ -231,6 +233,8 @@ async function runWhatifCommand(
     episodeTimeoutMs: parsed.options.episodeTimeoutMs,
     keepSandboxes: parsed.options.keepSandboxes,
     force: parsed.force,
+    ...(parsed.options.probes !== undefined ? { probes: parsed.options.probes } : {}),
+    ...(parsed.options.maxPredictions !== undefined ? { maxPredictions: parsed.options.maxPredictions } : {}),
   };
 
   try {
@@ -354,6 +358,8 @@ function buildArgvFromOpts(
   push('--concurrency', opts['concurrency']);
   push('--max-turns', opts['maxTurns']);
   push('--timeout', opts['timeout']);
+  push('--probes', opts['probes']);
+  push('--max-predictions', opts['maxPredictions']);
   push('--keep-sandboxes', opts['keepSandboxes']);
   push('--yes', opts['yes']);
   push('--force', opts['force']);

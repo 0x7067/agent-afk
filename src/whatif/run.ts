@@ -23,10 +23,11 @@ import { materializeSandboxes } from './sandbox.js';
 import { describeChange } from './operators/index.js';
 import { computeStructuralImpact } from './structural.js';
 import { normalizeSnapshot } from './structural.normalize.js';
-import { verifyShortfallLimits, hookIsolationLimits, specTargetsHooksOrPlugins } from './run.limits.js';
+import { hookIsolationLimits, specTargetsHooksOrPlugins } from './run.limits.js';
 import { keepContextHooksInEpisode } from '../agent/whatif-episode-gate.js';
 import { trackRecordSummary } from './ledger.js';
-import { predictChanges } from './predict.js';
+import { predictChanges, resolveMaxPredictions, DEFAULT_PROBES } from './predict.js';
+import { buildAndPersistVerifiedReport } from './run.report.js';
 import { buildRepoManifest, pathExistsInCwd } from './repo-manifest.js';
 import { groundProbes, makeSetChecker } from './probe-grounding.js';
 import {
@@ -61,9 +62,11 @@ export class WhatifBudgetError extends Error {
   readonly maxUsd: number;
 
   constructor(estimateUsd: number, maxUsd: number) {
+    const ceil = (Math.ceil(estimateUsd * 100) / 100).toFixed(2);
     super(
       `whatif: estimated cost $${estimateUsd.toFixed(4)} exceeds --max-usd $${maxUsd.toFixed(4)}. ` +
-        `Increase --max-usd or reduce --turns/--samples to proceed.`,
+        `Raise the budget with --max-usd ${ceil}, or reduce scope with ` +
+        `--probes/--max-predictions/--samples/--turns.`,
     );
     this.name = 'WhatifBudgetError';
     this.estimateUsd = estimateUsd;
@@ -142,8 +145,11 @@ async function runPredictPhase(
 
   const repoManifest = buildRepoManifest(options.realCwd);
 
+  const probesPerPrediction = options.probes ?? DEFAULT_PROBES;
+  const maxPredictions = resolveMaxPredictions(probesPerPrediction, options.maxPredictions);
+
   const rawPredictions = await predictChanges(
-    { spec, changeDescriptions, structural, trackRecord, repoManifest },
+    { spec, changeDescriptions, structural, trackRecord, repoManifest, probesPerPrediction, maxPredictions },
     wrappedComplete,
     options.analystModel,
   );
@@ -178,7 +184,11 @@ async function collectVerifyEpisodes(
   const synthetic = syntheticEpisodes(predictions);
   const suitesDir = path.join(options.realHome, 'whatif', 'suites');
   const suiteEps = await loadSuiteEpisodes(suitesDir).catch(() => []);
-  return { episodes: [...realTurns, ...synthetic, ...suiteEps], corpusExclusions };
+  // Invariant: synthetic probe episodes MUST come before replay turns.
+  // run.verify.ts builds tasks in episode order and the budget stop drops the
+  // tail; if replay turns come first they consume budget that would otherwise
+  // score predictions (replay turns target no prediction after #2427).
+  return { episodes: [...synthetic, ...realTurns, ...suiteEps], corpusExclusions };
 }
 
 // ---------------------------------------------------------------------------
@@ -207,6 +217,10 @@ interface PreflightInput {
   episodesPerArm: number;
   /** Minimum probe count per prediction (drives per-prediction MDE gate). */
   minProbesPerPrediction: number;
+  /** Number of prediction episodes (synthetic probes) per arm. */
+  syntheticPerArm: number;
+  /** Number of predictions retained (for breakdown display). */
+  predictionCount: number;
   force: boolean;
   samples: number;
   agentModel: string;
@@ -231,6 +245,7 @@ function runPreflightChecks(input: PreflightInput): void {
   const {
     episodesPerArm, minProbesPerPrediction, force, samples, agentModel, analystModel,
     systemTokens, judgeExternal, analystCostUsd, maxUsd, onProgress,
+    predictionCount, syntheticPerArm,
   } = input;
 
   onProgress?.({ stage: 'preflight', message: mdePreflightLine(minProbesPerPrediction) });
@@ -249,6 +264,16 @@ function runPreflightChecks(input: PreflightInput): void {
   });
 
   const totalEstimate = estimate.usd + analystCostUsd;
+  // Emit estimated spend + breakdown before the budget gate.
+  onProgress?.({
+    stage: 'preflight',
+    message:
+      `estimated spend $${totalEstimate.toFixed(4)} ` +
+      `(${syntheticPerArm} probe episodes for ${predictionCount} predictions` +
+      ` + ${episodesPerArm - syntheticPerArm} replay/suite episodes, × ${samples} samples × 2 arms;` +
+      ` analyst $${analystCostUsd.toFixed(4)})`,
+  });
+
   if (totalEstimate > maxUsd) {
     throw new WhatifBudgetError(totalEstimate, maxUsd);
   }
@@ -331,8 +356,6 @@ export async function runWhatif(
 
   const { baseline, candidate } = sandboxes;
 
-  let allTraces: EpisodeTrace[] = [];
-
   const runnerOpts: RunnerOptions = {
     timeoutMs: options.episodeTimeoutMs,
     maxTurns: 1,
@@ -390,6 +413,8 @@ export async function runWhatif(
       runPreflightChecks({
         episodesPerArm,
         minProbesPerPrediction,
+        syntheticPerArm: predictions.reduce((s, p) => s + episodes.filter((e) => e.targets === p.id).length, 0),
+        predictionCount: predictions.length,
         force: options.force ?? false,
         samples: options.samples,
         agentModel: options.agentModel,
@@ -445,39 +470,13 @@ export async function runWhatif(
       await crossCheckJudge?.close?.();
     }
 
-    allTraces = verifyTraces;
     analystCostUsd += verifyCost;
 
-    const episodesCostUsd = verifyTraces.reduce((s, t) => s + t.costUsd, 0);
-    const totalCostUsd = analystCostUsd + episodesCostUsd;
-
-    const limits = [
-      ...standardLimits({
-        verified: true,
-        judgeExternal: resolvedJudge.external,
-        verifiedPredictions: verifyResult!.predictions,
-      }),
-      ...verifyShortfallLimits(verifyResult!),
-      ...hookIsolationLimits({ keepContextHooks: autoKeepContextHooks, structural }),
-    ];
-
-    const partialReport: Omit<WhatifReport, 'headline'> = {
-      spec,
-      structural,
-      predictions,
-      verify: verifyResult!,
-      costUsd: totalCostUsd,
-      runDir,
-      limits,
-      ...(droppedProbes.length > 0 ? { droppedProbes } : {}),
-      corpusExclusions,
-    };
-    const headline = buildHeadline(partialReport);
-    const report: WhatifReport = { ...partialReport, headline };
-
-    await persistRun(runDir, report, allTraces);
-
-    return report;
+    return buildAndPersistVerifiedReport({
+      spec, structural, predictions, verifyResult: verifyResult!, droppedProbes,
+      corpusExclusions, verifyTraces, analystCostUsd, runDir,
+      resolvedJudge, autoKeepContextHooks,
+    });
   } finally {
     // Tear down sandboxes unless keepSandboxes
     if (!options.keepSandboxes) {
