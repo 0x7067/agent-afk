@@ -748,4 +748,57 @@ describe('repairOrphanToolUses — OrphanRepairReport', () => {
     // original indices of the assistant messages: 1 and 2
     expect(report!.orphanAssistantIndices.sort()).toEqual([1, 2]);
   });
+
+  it('shapeBefore captures pre-hoist block order even when hoist + orphan repair both fire', () => {
+    // History:
+    //   msg[0]: user "start"
+    //   msg[1]: assistant [tool_use tu_a]
+    //   msg[2]: user [text, tool_result:tu_a]   ← misplaced (text before tool_result → hoist fires)
+    //   msg[3]: assistant [tool_use tu_b]        ← orphan (no following tool_result → orphan pass fires)
+    //
+    // Pass 0 (hoist) reassigns msg[2].content in-place.
+    // Pass 1 (orphan) inserts a synthetic user message at index 4.
+    //
+    // shapeBefore must reflect the ORIGINAL block ordering of msg[2]:
+    //   [text, tool_result] — not the post-hoist [tool_result, text].
+    const messages: MessageParam[] = [
+      { role: 'user', content: 'start' },
+      {
+        role: 'assistant',
+        content: [
+          { type: 'tool_use', id: 'tu_a', name: 'bash', input: {} },
+        ] as ContentBlockParam[],
+      },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'some user text' },
+          { type: 'tool_result', tool_use_id: 'tu_a', content: 'result_a' },
+        ] as ContentBlockParam[],
+      },
+      {
+        role: 'assistant',
+        content: [
+          { type: 'tool_use', id: 'tu_b', name: 'grep', input: {} },
+        ] as ContentBlockParam[],
+      },
+    ];
+
+    const report = repairOrphanToolUses(messages);
+    expect(report).not.toBeNull();
+
+    // Pass 0 must have fired (text was before tool_result)
+    expect(report!.hoistedMessageIndices).toContain(2);
+
+    // Pass 1 must have fired (tu_b was orphaned)
+    expect(report!.orphanToolUseIds).toContain('tu_b');
+
+    // shapeBefore must show the ORIGINAL (pre-hoist) block order for msg[2]:
+    // text before tool_result, not the reversed post-hoist order.
+    const shape = report!.shapeBefore;
+    // msg[2] in the original was u[text,tool_result] — text comes first.
+    expect(shape).toContain('2:u[text,tool_result]');
+    // It must NOT contain the post-hoist order (tool_result first):
+    expect(shape).not.toContain('2:u[tool_result,text]');
+  });
 });

@@ -89,7 +89,7 @@ function buildShape(messages: readonly MessageParam[]): string {
     const msg = messages[i]!;
     const role = msg.role === 'user' ? 'u' : 'a';
     let blockSummary: string;
-    if (typeof msg.content === 'string') {
+    if (typeof msg.content === 'string' || !Array.isArray(msg.content)) {
       blockSummary = 'text';
     } else {
       // Count occurrences of each block type in order.
@@ -276,9 +276,13 @@ export function repairOrphanToolUses(messages: MessageParam[]): OrphanRepairRepo
 
   const messageCountBefore = messages.length;
 
-  // Snapshot the pre-repair structure for the shape string (cheap shallow copy;
-  // shape is only computed when a repair is found).
-  const snapshot = messages.slice();
+  // Capture the pre-repair structural shape BEFORE any pass mutates content.
+  // We compute it eagerly here (instead of lazily from a shallow-copy snapshot)
+  // so that Pass 0's in-place content reassignments do not corrupt shapeBefore.
+  // On healthy histories the function returns null, so this string is discarded —
+  // the cost is one O(N) scan avoided on the happy path vs. the old lazy-slice
+  // approach, which paid the slice allocation unconditionally.
+  const shapeBeforeEager = buildShape(messages);
 
   // Pass 0: put tool_result blocks first in each user message (heals sidecars
   // persisted with text-before-tool_result ordering).
@@ -305,6 +309,6 @@ export function repairOrphanToolUses(messages: MessageParam[]): OrphanRepairRepo
     orphanAssistantIndices,
     bridgedIndices,
     messageCountBefore,
-    shapeBefore: buildShape(snapshot),
+    shapeBefore: shapeBeforeEager,
   };
 }
