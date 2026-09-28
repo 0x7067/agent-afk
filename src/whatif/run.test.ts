@@ -511,22 +511,25 @@ describe('runWhatif — MDE gate', () => {
     // makeOptions uses force:true by default; explicitly set force:false here
     const deps = makeDeps();
     const options = makeOptions({ verify: true, maxUsd: 10, force: false });
-    // With few sessions in the tmp dir, episodes will be small (<193) → underpowered
+    // The gate now fires on per-prediction probe count (≤2 probes/prediction with the
+    // current cap), which is always underpowered for the 20pp threshold.
     await expect(runWhatif(options, deps)).rejects.toBeInstanceOf(WhatifMdeError);
     // runner.run must NOT have been called (gate fires before episodes run)
     expect(deps.runner.run).not.toHaveBeenCalled();
   });
 
-  it('WhatifMdeError carries episodesPerArm', async () => {
+  it('WhatifMdeError carries per-prediction probe count as episodesPerArm', async () => {
     const deps = makeDeps();
     const options = makeOptions({ verify: true, maxUsd: 10, force: false });
     const err = await runWhatif(options, deps).catch((e) => e);
     expect(err).toBeInstanceOf(WhatifMdeError);
+    // episodesPerArm now holds the per-prediction probe count (small: ≤2)
     expect((err as WhatifMdeError).episodesPerArm).toBeGreaterThanOrEqual(0);
     expect(err.message).toContain('--force');
+    expect(err.message).toContain('#2477');
   });
 
-  it('proceeds (no throw) when force is true even with few episodes', async () => {
+  it('proceeds (no throw) when force is true even with few probes per prediction', async () => {
     const deps = makeDeps();
     // force:true is set by makeOptions default; explicitly confirm here
     const options = makeOptions({ verify: true, maxUsd: 10, force: true });

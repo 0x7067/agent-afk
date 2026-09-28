@@ -74,14 +74,17 @@ export class WhatifBudgetError extends Error {
 /**
  * Thrown before running any episode when the run is underpowered (MDE exceeds
  * the gate threshold) and `--force` was not passed.
+ *
+ * `episodesPerArm` is the minimum probe count per prediction (the unit that
+ * drives per-prediction power).
  */
 export class WhatifMdeError extends Error {
   readonly episodesPerArm: number;
 
-  constructor(episodesPerArm: number) {
-    super(mdeGateRefusedMessage(episodesPerArm));
+  constructor(minProbesPerPrediction: number) {
+    super(mdeGateRefusedMessage(minProbesPerPrediction));
     this.name = 'WhatifMdeError';
-    this.episodesPerArm = episodesPerArm;
+    this.episodesPerArm = minProbesPerPrediction;
   }
 }
 
@@ -200,7 +203,10 @@ function dateStamp(now: Date): string {
 // ---------------------------------------------------------------------------
 
 interface PreflightInput {
+  /** Total episodes per arm (for budget estimation). */
   episodesPerArm: number;
+  /** Minimum probe count per prediction (drives per-prediction MDE gate). */
+  minProbesPerPrediction: number;
   force: boolean;
   samples: number;
   agentModel: string;
@@ -215,17 +221,22 @@ interface PreflightInput {
 /**
  * Emit MDE preflight info, check the MDE gate, and check the budget gate.
  * Throws `WhatifMdeError` or `WhatifBudgetError` on gate violations.
+ *
+ * The MDE gate uses `minProbesPerPrediction` — the minimum number of synthetic
+ * probe episodes assigned to any single prediction — because each prediction
+ * is scored only on its own probes (issue #2403).  Total episode count is used
+ * only for the cost estimate.
  */
 function runPreflightChecks(input: PreflightInput): void {
   const {
-    episodesPerArm, force, samples, agentModel, analystModel,
+    episodesPerArm, minProbesPerPrediction, force, samples, agentModel, analystModel,
     systemTokens, judgeExternal, analystCostUsd, maxUsd, onProgress,
   } = input;
 
-  onProgress?.({ stage: 'preflight', message: mdePreflightLine(episodesPerArm) });
+  onProgress?.({ stage: 'preflight', message: mdePreflightLine(minProbesPerPrediction) });
 
-  if (isUnderpowered(episodesPerArm) && !force) {
-    throw new WhatifMdeError(episodesPerArm);
+  if (isUnderpowered(minProbesPerPrediction) && !force) {
+    throw new WhatifMdeError(minProbesPerPrediction);
   }
 
   const estimate = estimateVerifyCost({
@@ -241,6 +252,28 @@ function runPreflightChecks(input: PreflightInput): void {
   if (totalEstimate > maxUsd) {
     throw new WhatifBudgetError(totalEstimate, maxUsd);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Per-prediction probe count helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Return the minimum number of synthetic probe episodes targeting any single
+ * prediction across all predictions.
+ *
+ * Each prediction is scored only on its own probes (`episode.targets ===
+ * prediction.id`); real-turn replays do not count.  The minimum is used as
+ * the per-prediction n for the MDE gate because the least-powered prediction
+ * determines the run's worst-case detectability.
+ */
+function resolveMinProbesPerPrediction(
+  predictions: import('./types.js').Prediction[],
+  episodes: import('./types.js').Episode[],
+): number {
+  if (predictions.length === 0) return 0;
+  const counts = predictions.map((p) => episodes.filter((e) => e.targets === p.id).length);
+  return Math.min(...counts);
 }
 
 // ---------------------------------------------------------------------------
@@ -352,9 +385,11 @@ export async function runWhatif(
 
     // Preflight: MDE info + MDE gate + budget gate
     const episodesPerArm = episodes.length;
+    const minProbesPerPrediction = resolveMinProbesPerPrediction(predictions, episodes);
     try {
       runPreflightChecks({
         episodesPerArm,
+        minProbesPerPrediction,
         force: options.force ?? false,
         samples: options.samples,
         agentModel: options.agentModel,
