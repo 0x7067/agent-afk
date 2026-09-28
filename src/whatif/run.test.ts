@@ -500,6 +500,20 @@ describe('WhatifBudgetError class', () => {
     expect(err.maxUsd).toBe(0.1);
     expect(err instanceof Error).toBe(true);
   });
+
+  it('message mentions --max-usd with rounded-up estimate', () => {
+    const err = new WhatifBudgetError(1.234, 1.0);
+    // Should suggest --max-usd at least at the rounded-up estimate (cents)
+    expect(err.message).toContain('--max-usd 1.24');
+  });
+
+  it('message mentions --probes/--max-predictions/--samples/--turns as reduction options', () => {
+    const err = new WhatifBudgetError(5.0, 3.0);
+    expect(err.message).toContain('--probes');
+    expect(err.message).toContain('--max-predictions');
+    expect(err.message).toContain('--samples');
+    expect(err.message).toContain('--turns');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -543,5 +557,50 @@ describe('runWhatif — MDE gate', () => {
       if (err instanceof WhatifMdeError) threw = true;
     }
     expect(threw).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Synthetic episodes come first (#2477 step 1)
+// ---------------------------------------------------------------------------
+
+describe('runWhatif — synthetic episodes before replay turns', () => {
+  it('runner receives synthetic probe episodes before replay turns', async () => {
+    // Write real session turns so collectRealTurns finds something
+    await writeSession(sessionsDir, 'sess-order-001', [
+      'A real user prompt from the corpus',
+    ]);
+
+    const episodeOrder: Array<string | undefined> = [];
+    const deps = makeDeps({
+      runner: {
+        ...makeRunner(),
+        run: vi.fn(async (_env: Environment, ep: Episode, _s: number, _opts: RunnerOptions): Promise<EpisodeTrace> => {
+          episodeOrder.push(ep.targets);
+          return makeCandidateTrace(ep.id, _s);
+        }),
+        snapshot: makeRunner().snapshot,
+      },
+    });
+
+    const options = makeOptions({ verify: true, samples: 1, maxUsd: 10 });
+    try {
+      await runWhatif(options, deps);
+    } catch {
+      // May fail for budget / MDE reasons; we only care about the episode order
+    }
+
+    // All targeted episodes (ep.targets defined) should appear before
+    // non-targeted episodes (ep.targets undefined) in the run call sequence.
+    const firstUntaggedIdx = episodeOrder.findIndex((t) => t === undefined);
+    const lastTaggedIdx = episodeOrder.reduceRight(
+      (acc, t, idx) => (t !== undefined && acc === -1 ? idx : acc), -1,
+    );
+
+    // If both exist, tagged must come before first untagged
+    if (firstUntaggedIdx !== -1 && lastTaggedIdx !== -1) {
+      expect(lastTaggedIdx).toBeLessThan(firstUntaggedIdx);
+    }
+    // If no untagged episodes exist that's fine — synthetic-only run
   });
 });

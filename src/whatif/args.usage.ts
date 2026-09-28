@@ -60,6 +60,8 @@ RUN OPTIONS
   --concurrency <n>            Parallel episodes (default: 4)
   --max-turns <n>              Max turns per episode (default: 3)
   --timeout <sec>              Episode timeout in seconds (default: 180)
+  --probes <n>                 Synthetic probe episodes per prediction (1–12; default 6)
+  --max-predictions <n>        Max predictions to retain (1–8; default 3 when probes>2, else 8)
   --keep-sandboxes             Keep sandbox directories after run
   --yes                        Skip confirmation of compiled spec
   --force                      Bypass the MDE underpowered gate (--verify only)

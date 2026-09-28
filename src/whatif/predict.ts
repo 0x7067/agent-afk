@@ -1,12 +1,14 @@
 /**
- * Level-1 prediction: given a structural impact summary, produce up to 8
- * predicted behavior changes.
+ * Level-1 prediction: given a structural impact summary, produce up to
+ * `maxPredictions` predicted behavior changes, each with `probesPerPrediction`
+ * diverse synthetic probes.
  *
  * One model call. Output is validated against the Prediction schema; invalid
  * entries are dropped. Each prediction is tagged `observable: 'decision' |
  * 'downstream'` here, before any episode runs (#2409); a missing or invalid
  * tag defaults to `'decision'`. The model is instructed to return an empty list when
- * the change has no plausible behavioral effect (no filler).
+ * the change has no plausible behavioral effect (no filler). Near-duplicate
+ * probes within a prediction are dropped after parse.
  *
  * @module whatif/predict
  */
@@ -16,6 +18,35 @@ import { extractJsonAs } from './json-extract.js';
 import type { CompleteFn, Prediction, StructuralImpact } from './types.js';
 import type { RepoManifest } from './repo-manifest.js';
 import { formatRepoManifest } from './repo-manifest.js';
+import { dedupeProbes } from './probe-dedupe.js';
+
+// ---------------------------------------------------------------------------
+// Public constants
+// ---------------------------------------------------------------------------
+
+/** Default number of synthetic probe episodes per prediction. */
+export const DEFAULT_PROBES = 6;
+
+/** Maximum number of synthetic probe episodes per prediction. */
+export const MAX_PROBES = 12;
+
+/** Legacy default for max predictions (≤2 probes, backward-compat). */
+const LEGACY_MAX_PREDICTIONS = 8;
+
+/** Default max predictions when probes > 2 (concentrate budget). */
+const DEFAULT_MAX_PREDICTIONS = 3;
+
+/**
+ * Resolve the effective max-predictions cap.
+ *
+ * When probes > 2 and no explicit cap is provided, default to 3 so the
+ * budget concentrates on fewer, better-powered predictions.  At ≤ 2 probes
+ * the legacy cap of 8 is preserved for backward compatibility.
+ */
+export function resolveMaxPredictions(probes: number, explicit?: number): number {
+  if (explicit !== undefined) return explicit;
+  return probes > 2 ? DEFAULT_MAX_PREDICTIONS : LEGACY_MAX_PREDICTIONS;
+}
 
 // ---------------------------------------------------------------------------
 // Zod schema
@@ -28,7 +59,7 @@ const PredictionSchema = z.object({
   confidence: z.enum(['high', 'medium', 'low']),
   reason: z.string(),
   testQuestion: z.string(),
-  probes: z.array(z.string()).min(1).max(2),
+  probes: z.array(z.string()).min(1).max(MAX_PROBES),
   // Lenient (#2409): a missing or invalid tag never drops the prediction; it
   // is normalized to 'decision' by `withObservability`.
   observable: z.unknown().optional(),
@@ -63,19 +94,26 @@ function headTail(s: string, maxChars: number): string {
   return `${s.slice(0, half)}\n…[truncated]…\n${s.slice(s.length - half)}`;
 }
 
-const SYSTEM = `You are a behavioral prediction assistant for agent-afk's what-if engine.
+/**
+ * Build the system prompt parameterised by the number of probes and the
+ * maximum number of predictions.
+ */
+function buildSystem(probesPerPrediction: number, maxPredictions: number): string {
+  return `You are a behavioral prediction assistant for agent-afk's what-if engine.
 
 Your job: given a description of a change to an AI agent's environment, predict
 how the agent's behavior will change. Return a JSON array of Prediction objects.
 
 ## Rules
 
-- Return at most 8 predictions.
+- Return at most ${maxPredictions} predictions.
 - Return an empty array [] when the change has no plausible behavioral effect.
 - Never pad with filler predictions to reach a count. An empty list is correct output.
 - Each prediction must have a POSITIVELY framed testQuestion answerable from a
   single agent output. Phrase as "Does the response …?" — never "Is it too …?".
-- probes: 1-2 realistic user requests that would exercise the predicted behavior.
+- probes: exactly ${probesPerPrediction} realistic user requests that would exercise the predicted behavior.
+  Probes MUST be genuinely DIVERSE: different files, different tasks, different phrasings.
+  Do NOT write rewordings or near-duplicates of the same request.
   When a ## Repo context section is present below, probes MUST reference only paths
   listed there, or no specific file paths at all. Never invent file names.
 - confidence must be honest: high only when the causal link is clear from the diff.
@@ -116,6 +154,7 @@ Respond with ONLY a JSON array (no prose, no fences):
   "confidence":"high"|"medium"|"low","reason":"…","testQuestion":"Does the response …?",
   "probes":["…","…"],"observable":"decision"|"downstream",
   "observabilityReason":"… (downstream only)"}, …]`;
+}
 
 // ---------------------------------------------------------------------------
 // Input type
@@ -128,6 +167,10 @@ export interface PredictInput {
   trackRecord?: string;
   /** Optional repo manifest used to ground probes in real paths. */
   repoManifest?: RepoManifest;
+  /** Number of probes per prediction (default: DEFAULT_PROBES). */
+  probesPerPrediction?: number;
+  /** Maximum number of predictions to retain (resolved via resolveMaxPredictions). */
+  maxPredictions?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -135,10 +178,12 @@ export interface PredictInput {
 // ---------------------------------------------------------------------------
 
 /**
- * Generate up to 8 behavioral predictions for the proposed change.
+ * Generate up to `maxPredictions` behavioral predictions for the proposed
+ * change, each with `probesPerPrediction` diverse synthetic probes.
  *
  * Returns an empty array when the model determines the change has no
  * behavioral effect. Invalid prediction entries are silently dropped.
+ * Near-duplicate probes within each prediction are removed before returning.
  */
 export async function predictChanges(
   input: PredictInput,
@@ -146,6 +191,9 @@ export async function predictChanges(
   model: string,
 ): Promise<Prediction[]> {
   const { spec, changeDescriptions, structural, trackRecord, repoManifest } = input;
+
+  const probesPerPrediction = input.probesPerPrediction ?? DEFAULT_PROBES;
+  const maxPredictions = input.maxPredictions ?? resolveMaxPredictions(probesPerPrediction);
 
   // Build a concise summary of the structural diff.
   const systemDiffSnippet = headTail(structural.systemDiff || '(no system prompt diff)', 12000);
@@ -172,7 +220,11 @@ export async function predictChanges(
 
   const user = sections.join('\n\n');
 
-  const { text } = await complete({ system: SYSTEM, user, maxTokens: 2048, model });
+  // Scale maxTokens with predictions × probes so large outputs fit.
+  const maxTokens = Math.max(2048, maxPredictions * probesPerPrediction * 120);
+
+  const system = buildSystem(probesPerPrediction, maxPredictions);
+  const { text } = await complete({ system, user, maxTokens, model });
 
   let raw: unknown[];
   try {
@@ -182,13 +234,24 @@ export async function predictChanges(
     return [];
   }
 
-  // Drop invalid entries, re-assign sequential ids.
+  // Drop invalid entries, re-assign sequential ids, cap at maxPredictions.
   const valid: Prediction[] = [];
   for (const entry of raw) {
+    if (valid.length >= maxPredictions) break;
     const parsed = PredictionSchema.safeParse(entry);
-    if (parsed.success && valid.length < 8) {
-      valid.push(withObservability(parsed.data, `p${valid.length + 1}`));
-    }
+    if (!parsed.success) continue;
+
+    // Dedupe and truncate probes to the requested count.
+    const { kept } = dedupeProbes(parsed.data.probes);
+    const effectiveProbes = kept.slice(0, probesPerPrediction);
+    if (effectiveProbes.length === 0) continue; // no valid probes remain
+
+    const prediction: z.infer<typeof PredictionSchema> = {
+      ...parsed.data,
+      probes: effectiveProbes,
+    };
+
+    valid.push(withObservability(prediction, `p${valid.length + 1}`));
   }
 
   return valid;
