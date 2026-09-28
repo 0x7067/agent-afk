@@ -26,6 +26,7 @@ import {
   lfCommitSurvival,
 } from './lf-delayed.js';
 import { combine, computeConfidence } from './combine.js';
+import { parseVerificationSummary } from './verification-patterns.js';
 import type { Vote } from './schema.js';
 import type { Turn } from './artifacts.js';
 import type { ClosureInfo } from './lf-immediate.js';
@@ -350,6 +351,119 @@ describe('lfVerification', () => {
       ],
     }];
     expect(lfVerification(turns, now)?.vote).toBe(-1);
+  });
+
+  it('votes +1 from resultTail even when piped (isError untrustworthy)', () => {
+    const turns: Turn[] = [{
+      toolEvents: [
+        { toolName: 'write_file', input: '{}' },
+        {
+          toolName: 'bash',
+          input: 'pnpm test 2>&1 | tail -5',
+          isError: false, // reflects pipe's exit status, not tests
+          resultTail: 'Tests  42 passed (42)',
+        },
+      ],
+    }];
+    const vote = lfVerification(turns, now);
+    expect(vote?.vote).toBe(1);
+    expect(vote?.evidence).toContain('resultTail');
+  });
+
+  it('votes -1 from resultTail even when piped', () => {
+    const turns: Turn[] = [{
+      toolEvents: [
+        { toolName: 'write_file', input: '{}' },
+        {
+          toolName: 'bash',
+          input: 'pnpm test 2>&1 | tail -5',
+          isError: false,
+          resultTail: '3 failed | 10 passed',
+        },
+      ],
+    }];
+    expect(lfVerification(turns, now)?.vote).toBe(-1);
+  });
+
+  it('abstains when tail is present but ambiguous (falls back to exit-status rules)', () => {
+    // Ambiguous tail → parseVerificationSummary returns null → fall back to
+    // exit-status rules → piped command → abstain
+    const turns: Turn[] = [{
+      toolEvents: [
+        { toolName: 'write_file', input: '{}' },
+        {
+          toolName: 'bash',
+          input: 'pnpm test 2>&1 | tail -5',
+          isError: false,
+          resultTail: 'some other output with no test summary',
+        },
+      ],
+    }];
+    expect(lfVerification(turns, now)).toBeNull();
+  });
+
+  it('abstains when no tail and exit-status is untrustworthy (tail-absent fallback)', () => {
+    const turns: Turn[] = [{
+      toolEvents: [
+        { toolName: 'write_file', input: '{}' },
+        {
+          toolName: 'bash',
+          input: 'pnpm test 2>&1 | tail -5',
+          isError: false,
+          // no resultTail
+        },
+      ],
+    }];
+    expect(lfVerification(turns, now)).toBeNull();
+  });
+
+  it('uses exit-status fallback when no resultTail but command is unpiped', () => {
+    const turns: Turn[] = [{
+      toolEvents: [
+        { toolName: 'write_file', input: '{}' },
+        { toolName: 'bash', input: 'pnpm test src/foo', isError: false },
+      ],
+    }];
+    const vote = lfVerification(turns, now);
+    expect(vote?.vote).toBe(1);
+    expect(vote?.evidence).toContain('isError');
+  });
+});
+
+describe('parseVerificationSummary', () => {
+  it('returns null for empty string', () => {
+    expect(parseVerificationSummary('')).toBeNull();
+  });
+
+  it.each([
+    ['vitest/jest passed', 'Tests  42 passed (42)', 'pass'],
+    ['vitest/jest N passed', '10 passed | 0 failed', 'pass'],
+    ['cargo/go ok', 'test result: ok. 5 passed; 0 failed', 'pass'],
+    ['go test ok', 'ok      github.com/foo/bar  0.123s', 'pass'],
+    ['eslint 0 problems', '0 problems (0 errors, 0 warnings)', 'pass'],
+  ])('recognises pass: %s', (_label, tail, expected) => {
+    expect(parseVerificationSummary(tail)).toBe(expected);
+  });
+
+  it.each([
+    ['vitest/jest failed', '3 failed | 10 passed', 'fail'],
+    ['tsc errors', 'Found 2 errors in 1 file', 'fail'],
+    ['cargo/go FAILED', 'test result: FAILED. 0 passed; 1 failed', 'fail'],
+    ['go FAIL', 'FAIL    github.com/foo/bar  0.456s', 'fail'],
+    ['eslint problems', '5 problems (3 errors, 2 warnings)', 'fail'],
+    ['pnpm ELIFECYCLE', 'npm ERR! code ELIFECYCLE\nnpm ERR! errno 1', 'fail'],
+    ['Command failed', 'Error: Command failed: pnpm test\n exit code 1', 'fail'],
+  ])('recognises fail: %s', (_label, tail, expected) => {
+    expect(parseVerificationSummary(tail)).toBe(expected);
+  });
+
+  it('returns null for unrecognised output', () => {
+    expect(parseVerificationSummary('Starting test runner...')).toBeNull();
+  });
+
+  it('handles multi-line tail', () => {
+    const tail = 'Running tests...\n Tests  5 passed (5)\n Duration  1.23s';
+    expect(parseVerificationSummary(tail)).toBe('pass');
   });
 });
 

@@ -41,6 +41,8 @@ export interface ToolEvent {
   input?: string;
   result?: string;
   isError?: boolean;
+  /** Last ~240 chars of raw output, secret-redacted. Present only on verification events. */
+  resultTail?: string;
 }
 
 export interface Turn {
