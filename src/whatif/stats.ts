@@ -25,7 +25,7 @@
  * @module whatif/stats
  */
 
-import type { Prediction, RateComparison, Verdict } from './types.js';
+import type { Prediction, RateComparison, VerifiedPrediction, Verdict } from './types.js';
 
 // ---------------------------------------------------------------------------
 // Wilson score interval
@@ -186,6 +186,73 @@ export function predictionAccuracy(
   const total = confirmed + refuted;
   if (total === 0) return undefined;
   return confirmed / total;
+}
+
+// ---------------------------------------------------------------------------
+// Cross-check agreement thresholds (#2413)
+// ---------------------------------------------------------------------------
+
+/**
+ * Minimum per-prediction cross-check agreement to consider a decisive verdict
+ * trustworthy (#2413). When a prediction's agreement is below this threshold
+ * AND at least {@link CROSS_CHECK_MIN_ITEMS} items were cross-checked, the
+ * verdict is downgraded from confirmed/refuted to unclear with reason
+ * 'judges disagree'. Does not affect `unobservable`.
+ */
+export const CROSS_CHECK_MIN_AGREEMENT = 0.75;
+
+/**
+ * Minimum number of cross-checked items required for the agreement rate to
+ * influence a prediction's verdict (#2413). Below this count the agreement
+ * rate is treated as unknown: the verdict is unchanged, but
+ * `VerifiedPrediction.crossCheckTooFew` is set to `true`.
+ */
+export const CROSS_CHECK_MIN_ITEMS = 5;
+
+// ---------------------------------------------------------------------------
+// applyAgreementDowngrade (#2413)
+// ---------------------------------------------------------------------------
+
+/**
+ * Apply the per-prediction cross-check agreement downgrade rule (#2413).
+ *
+ * Given a `VerifiedPrediction` and the paired primary/cross-check scores for
+ * that prediction's question, returns a new `VerifiedPrediction` with:
+ *
+ * - `crossCheckAgreement` set when `crossPairs.length >= CROSS_CHECK_MIN_ITEMS`.
+ * - `crossCheckTooFew` set when pairs exist but below the minimum count.
+ * - `verdict` downgraded to `'unclear'` and `verdictReason` set to
+ *   `'judges disagree'` when agreement < CROSS_CHECK_MIN_AGREEMENT and pairs
+ *   >= CROSS_CHECK_MIN_ITEMS and the original verdict is confirmed or refuted.
+ * - `unobservable` verdicts are never touched.
+ *
+ * When `mainScores` and `crossScores` are both empty (no cross-check judge),
+ * the prediction is returned unchanged.
+ */
+export function applyAgreementDowngrade(
+  vp: VerifiedPrediction,
+  mainScores: number[],
+  crossScores: number[],
+): VerifiedPrediction {
+  const len = Math.min(mainScores.length, crossScores.length);
+  if (len === 0) return vp;
+
+  const agreement = agreementRate(mainScores, crossScores);
+  const tooFew = len < CROSS_CHECK_MIN_ITEMS;
+
+  if (tooFew) {
+    return { ...vp, crossCheckTooFew: true };
+  }
+
+  const base: VerifiedPrediction = { ...vp, crossCheckAgreement: agreement };
+  if (
+    vp.verdict !== 'unobservable' &&
+    (vp.verdict === 'confirmed' || vp.verdict === 'refuted') &&
+    agreement < CROSS_CHECK_MIN_AGREEMENT
+  ) {
+    return { ...base, verdict: 'unclear', verdictReason: 'judges disagree' };
+  }
+  return base;
 }
 
 // ---------------------------------------------------------------------------

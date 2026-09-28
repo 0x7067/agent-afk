@@ -12,12 +12,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   agreementRate,
+  applyAgreementDowngrade,
   compareRates,
+  CROSS_CHECK_MIN_AGREEMENT,
+  CROSS_CHECK_MIN_ITEMS,
   EQUIVALENCE_MARGIN,
   predictionAccuracy,
   verdictFor,
 } from './stats.js';
-import type { Prediction } from './types.js';
+import type { Prediction, VerifiedPrediction } from './types.js';
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -313,5 +316,114 @@ describe('agreementRate', () => {
   it('truncates to shorter array', () => {
     // a has 3 elements, b has 2 — should only compare first 2
     expect(agreementRate([0.9, 0.9, 0.1], [0.8, 0.8])).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// applyAgreementDowngrade (#2413)
+// ---------------------------------------------------------------------------
+
+describe('applyAgreementDowngrade (#2413)', () => {
+  function makeVP(verdict: 'confirmed' | 'refuted' | 'unclear' | 'unobservable'): VerifiedPrediction {
+    return {
+      prediction: {
+        id: 'p1', behavior: 'test', direction: 'added',
+        confidence: 'high', reason: 'r', testQuestion: 'q?', probes: [],
+      },
+      rates: { baseline: 0.2, candidate: 0.9, delta: 0.7, ci: [0.3, 1.0], n: { baseline: 5, candidate: 5 } },
+      verdict,
+    };
+  }
+
+  /** 3 items disagreeing out of 5 → agreement = 0.4 (below 0.75 threshold). */
+  function lowAgreementPairs(n: number): { main: number[]; cross: number[] } {
+    // 3 disagree, 2 agree → rate = 2/5 = 0.4 when n=5
+    const main: number[] = [];
+    const cross: number[] = [];
+    for (let i = 0; i < n; i++) {
+      main.push(i < 3 ? 0.9 : 0.9); // all primary: high
+      cross.push(i < 3 ? 0.1 : 0.9); // first 3: opposite side; last 2: same side
+    }
+    return { main, cross };
+  }
+
+  /** 5 items all agreeing → agreement = 1.0 (above 0.75 threshold). */
+  function highAgreementPairs(n: number): { main: number[]; cross: number[] } {
+    return {
+      main: Array.from({ length: n }, () => 0.9),
+      cross: Array.from({ length: n }, () => 0.8),
+    };
+  }
+
+  it('constants are exported with expected values', () => {
+    expect(CROSS_CHECK_MIN_AGREEMENT).toBe(0.75);
+    expect(CROSS_CHECK_MIN_ITEMS).toBe(5);
+  });
+
+  it('agreement 0.6 (below 0.75) with 5 items: confirmed → unclear with verdictReason', () => {
+    // 3 agree, 2 disagree out of 5 → 60% agreement, below 75% threshold
+    const { main, cross } = lowAgreementPairs(5);
+    const vp = makeVP('confirmed');
+    const result = applyAgreementDowngrade(vp, main, cross);
+    expect(result.verdict).toBe('unclear');
+    expect(result.verdictReason).toBe('judges disagree');
+    expect(result.crossCheckAgreement).toBeLessThan(0.75);
+    expect(result.crossCheckTooFew).toBeUndefined();
+  });
+
+  it('agreement 0.6 with 5 items: refuted → unclear with verdictReason', () => {
+    const { main, cross } = lowAgreementPairs(5);
+    const vp = makeVP('refuted');
+    const result = applyAgreementDowngrade(vp, main, cross);
+    expect(result.verdict).toBe('unclear');
+    expect(result.verdictReason).toBe('judges disagree');
+  });
+
+  it('high agreement (≥ 0.75) with 5 items: confirmed stays confirmed', () => {
+    const { main, cross } = highAgreementPairs(5);
+    const vp = makeVP('confirmed');
+    const result = applyAgreementDowngrade(vp, main, cross);
+    expect(result.verdict).toBe('confirmed');
+    expect(result.verdictReason).toBeUndefined();
+    expect(result.crossCheckAgreement).toBeGreaterThanOrEqual(0.75);
+  });
+
+  it('too few items (< 5): does not downgrade, sets crossCheckTooFew', () => {
+    const { main, cross } = lowAgreementPairs(4); // 4 < CROSS_CHECK_MIN_ITEMS
+    const vp = makeVP('confirmed');
+    const result = applyAgreementDowngrade(vp, main, cross);
+    expect(result.verdict).toBe('confirmed'); // unchanged
+    expect(result.crossCheckTooFew).toBe(true);
+    expect(result.crossCheckAgreement).toBeUndefined();
+    expect(result.verdictReason).toBeUndefined();
+  });
+
+  it('too few items (1): does not downgrade, sets crossCheckTooFew', () => {
+    const vp = makeVP('confirmed');
+    const result = applyAgreementDowngrade(vp, [0.9], [0.1]); // 1 < 5
+    expect(result.verdict).toBe('confirmed');
+    expect(result.crossCheckTooFew).toBe(true);
+  });
+
+  it('no cross-check data (empty): prediction returned unchanged', () => {
+    const vp = makeVP('confirmed');
+    const result = applyAgreementDowngrade(vp, [], []);
+    expect(result).toBe(vp); // exact same reference, no copy
+  });
+
+  it('unobservable verdict is never downgraded even with low agreement', () => {
+    const { main, cross } = lowAgreementPairs(5);
+    const vp = makeVP('unobservable');
+    const result = applyAgreementDowngrade(vp, main, cross);
+    expect(result.verdict).toBe('unobservable');
+    expect(result.verdictReason).toBeUndefined();
+  });
+
+  it('unclear verdict with low agreement: stays unclear (no double-flag)', () => {
+    const { main, cross } = lowAgreementPairs(5);
+    const vp = makeVP('unclear');
+    const result = applyAgreementDowngrade(vp, main, cross);
+    expect(result.verdict).toBe('unclear');
+    expect(result.verdictReason).toBeUndefined();
   });
 });
