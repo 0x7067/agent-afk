@@ -11,6 +11,23 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.268.0] - 2026-09-28
+
+### Added
+- --probes N, probe dedupe, predictions cap, probes before replay (#2477 step 1) (c0326ab1)
+- provenance-carrying adapters keep provider switches lossless (#2464) (693337c8)
+
+### Fixed
+- subagents ignore /reauth account switch (stale boot-token cache) (019efea1)
+
+### Changed
+- Merge pull request #2463 from 0x7067/docs/plugin-hook-contract (8e5c7f28)
+- Merge pull request #2482 from griffinwork40/afk/whatif-probes-2477 (59663207)
+- Merge pull request #2468 from griffinwork40/afk/journal-provenance (8e25b580)
+- Merge pull request #2469 from griffinwork40/afk/20260928-131257-4d5c6b (07bad547)
+- record live A→B→A signature result (#2464) (0aec3759)
+- bring the command-hook contract up to date (770d9de9)
+
 ## [5.267.0] - 2026-09-28
 
 ### Added
