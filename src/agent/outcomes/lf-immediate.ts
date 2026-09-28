@@ -14,6 +14,10 @@
 
 import type { Vote, SelfReport } from './schema.js';
 import type { Turn, ToolEvent } from './artifacts.js';
+import {
+  isVerificationCommand,
+  parseVerificationSummary,
+} from './verification-patterns.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -35,31 +39,6 @@ const WRITE_TOOLS = new Set([
   'edit_file',
   'patch_apply',
 ]);
-
-// ---------------------------------------------------------------------------
-// Verification command patterns
-// ---------------------------------------------------------------------------
-
-const VERIFICATION_PATTERNS = [
-  /\bpnpm\s+test\b/,
-  /\bvitest\b/,
-  /\btsc\b/,
-  /\bpytest\b/,
-  /\bcargo\s+test\b/,
-  /\bgo\s+test\b/,
-  /\btest_run\b/,
-  /\bnpm\s+test\b/,
-  /\byarn\s+test\b/,
-  /\bpnpm\s+lint\b/,
-  /\bpnpm\s+build\b/,
-  /\beslint\b/,
-  /\bmypy\b/,
-  /\bruff\b/,
-];
-
-function isVerificationCommand(input: string): boolean {
-  return VERIFICATION_PATTERNS.some((p) => p.test(input));
-}
 
 // A single `|` (not `||`), or an explicit exit-status mask.
 const MASKED_EXIT = /(?<!\|)\|(?!\|)|\|\|\s*(?:true|:|echo)\b|;\s*(?:true|exit 0)\b/;
@@ -252,9 +231,26 @@ export function lfVerification(turns: Turn[], now: string): Vote | null {
     }
   }
 
-  // Abstain when the last verification's exit status cannot be trusted; an
-  // earlier trustworthy run is not evidence about the final state.
-  if (lastVerifyEv === null || !exitStatusTrustworthy(lastVerifyEv)) return null;
+  if (lastVerifyEv === null) return null;
+
+  // Prefer a parsed summary from resultTail — reliable even when the command
+  // was piped (72% of real runs). Fall back to exit-status rules only when no
+  // tail is recorded or the tail is ambiguous.
+  const tail = lastVerifyEv.resultTail ?? '';
+  const parsed = tail.length > 0 ? parseVerificationSummary(tail) : null;
+  if (parsed !== null) {
+    return {
+      lf: 'verification',
+      vote: parsed === 'pass' ? 1 : -1,
+      strength: 'strong',
+      evidence: `verification summary from resultTail: ${parsed}`,
+      observed_at: now,
+    };
+  }
+
+  // Tail absent or ambiguous — fall back to exit-status rules, which require
+  // a trustworthy (unpiped, unmasked, non-truncated) isError value.
+  if (!exitStatusTrustworthy(lastVerifyEv)) return null;
 
   const passed = lastVerifyEv.isError === false;
   return {

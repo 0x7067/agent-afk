@@ -35,3 +35,9 @@ export {
 
 export type { CombinerInput, CombinerResult } from './combine.js';
 export { combine, computeConfidence } from './combine.js';
+
+export {
+  VERIFICATION_PATTERNS,
+  isVerificationCommand,
+  parseVerificationSummary,
+} from './verification-patterns.js';
