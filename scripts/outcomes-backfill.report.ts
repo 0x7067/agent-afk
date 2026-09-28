@@ -27,6 +27,8 @@ export interface Stats {
   withCommit: number;
   strongLfCounts: Record<string, number>;
   nonUnknown: number;
+  bySource: { json: number; events: number };
+  labelBySource: Record<'json' | 'events', Record<OutcomeLabel, number>>;
 }
 
 export function emptyStats(): Stats {
@@ -42,10 +44,16 @@ export function emptyStats(): Stats {
     withCommit: 0,
     strongLfCounts: {},
     nonUnknown: 0,
+    bySource: { json: 0, events: 0 },
+    labelBySource: { json: { ...byLabel }, events: { ...byLabel } },
   };
 }
 
-export function accumulate(stats: Stats, result: SessionResult): void {
+export function accumulate(
+  stats: Stats,
+  result: SessionResult,
+  source: 'json' | 'events' = 'json',
+): void {
   stats.total++;
   stats.byLabel[result.label]++;
   stats.byKind[result.sessionKind]++;
@@ -53,6 +61,8 @@ export function accumulate(stats: Stats, result: SessionResult): void {
   if (result.label !== 'unknown') stats.nonUnknown++;
   if (result.hasPr) stats.withPr++;
   if (result.hasCommit) stats.withCommit++;
+  stats.bySource[source]++;
+  stats.labelBySource[source][result.label]++;
 
   updateLfCoverage(stats, result.votes);
   updateStrongLf(stats, result.label, result.votes);
@@ -102,28 +112,35 @@ export function generateReport(
   opts: {
     noGh: boolean;
     noGit: boolean;
+    source?: string;
     processedCount: number;
     totalAvailable: number;
+    totalJson?: number;
+    totalEvents?: number;
   },
 ): string {
-  const { noGh, noGit, processedCount, totalAvailable } = opts;
+  const { noGh, noGit, source, processedCount, totalAvailable, totalJson, totalEvents } = opts;
   const lines: string[] = [];
   const now = new Date().toISOString();
 
   lines.push('# Verified Outcome M0 — Distribution Report');
   lines.push('');
   lines.push(`Generated: ${now}  `);
+  lines.push(`Source: ${source ?? 'json'}  `);
   lines.push(`Sessions processed: ${processedCount} / ${totalAvailable} available  `);
+  if (totalJson !== undefined) lines.push(`  JSON sidecars: ${totalJson}  `);
+  if (totalEvents !== undefined) lines.push(`  Events-only:   ${totalEvents}  `);
   if (noGh) lines.push('`--no-gh` was set: pr_fate LF skipped  ');
   if (noGit) lines.push('`--no-git` was set: commit_survival LF skipped  ');
   lines.push('');
 
   appendLabelDist(lines, stats);
+  appendSourceBreakdown(lines, stats);
   appendArtifacts(lines, stats);
   appendLfCoverage(lines, stats);
   appendStrongLf(lines, stats);
   appendExitCheck(lines, stats);
-  appendCaveats(lines, noGh, noGit);
+  appendCaveats(lines, noGh, noGit, source ?? 'json');
 
   return lines.join('\n');
 }
@@ -146,6 +163,20 @@ function appendLabelDist(lines: string[], stats: Stats): void {
     const total = stats.byKind[kind];
     const b = stats.labelByKind[kind];
     lines.push(`| ${kind} | ${total} | ${b['succeeded']} | ${b['failed']} | ${b['interrupted']} | ${b['blocked']} | ${b['unknown']} |`);
+  }
+  lines.push('');
+}
+
+function appendSourceBreakdown(lines: string[], stats: Stats): void {
+  if (stats.bySource.json === 0 && stats.bySource.events === 0) return;
+  lines.push('### By source');
+  lines.push('');
+  lines.push('| Source | Total | succeeded | failed | interrupted | blocked | unknown |');
+  lines.push('|---|---|---|---|---|---|---|');
+  for (const src of ['json', 'events'] as const) {
+    const total = stats.bySource[src];
+    const b = stats.labelBySource[src];
+    lines.push(`| ${src} | ${total} | ${b['succeeded']} | ${b['failed']} | ${b['interrupted']} | ${b['blocked']} | ${b['unknown']} |`);
   }
   lines.push('');
 }
@@ -200,18 +231,21 @@ function appendExitCheck(lines: string[], stats: Stats): void {
   lines.push('');
 }
 
-function appendCaveats(lines: string[], noGh: boolean, noGit: boolean): void {
+function appendCaveats(lines: string[], noGh: boolean, noGit: boolean, source: string): void {
   lines.push('## Caveats');
   lines.push('');
-  lines.push('- **Closure LF (0% coverage)**: joining the closure LF requires scanning');
-  lines.push('  17k+ trace directories for `session_id_assigned` events — skipped in M0.');
-  lines.push('  Will be populated at session teardown in M2.');
-  lines.push('- **Subagent tool events (UNVERIFIED hypothesis)**: session JSON may only contain the parent session\'s');
-  lines.push('  turns. Worktree-isolated children\'s tool events (including commits) appear');
-  lines.push('  in separate session files, invisible to parent artifact recovery. Not yet checked.');
+  lines.push('- **Closure LF**: For JSON-sidecar sessions, joining the closure LF requires');
+  lines.push('  scanning 17k+ trace directories — skipped in M0 (will be at M2 teardown).');
+  lines.push('  For events-only sessions, the closure LF IS populated from the');
+  lines.push('  `closed.reason=abort` record in events.jsonl.');
+  lines.push('- **Subagent tool events**: session JSON may only contain the parent session\'s');
+  lines.push('  turns. Worktree-isolated children\'s tool events appear in separate session');
+  lines.push('  files, invisible to parent artifact recovery.');
   lines.push('- **fix_of_fix LF**: skipped (weak -1, cannot flip succeeded). M2 daemon job.');
-  lines.push('- **dir-based sessions**: 16k+ directory-based sessions (events.jsonl format)');
-  lines.push('  not processed; only 1001 JSON-sidecar sessions have toolEvents data.');
+  if (source === 'json') {
+    lines.push('- **Events-only sessions**: 16k+ directory-based sessions not processed');
+    lines.push('  with this run (`--source json`). Use `--source all` to include them.');
+  }
   if (noGh) lines.push('- **pr_fate skipped** (`--no-gh`): PR merge status not checked.');
   if (noGit) lines.push('- **commit_survival skipped** (`--no-git`): git ancestry not checked.');
   lines.push('');

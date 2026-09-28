@@ -9,15 +9,19 @@
  *
  * Usage:
  *   npx tsx scripts/outcomes-backfill.ts [--limit N] [--no-gh] [--no-git]
- *     [--out <path>] [--json <path>]
+ *     [--source json|events|all] [--out <path>] [--json <path>]
  *
  * Flags:
- *   --limit N     process only the first N sessions (default: all)
- *   --no-gh       skip gh pr view calls
- *   --no-git      skip git ancestry calls
- *   --out <path>  markdown report (default: docs/proposals/verified-outcome-m0-report.md)
- *   --json <path> per-session JSON dir (default: os.tmpdir()/afk-outcomes-m0-<pid>)
- *                 NOT committed — contains session IDs
+ *   --limit N           process only the first N sessions (default: all)
+ *   --no-gh             skip gh pr view calls
+ *   --no-git            skip git ancestry calls
+ *   --source json|events|all  input source (default: all)
+ *                         json:   1,001 JSON-sidecar sessions only
+ *                         events: 16k+ events.jsonl-only sessions only
+ *                         all:    both (json sidecars win deduplication)
+ *   --out <path>        markdown report (default: docs/proposals/verified-outcome-m0-report.md)
+ *   --json <path>       per-session JSON dir (default: os.tmpdir()/afk-outcomes-m0-<pid>)
+ *                       NOT committed — contains session IDs
  *
  * Exit codes: 0 success, 1 error.
  */
@@ -33,7 +37,13 @@ import {
   processSession,
   loadSessionTurns,
   makeCachedGhFetch,
+  checkAncestor,
+  checkRevert,
 } from './outcomes-backfill.session.js';
+import {
+  processEventsSession,
+  discoverEventsSessionsSync,
+} from './outcomes-backfill-events-session.js';
 import {
   emptyStats,
   accumulate,
@@ -44,10 +54,13 @@ import {
 // Args
 // ---------------------------------------------------------------------------
 
+type SourceMode = 'json' | 'events' | 'all';
+
 interface Args {
   limit: number;
   noGh: boolean;
   noGit: boolean;
+  source: SourceMode;
   out: string;
   jsonDir: string;
 }
@@ -57,6 +70,7 @@ function parseArgs(): Args {
   let limit = Infinity;
   let noGh = false;
   let noGit = false;
+  let source: SourceMode = 'all';
   let out = 'docs/proposals/verified-outcome-m0-report.md';
   let jsonDir = join(tmpdir(), `afk-outcomes-m0-${process.pid}`);
 
@@ -68,6 +82,11 @@ function parseArgs(): Args {
       limit = parseInt(args[++i] ?? '0', 10);
       continue;
     }
+    if (a === '--source' && args[i + 1] !== undefined) {
+      const v = args[++i];
+      if (v === 'json' || v === 'events' || v === 'all') source = v;
+      continue;
+    }
     if (a === '--out' && args[i + 1] !== undefined) {
       out = args[++i] ?? out;
       continue;
@@ -77,7 +96,7 @@ function parseArgs(): Args {
       continue;
     }
   }
-  return { limit, noGh, noGit, out, jsonDir };
+  return { limit, noGh, noGit, source, out, jsonDir };
 }
 
 // ---------------------------------------------------------------------------
@@ -106,23 +125,43 @@ async function runConcurrent<T>(
 // Main
 // ---------------------------------------------------------------------------
 
+interface SessionTask {
+  sessionId: string;
+  source: 'json' | 'events';
+}
+
 async function main(): Promise<void> {
-  const { limit, noGh, noGit, out, jsonDir } = parseArgs();
+  const { limit, noGh, noGit, source, out, jsonDir } = parseArgs();
 
   const sessionsDir = getSessionsDir();
   const facetCacheDir = getFacetCacheDir();
   const now = new Date().toISOString();
 
-  const allIds: string[] = existsSync(sessionsDir)
+  // Build task list: JSON sidecar sessions, events-only sessions, or both
+  const jsonIds: string[] = (source === 'json' || source === 'all') && existsSync(sessionsDir)
     ? readdirSync(sessionsDir)
         .filter((f) => f.endsWith('.json'))
         .map((f) => basename(f, '.json'))
     : [];
 
-  const sessionIds = Number.isFinite(limit) ? allIds.slice(0, limit) : allIds;
-  const totalAvailable = allIds.length;
+  const eventIds: string[] = (source === 'events' || source === 'all')
+    ? discoverEventsSessionsSync(sessionsDir)
+    : [];
 
-  console.log(`Found ${totalAvailable} JSON-sidecar sessions; processing ${sessionIds.length}`);
+  // JSON sidecar wins deduplication: events sessions already exclude json ones
+  const allTasks: SessionTask[] = [
+    ...jsonIds.map((id): SessionTask => ({ sessionId: id, source: 'json' })),
+    ...eventIds.map((id): SessionTask => ({ sessionId: id, source: 'events' })),
+  ];
+
+  const tasks = Number.isFinite(limit) ? allTasks.slice(0, limit) : allTasks;
+  const totalJson = jsonIds.length;
+  const totalEvents = eventIds.length;
+
+  console.log(`Source: ${source}`);
+  console.log(`  JSON sidecars: ${totalJson}`);
+  console.log(`  Events-only:   ${totalEvents}`);
+  console.log(`  Total to process: ${tasks.length}`);
   console.log(`gh: ${noGh ? 'disabled' : 'enabled'}  git: ${noGit ? 'disabled' : 'enabled'}`);
 
   mkdirSync(jsonDir, { recursive: true });
@@ -133,27 +172,36 @@ async function main(): Promise<void> {
 
   const concurrency = noGh && noGit ? 20 : 5;
 
-  await runConcurrent(sessionIds, concurrency, async (sessionId) => {
-    const result = await processSession(sessionId, {
-      sessionsDir,
-      facetCacheDir,
-      noGh,
-      noGit,
-      fetchPr,
-      now,
-    });
+  await runConcurrent(tasks, concurrency, async (task) => {
+    let result;
+    if (task.source === 'json') {
+      result = await processSession(task.sessionId, {
+        sessionsDir, facetCacheDir, noGh, noGit, fetchPr, now,
+      });
+    } else {
+      result = await processEventsSession(task.sessionId, {
+        sessionsDir, facetCacheDir, noGh, noGit, fetchPr,
+        checkAncestor, checkRevert, now,
+      });
+    }
     if (result === null) return;
 
-    accumulate(stats, result);
+    accumulate(stats, result, task.source);
     processed++;
 
-    if (processed % 100 === 0) {
-      process.stdout.write(`\r  ${processed}/${sessionIds.length} sessions processed…`);
+    if (processed % 500 === 0) {
+      process.stdout.write(`\r  ${processed}/${tasks.length} sessions processed…`);
     }
 
-    // Write per-session record to temp dir (private — contains session IDs)
-    const turns = loadSessionTurns(sessionId, sessionsDir);
-    const artifacts = turns !== null ? recoverArtifacts(turns) : { commits: [], prs: [], repo: null };
+    // Write per-session record to temp dir (private — contains session IDs).
+    // For events sessions, artifact details are used inside processEventsSession;
+    // here we only need summary-level data for the label record.
+    const turns = task.source === 'json'
+      ? loadSessionTurns(task.sessionId, sessionsDir)
+      : null;
+    const artifacts = turns !== null
+      ? recoverArtifacts(turns)
+      : { commits: [], prs: [], repo: null };
     const record: VerifiedOutcome = {
       schema_version: 1,
       session_id: result.sessionId,
@@ -167,7 +215,7 @@ async function main(): Promise<void> {
       votes: result.votes,
       history: [{ at: now, label: result.label, reason: 'M0 backfill' }],
     };
-    writeFileSync(join(jsonDir, `${sessionId}.json`), JSON.stringify(record, null, 2), 'utf8');
+    writeFileSync(join(jsonDir, `${task.sessionId}.json`), JSON.stringify(record, null, 2), 'utf8');
   });
 
   console.log(`\n  Done: ${processed} sessions processed.`);
@@ -175,8 +223,11 @@ async function main(): Promise<void> {
   const report = generateReport(stats, {
     noGh,
     noGit,
+    source,
     processedCount: processed,
-    totalAvailable,
+    totalJson,
+    totalEvents,
+    totalAvailable: totalJson + totalEvents,
   });
 
   writeFileSync(out, report, 'utf8');
