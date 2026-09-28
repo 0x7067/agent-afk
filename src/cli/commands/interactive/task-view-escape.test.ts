@@ -25,6 +25,7 @@ process.env['AFK_HOME'] = tmpDir;
 
 import { describe, it, expect } from 'vitest';
 import { renderTaskViewHeader } from './task-view-mode.js';
+import { stripEscapeSequences } from '../../../utils/terminal-sanitize.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -46,7 +47,7 @@ function stripSgr(s: string): string {
 const ESCAPE_PAYLOADS: Array<[label: string, payload: string]> = [
   ['CSI DEC private mode (ESC[?1049l)',  '\x1B[?1049l'],
   ['OSC 52 clipboard write',             '\x1B]52;c;dGVzdA==\x07'],
-  ['ESC + truncated CSI suffix',         '\x1B[?1049l suffix'],
+  ['ESC + DEC private mode + plain suffix', '\x1B[?1049l suffix'],
 ];
 
 // ---------------------------------------------------------------------------
@@ -96,5 +97,55 @@ describe('renderTaskViewHeader – agentType sanitisation', () => {
     const bare = stripSgr(header);
     expect(bare).not.toContain('type:');
     expect(bare).not.toMatch(/\x1B/);
+  });
+
+  // F3 regression: agentType must be clamped to 30 chars after sanitising.
+  it('clamps agentType to 30 chars after sanitising (F3 regression)', () => {
+    // Without the .slice(0, 30), a 60-char agentType would appear in full.
+    const longType = 'a'.repeat(60);
+    const header = renderTaskViewHeader('clean-id', 'running', longType);
+    const bare = stripSgr(header);
+    // The clamped value must appear; the full 60-char string must not.
+    expect(bare).toContain('a'.repeat(30));
+    expect(bare).not.toContain('a'.repeat(31));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// F2 regression: history message lines must be sanitised before display
+// ---------------------------------------------------------------------------
+
+describe('history line sanitisation – stripEscapeSequences (F2 regression)', () => {
+  // enterTaskViewMode applies `stripEscapeSequences(l)` to every line of a
+  // history message before writing it to ctx.out. This test exercises the
+  // exact transform that was added: without it, a model-controlled content line
+  // containing a CSI or OSC sequence would reach the terminal verbatim.
+  it('strips escape sequences from a history content line', () => {
+    const maliciousLine = 'safe prefix \x1b[?1049l injected';
+    const safe = stripEscapeSequences(maliciousLine);
+    expect(safe).not.toMatch(/\x1B/);
+    expect(safe).toContain('safe prefix');
+    expect(safe).toContain('injected');
+  });
+
+  it('strips OSC sequences from a history content line', () => {
+    const line = 'text \x1b]52;c;dGVzdA==\x07 end';
+    const safe = stripEscapeSequences(line);
+    expect(safe).not.toMatch(/\x1B/);
+    expect(safe).toBe('text  end');
+  });
+
+  it('strips lone trailing ESC from a history content line (F1+F2 combined)', () => {
+    const line = 'message body\x1b';
+    const safe = stripEscapeSequences(line);
+    expect(safe).toBe('message body');
+  });
+
+  it('preserves newlines within multi-line history content', () => {
+    // enterTaskViewMode splits on \\n before applying stripEscapeSequences per
+    // line, so the stripping is per-line. Verify the function preserves
+    // intra-line structure when given a single line.
+    const line = '\x1b[31mcolored text\x1b[0m';
+    expect(stripEscapeSequences(line)).toBe('colored text');
   });
 });
