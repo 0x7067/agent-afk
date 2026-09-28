@@ -35,3 +35,6 @@ export {
 
 export type { CombinerInput, CombinerResult } from './combine.js';
 export { combine, computeConfidence } from './combine.js';
+
+export type { UpsertVotesOptions } from './store.js';
+export { readRecord, writeRecord, listRecords, upsertVotes } from './store.js';
