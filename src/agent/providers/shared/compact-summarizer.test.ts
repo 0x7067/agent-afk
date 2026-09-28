@@ -739,4 +739,26 @@ describe('T17: xai-oauth target runs OAuth refresh before resolveXaiAuth', () =>
 
     await expect(summarize('transcript')).rejects.toThrow(/No xAI credential/);
   });
+
+  it('rejects an OAuth token that is still expired after the refresh attempt', async () => {
+    const key = makeSessionKey();
+    vi.spyOn(xaiOauth, 'ensureFreshAccessToken').mockResolvedValue(null);
+    vi.spyOn(xaiAuth, 'resolveXaiAuth').mockReturnValue({
+      apiKey: 'xai-stale-token',
+      source: 'xai-oauth',
+      mode: 'oauth',
+      expiresAt: Math.floor(Date.now() / 1000) - 60,
+    });
+    const oneShot = vi.spyOn(openaiOneshot, 'oneShotChatCompletion').mockResolvedValue(FOREIGN_RESULT);
+
+    const summarize = resolveCrossProviderSummarize(
+      'anthropic-direct',
+      makeSessionFn(),
+      'grok-3-beta',
+      key,
+    );
+
+    await expect(summarize('transcript')).rejects.toThrow(/expired and refresh failed/);
+    expect(oneShot).not.toHaveBeenCalled();
+  });
 });

@@ -42,6 +42,7 @@ import {
 import { resolveXaiAuth } from '../xai/auth.js';
 import { resolveXaiEndpoint } from '../xai/endpoints.js';
 import { ensureFreshAccessToken } from '../xai/oauth.js';
+import { isAccessTokenExpired } from '../xai/query-helpers.js';
 import { loadAnthropicCredential } from '../../auth/credential-resolver.js';
 import { providerForModel } from '../index.js';
 import { resolveBinding } from '../../session/model-slots.js';
@@ -373,6 +374,14 @@ async function summarizeViaXai(
     throw new Error(
       `[afk/compact] No xAI credential for cross-provider compaction. ` +
       `Set XAI_API_KEY or authenticate via SuperGrok OAuth.`,
+    );
+  }
+  // Contract: mirror XaiProvider.complete(): never send an OAuth access token
+  // that is still expired after the refresh attempt above.
+  if (resolution.mode === 'oauth' && isAccessTokenExpired(resolution.expiresAt)) {
+    throw new Error(
+      '[afk/compact] SuperGrok OAuth access token expired and refresh failed. ' +
+      'Re-run `afk provider auth xai login`.',
     );
   }
 
