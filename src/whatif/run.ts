@@ -37,6 +37,7 @@ import {
 } from './episodes.js';
 import { estimateVerifyCost } from './cost.js';
 import { buildHeadline, standardLimits } from './report.js';
+import { isUnderpowered, mdeGateRefusedMessage, mdePreflightLine } from './mde.js';
 import { persistRun } from './run.persist.js';
 import { verifyRun } from './run.verify.js';
 import type {
@@ -67,6 +68,23 @@ export class WhatifBudgetError extends Error {
     this.name = 'WhatifBudgetError';
     this.estimateUsd = estimateUsd;
     this.maxUsd = maxUsd;
+  }
+}
+
+/**
+ * Thrown before running any episode when the run is underpowered (MDE exceeds
+ * the gate threshold) and `--force` was not passed.
+ *
+ * `episodesPerArm` is the minimum probe count per prediction (the unit that
+ * drives per-prediction power).
+ */
+export class WhatifMdeError extends Error {
+  readonly episodesPerArm: number;
+
+  constructor(minProbesPerPrediction: number) {
+    super(mdeGateRefusedMessage(minProbesPerPrediction));
+    this.name = 'WhatifMdeError';
+    this.episodesPerArm = minProbesPerPrediction;
   }
 }
 
@@ -181,6 +199,84 @@ function dateStamp(now: Date): string {
 }
 
 // ---------------------------------------------------------------------------
+// Preflight helper (MDE gate + budget gate)
+// ---------------------------------------------------------------------------
+
+interface PreflightInput {
+  /** Total episodes per arm (for budget estimation). */
+  episodesPerArm: number;
+  /** Minimum probe count per prediction (drives per-prediction MDE gate). */
+  minProbesPerPrediction: number;
+  force: boolean;
+  samples: number;
+  agentModel: string;
+  analystModel: string;
+  systemTokens: { baseline: number; candidate: number };
+  judgeExternal: boolean;
+  analystCostUsd: number;
+  maxUsd: number;
+  onProgress: ((p: { stage: 'preflight'; message: string }) => void) | undefined;
+}
+
+/**
+ * Emit MDE preflight info, check the MDE gate, and check the budget gate.
+ * Throws `WhatifMdeError` or `WhatifBudgetError` on gate violations.
+ *
+ * The MDE gate uses `minProbesPerPrediction` — the minimum number of synthetic
+ * probe episodes assigned to any single prediction — because each prediction
+ * is scored only on its own probes (issue #2403).  Total episode count is used
+ * only for the cost estimate.
+ */
+function runPreflightChecks(input: PreflightInput): void {
+  const {
+    episodesPerArm, minProbesPerPrediction, force, samples, agentModel, analystModel,
+    systemTokens, judgeExternal, analystCostUsd, maxUsd, onProgress,
+  } = input;
+
+  onProgress?.({ stage: 'preflight', message: mdePreflightLine(minProbesPerPrediction) });
+
+  if (isUnderpowered(minProbesPerPrediction) && !force) {
+    throw new WhatifMdeError(minProbesPerPrediction);
+  }
+
+  const estimate = estimateVerifyCost({
+    episodes: episodesPerArm,
+    samples,
+    agentModel,
+    analystModel,
+    systemTokens,
+    judgeExternal,
+  });
+
+  const totalEstimate = estimate.usd + analystCostUsd;
+  if (totalEstimate > maxUsd) {
+    throw new WhatifBudgetError(totalEstimate, maxUsd);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Per-prediction probe count helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Return the minimum number of synthetic probe episodes targeting any single
+ * prediction across all predictions.
+ *
+ * Each prediction is scored only on its own probes (`episode.targets ===
+ * prediction.id`); real-turn replays do not count.  The minimum is used as
+ * the per-prediction n for the MDE gate because the least-powered prediction
+ * determines the run's worst-case detectability.
+ */
+function resolveMinProbesPerPrediction(
+  predictions: import('./types.js').Prediction[],
+  episodes: import('./types.js').Episode[],
+): number {
+  if (predictions.length === 0) return 0;
+  const counts = predictions.map((p) => episodes.filter((e) => e.targets === p.id).length);
+  return Math.min(...counts);
+}
+
+// ---------------------------------------------------------------------------
 // runWhatif
 // ---------------------------------------------------------------------------
 
@@ -287,24 +383,30 @@ export async function runWhatif(
       return undefined;
     });
 
-    // Preflight cost estimate
-    const estimate = estimateVerifyCost({
-      episodes: episodes.length,
-      samples: options.samples,
-      agentModel: options.agentModel,
-      analystModel: options.analystModel,
-      systemTokens: {
-        baseline: structural.tokens.baseline,
-        candidate: structural.tokens.candidate,
-      },
-      judgeExternal: resolvedJudge.external,
-    });
-
-    const totalEstimate = estimate.usd + analystCostUsd;
-    if (totalEstimate > options.maxUsd) {
+    // Preflight: MDE info + MDE gate + budget gate
+    const episodesPerArm = episodes.length;
+    const minProbesPerPrediction = resolveMinProbesPerPrediction(predictions, episodes);
+    try {
+      runPreflightChecks({
+        episodesPerArm,
+        minProbesPerPrediction,
+        force: options.force ?? false,
+        samples: options.samples,
+        agentModel: options.agentModel,
+        analystModel: options.analystModel,
+        systemTokens: {
+          baseline: structural.tokens.baseline,
+          candidate: structural.tokens.candidate,
+        },
+        judgeExternal: resolvedJudge.external,
+        analystCostUsd,
+        maxUsd: options.maxUsd,
+        onProgress: deps.onProgress as ((p: { stage: 'preflight'; message: string }) => void) | undefined,
+      });
+    } catch (preflightErr) {
       await resolvedJudge.close?.();
       await crossCheckJudge?.close?.();
-      throw new WhatifBudgetError(totalEstimate, options.maxUsd);
+      throw preflightErr;
     }
 
     deps.onProgress?.({ stage: 'run', message: 'Running episodes' });
@@ -350,7 +452,11 @@ export async function runWhatif(
     const totalCostUsd = analystCostUsd + episodesCostUsd;
 
     const limits = [
-      ...standardLimits({ verified: true, judgeExternal: resolvedJudge.external }),
+      ...standardLimits({
+        verified: true,
+        judgeExternal: resolvedJudge.external,
+        verifiedPredictions: verifyResult!.predictions,
+      }),
       ...verifyShortfallLimits(verifyResult!),
       ...hookIsolationLimits({ keepContextHooks: autoKeepContextHooks, structural }),
     ];

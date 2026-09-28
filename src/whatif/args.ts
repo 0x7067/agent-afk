@@ -137,6 +137,8 @@ export interface ParsedWhatifArgs {
   yes: boolean;
   /** Emit JSON output. */
   json: boolean;
+  /** Bypass the MDE underpowered hard gate. */
+  force: boolean;
 }
 
 // WHATIF_USAGE is re-exported from args.usage.ts (extracted for the 350-line ceiling).
@@ -167,6 +169,7 @@ interface RunState {
   keepSandboxes: boolean;
   yes: boolean;
   json: boolean;
+  force: boolean;
   specFile?: string;
 }
 
@@ -189,6 +192,7 @@ function parseRunOptionFlag(token: string, nextVal: string | undefined, state: R
     case '--verify': state.verify = true; return 1;
     case '--quick': state.maxTurns = 1; return 1;
     case '--yes': state.yes = true; return 1;
+    case '--force': state.force = true; return 1;
     case '--json': state.json = true; return 1;
     case '--keep-sandboxes': state.keepSandboxes = true; return 1;
     case '--turns': {
@@ -261,6 +265,7 @@ export function parseWhatifArgs(argv: string[]): ParseResult {
     keepSandboxes: false,
     yes: false,
     json: false,
+    force: false,
   };
 
   let i = 0;
@@ -321,6 +326,7 @@ export function parseWhatifArgs(argv: string[]): ParseResult {
     },
     yes: state.yes,
     json: state.json,
+    force: state.force,
   };
 }
 

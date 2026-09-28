@@ -20,7 +20,7 @@ import {
   vi,
   type MockInstance,
 } from 'vitest';
-import { runWhatif, WhatifBudgetError } from './run.js';
+import { runWhatif, WhatifBudgetError, WhatifMdeError } from './run.js';
 import type {
   AgentRunner,
   ChangeSpec,
@@ -240,6 +240,7 @@ function makeOptions(overrides: Partial<WhatifOptions & { sessionsDir?: string }
     maxTurns: 3,
     episodeTimeoutMs: 10_000,
     keepSandboxes: true, // keep so we don't need real sandbox teardown
+    force: true, // bypass MDE gate in existing tests (gate tested separately)
     sessionsDir,
     ...overrides,
   };
@@ -498,5 +499,49 @@ describe('WhatifBudgetError class', () => {
     expect(err.estimateUsd).toBe(0.5);
     expect(err.maxUsd).toBe(0.1);
     expect(err instanceof Error).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// MDE gate
+// ---------------------------------------------------------------------------
+
+describe('runWhatif — MDE gate', () => {
+  it('throws WhatifMdeError when underpowered and force is false', async () => {
+    // makeOptions uses force:true by default; explicitly set force:false here
+    const deps = makeDeps();
+    const options = makeOptions({ verify: true, maxUsd: 10, force: false });
+    // The gate now fires on per-prediction probe count (≤2 probes/prediction with the
+    // current cap), which is always underpowered for the 20pp threshold.
+    await expect(runWhatif(options, deps)).rejects.toBeInstanceOf(WhatifMdeError);
+    // runner.run must NOT have been called (gate fires before episodes run)
+    expect(deps.runner.run).not.toHaveBeenCalled();
+  });
+
+  it('WhatifMdeError carries per-prediction probe count as episodesPerArm', async () => {
+    const deps = makeDeps();
+    const options = makeOptions({ verify: true, maxUsd: 10, force: false });
+    const err = await runWhatif(options, deps).catch((e) => e);
+    expect(err).toBeInstanceOf(WhatifMdeError);
+    // episodesPerArm now holds the per-prediction probe count (small: ≤2)
+    expect((err as WhatifMdeError).episodesPerArm).toBeGreaterThanOrEqual(0);
+    expect(err.message).toContain('--force');
+    expect(err.message).toContain('#2477');
+  });
+
+  it('proceeds (no throw) when force is true even with few probes per prediction', async () => {
+    const deps = makeDeps();
+    // force:true is set by makeOptions default; explicitly confirm here
+    const options = makeOptions({ verify: true, maxUsd: 10, force: true });
+    // Should not throw WhatifMdeError; may throw other errors (budget) but
+    // runner.run should be attempted
+    let threw = false;
+    try {
+      await runWhatif(options, deps);
+    } catch (err) {
+      // OK to throw something else (budget, runner error) — just not MdeError
+      if (err instanceof WhatifMdeError) threw = true;
+    }
+    expect(threw).toBe(false);
   });
 });

@@ -20,6 +20,7 @@ import type {
 } from './types.js';
 import { describeChange } from './operators/index.js';
 import { verdictEmoji, verdictLabel } from './report-verdict.js';
+import { mdeLimitLine } from './mde.js';
 export { buildHeadline } from './report.headline.js';
 
 // ---------------------------------------------------------------------------
@@ -351,8 +352,15 @@ export function renderTerminal(report: WhatifReport, palette: ThemePalette): str
 
 /**
  * Standard caveats that accompany every what-if report.
+ *
+ * When `verifiedPredictions` is supplied (verify runs only), an MDE limit
+ * bullet is added for each prediction whose achieved MDE exceeds 10 pp.
  */
-export function standardLimits(opts: { verified: boolean; judgeExternal: boolean }): string[] {
+export function standardLimits(opts: {
+  verified: boolean;
+  judgeExternal: boolean;
+  verifiedPredictions?: VerifiedPrediction[];
+}): string[] {
   const limits: string[] = [
     'Episodes stop at the first action with side effects, so this shows what the agent decides, not downstream results.',
   ];
@@ -371,6 +379,15 @@ export function standardLimits(opts: { verified: boolean; judgeExternal: boolean
     limits.push(
       'The external judge (Jev) received redacted episode content. Use --judge claude to keep data on Anthropic.',
     );
+  }
+
+  // Per-prediction MDE limit: shown when MDE > 10pp (i.e. small effects are undetectable).
+  if (opts.verifiedPredictions) {
+    for (const vp of opts.verifiedPredictions) {
+      const n = Math.min(vp.rates.n.baseline, vp.rates.n.candidate);
+      const line = mdeLimitLine(n, vp.prediction.id);
+      if (line) limits.push(line);
+    }
   }
 
   return limits;
