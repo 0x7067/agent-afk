@@ -12,7 +12,7 @@
 
 import { extractFeatures, featureIndicators, FEATURE_LABELS } from './observe.js';
 import { compareRates, predictionAccuracy, agreementRate, applyAgreementDowngrade } from './stats.js';
-import { scorePrediction, scoresForQuestion, traceKey } from './run.verify.scoring.js';
+import { scorePrediction, scoresForQuestion, traceKey, type JudgeResults } from './run.verify.scoring.js';
 import { discoverDifferences, type OutputPair } from './discover.js';
 import { appendCalibration, type CalibrationRecord } from './ledger.js';
 import { BudgetTracker } from './cost.js';
@@ -269,6 +269,8 @@ export interface VerifyRunOutput {
   verifyResult: VerifyResult;
   allTraces: EpisodeTrace[];
   analystCostUsd: number;
+  /** Per-output judge grades keyed by {@link traceKey}. Used by persistGrades (#2477). */
+  judgeResults: JudgeResults;
 }
 
 /**
@@ -411,5 +413,6 @@ export async function verifyRun(input: VerifyRunInput): Promise<VerifyRunOutput>
     },
     allTraces,
     analystCostUsd,
+    judgeResults,
   };
 }

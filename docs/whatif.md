@@ -177,6 +177,47 @@ The terminal output shows:
 
 The full Markdown report is written to `~/.afk/state/whatif/<run-id>/report.md`.
 
+### Run-directory artifacts
+
+Every `--verify` run writes four files under `~/.afk/state/whatif/<run-id>/`:
+
+| File | Contents |
+|------|----------|
+| `report.md` | Human-readable Markdown summary |
+| `results.json` | Full `WhatifReport` as JSON (predictions, verdicts, rates, scope) |
+| `traces.jsonl` | One `EpisodeTrace` per line: episode id, env, sample, text, tools, cost |
+| `grades.jsonl` | Per-output judge grades — see below (#2477) |
+
+Predict-only runs (`--no-verify`) omit `traces.jsonl` and `grades.jsonl`.
+
+#### grades.jsonl
+
+`grades.jsonl` records the raw P(yes) score the primary judge assigned to each
+(episode output × prediction) pair. Each line is a `GradeEntry`:
+
+```jsonc
+{
+  "episodeId":    "s1",          // matches traces.jsonl episodeId
+  "env":          "baseline",    // "baseline" | "candidate"
+  "sample":       0,             // sample index (0-based), matches traces.jsonl
+  "predictionId": "p1",          // matches verify.predictions[].prediction.id in results.json
+  "pYes":         0.97           // continuous P(yes) from the primary judge (0–1)
+}
+```
+
+The four pairing keys — `episodeId`, `env`, `sample`, `predictionId` — are
+sufficient to:
+
+- Join a grade back to its episode output in `traces.jsonl` via
+  `episodeId + ":" + env + ":" + sample`
+- Join to the prediction verdict in `results.json` via `predictionId`
+- Pair the same probe across arms by grouping on `(episodeId, sample, predictionId)`
+  and comparing `env === "baseline"` vs `env === "candidate"` rows
+
+This pairing enables per-probe ICC, paired SE, and exact sign-flip tests
+(#2477 step 3) from saved artifacts without any code changes. Episodes where the
+agent run failed (`traces.jsonl[].error`) or where the judge failed are omitted.
+
 ### Which episodes score a prediction
 
 Every episode output is graded once, on every question, in a single judge call.
