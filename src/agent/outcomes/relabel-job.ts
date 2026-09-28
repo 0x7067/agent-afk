@@ -359,9 +359,13 @@ export async function runRelabelJob(
     errors: 0,
   };
 
+  // Invariant: the limit caps PROVISIONAL records, never the directory scan.
+  // Every root session writes a record and most settle immediately, so
+  // capping the scan would re-read the same first N (mostly settled) files
+  // each night and starve every provisional record past them.
   let sessionIds: string[];
   try {
-    sessionIds = listRecords(limit, outcomesDir);
+    sessionIds = listRecords(Number.POSITIVE_INFINITY, outcomesDir);
   } catch {
     return result;
   }
@@ -372,6 +376,7 @@ export async function runRelabelJob(
     try {
       const rec = readRecord(id, outcomesDir);
       if (rec && rec.state === 'provisional') provisional.push(id);
+      if (provisional.length >= limit) break;
     } catch {
       // skip unreadable
     }

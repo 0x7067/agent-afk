@@ -4,7 +4,7 @@
  * All I/O is injected — no network, no filesystem access, no real gh/git.
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { tmpdir } from 'node:os';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
@@ -259,12 +259,6 @@ describe('processRecord', () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  function afterEach(fn: () => void): void {
-    // vitest afterEach is imported via describe block scope — handled above
-    // This local helper is unused but needed to avoid linting errors in some editors.
-    void fn;
-  }
-
   it('marks record settled when PR is merged', async () => {
     const sessionId = 'relabel-test-merged-001';
     writeRecord(makeRecord(sessionId), tmpDir);
@@ -469,10 +463,6 @@ describe('runRelabelJob', () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  function afterEach(fn: () => void): void {
-    void fn;
-  }
-
   it('returns zero counts when store is empty', async () => {
     const result = await runRelabelJob({
       outcomesDir: tmpDir,
@@ -501,6 +491,24 @@ describe('runRelabelJob', () => {
     expect(result.scanned).toBe(3);
     expect(result.settled).toBe(3);
     expect(result.errors).toBe(0);
+  });
+
+  it('reaches provisional records beyond the first N settled ones', async () => {
+    for (let i = 0; i < 12; i++) {
+      writeRecord(makeRecord(`relabel-settled-${String(i).padStart(3, '0')}`, { state: 'settled' }), tmpDir);
+    }
+    writeRecord(makeRecord('relabel-zzz-provisional'), tmpDir);
+
+    const result = await runRelabelJob({
+      outcomesDir: tmpDir,
+      limit: 5,
+      deps: makeDeps({
+        fetchPrState: async () => ({ state: 'MERGED', mergedAt: '2026-09-21T00:00:00Z' }),
+      }),
+    });
+
+    expect(result.scanned).toBe(1);
+    expect(result.settled).toBe(1);
   });
 
   it('respects --limit flag', async () => {
