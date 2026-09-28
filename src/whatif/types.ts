@@ -352,6 +352,8 @@ export interface WhatifReport {
   /** Plain-English caveats that always accompany the report. */
   limits: string[];
   headline: string;
+  /** Probes dropped by probe-grounding because they reference non-existent paths. */
+  droppedProbes?: import('./probe-grounding.js').DroppedProbe[];
   /**
    * Counts of turns/sessions excluded during corpus collection.
    * Present when the verify phase ran; lets callers see corpus shrinkage.
