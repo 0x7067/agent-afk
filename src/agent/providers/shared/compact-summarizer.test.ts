@@ -358,3 +358,95 @@ describe('T9: xAI cross-provider', () => {
     expect(sessionFn).not.toHaveBeenCalled();
   });
 });
+
+// ---------------------------------------------------------------------------
+// T10: per-instance warning isolation (session A does not suppress session B)
+// ---------------------------------------------------------------------------
+
+describe('T10: per-instance warning isolation', () => {
+  it('two separate summarizer instances each emit their own privacy warning', async () => {
+    vi.spyOn(openaiOneshot, 'oneShotChatCompletion').mockResolvedValue(FOREIGN_RESULT);
+    vi.spyOn(openaiAuth, 'resolveOpenAIAuth').mockReturnValue({
+      apiKey: 'sk-key',
+      source: 'env',
+    });
+
+    const sessionFnA = makeSessionFn();
+    const resolvedA = resolveCrossProviderSummarize('anthropic-direct', sessionFnA, 'gpt-4o');
+    await resolvedA('transcript-a');
+
+    const sessionFnB = makeSessionFn();
+    const resolvedB = resolveCrossProviderSummarize('anthropic-direct', sessionFnB, 'gpt-4o');
+    await resolvedB('transcript-b');
+
+    // Each instance must have emitted its own privacy warning (2 total, not 1)
+    expect(warnSpy).toHaveBeenCalledTimes(2);
+    expect(warnSpy.mock.calls[0]?.[0]).toMatch(/cross-provider compaction/i);
+    expect(warnSpy.mock.calls[1]?.[0]).toMatch(/cross-provider compaction/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T11: DOMException-shaped abort is caught even without signal.aborted
+// ---------------------------------------------------------------------------
+
+describe('T11: DOMException abort without signal', () => {
+  it('treats an object with name AbortError as an abort even if not instanceof Error', async () => {
+    // Simulate a DOMException: has name AbortError but NOT instanceof Error in some envs.
+    const domAbort = { name: 'AbortError', message: 'aborted', code: 20 };
+    vi.spyOn(openaiOneshot, 'oneShotChatCompletion').mockRejectedValue(domAbort);
+    vi.spyOn(openaiAuth, 'resolveOpenAIAuth').mockReturnValue({
+      apiKey: 'sk-key',
+      source: 'env',
+    });
+
+    const sessionFn = makeSessionFn();
+    const resolved = resolveCrossProviderSummarize('anthropic-direct', sessionFn, 'gpt-4o');
+
+    // No signal passed — abort detection must rely on err.name only
+    await expect(resolved('transcript')).rejects.toMatchObject({ name: 'AbortError' });
+
+    // Privacy warning emitted (first call) but failure warning must NOT be emitted
+    expect(warnSpy.mock.calls.every((c: unknown[]) => !String(c[0]).includes('failed'))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T12: xai-oauth normalizes to xai — no spurious cross-provider warning
+// ---------------------------------------------------------------------------
+
+describe('T12: xai-oauth treated as same family as xai', () => {
+  it('returns session summarizer unchanged when sessionFamily=xai and target resolves to xai-oauth', async () => {
+    // We need to make providerForModel return 'xai-oauth' for a model name.
+    // The easiest approach: use a model id that resolves via xai-oauth binding.
+    // Instead of fighting providerForModel heuristics, directly pass a compact
+    // model that providerForModel classifies as xai-oauth. Since the heuristic
+    // maps 'grok-*' to xai, we mock providerForModel indirectly by supplying
+    // a binding with provider 'xai-oauth' via resolveBinding.
+    // Simplest: mock at the module level (the module imports providerForModel
+    // from '../index.js'). We use vi.mock at module scope for this test group.
+    //
+    // Actually, resolveCrossProviderSummarize calls providerForModel with
+    // { explicit: binding.provider } when binding.provider is set. So we can
+    // test the normalization by mocking resolveBinding to return provider:'xai-oauth',
+    // then verifying the session fn IS returned (not a foreign closure).
+    //
+    // However since resolveBinding is not exported/importable in a test-friendly
+    // way, use a workaround: pass a raw grok model id (maps to xai family) and
+    // pass sessionFamily as 'xai-oauth'. The normalization should treat both as 'xai'.
+
+    const sessionFn = makeSessionFn();
+    // sessionFamily = 'xai-oauth', compact model = grok-3-beta (resolves to 'xai')
+    // After normalization: both become 'xai' → same family → return sessionFn unchanged
+    const resolved = resolveCrossProviderSummarize(
+      'xai-oauth' as Parameters<typeof resolveCrossProviderSummarize>[0],
+      sessionFn,
+      'grok-3-beta',
+    );
+
+    expect(resolved).toBe(sessionFn);
+    await resolved('transcript');
+    // No cross-provider warning
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+});

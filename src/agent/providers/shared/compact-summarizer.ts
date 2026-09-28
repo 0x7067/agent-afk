@@ -50,12 +50,6 @@ import type { BundledProviderName } from '../index.js';
 // anthropic-direct/query/compact-handler.ts and openai-compatible/query.ts.
 const COMPACT_MAX_TOKENS = 1024;
 
-// Invariant: one-time-per-process warnings — never more than once per target
-// even if the session compacts repeatedly. Two distinct sets: the privacy
-// notice (first use) and the failure notice (first failure per target id).
-const warnedPrivacyFor = new Set<string>();
-const warnedFailureFor = new Set<string>();
-
 /** Summarize closure shape used by both compact-handler and openai-compatible query. */
 export type SummarizeFn = (transcript: string, signal?: AbortSignal) => Promise<string>;
 
@@ -102,10 +96,12 @@ export function resolveCrossProviderSummarize(
   const normalizedSession =
     sessionFamily === 'anthropic' ? 'anthropic-direct' :
     sessionFamily === 'openai-codex' ? 'openai-compatible' :
+    sessionFamily === 'xai-oauth' ? 'xai' :
     sessionFamily;
   const normalizedTarget =
     targetProvider === 'anthropic' ? 'anthropic-direct' :
     targetProvider === 'openai-codex' ? 'openai-compatible' :
+    targetProvider === 'xai-oauth' ? 'xai' :
     targetProvider;
 
   if (normalizedTarget === normalizedSession) {
@@ -134,10 +130,14 @@ function buildForeignSummarize(
   targetProvider: BundledProviderName,
   binding: ForeignBinding,
 ): SummarizeFn {
+  // Invariant: per-instance dedup Sets — each summarizer closure gets its own
+  // independent state so session B never inherits session A's warned targets.
+  const warnedPrivacy = new Set<string>();
+  const warnedFailure = new Set<string>();
   return async (transcript: string, signal?: AbortSignal): Promise<string> => {
-    // Privacy notice: one-time-per-target, before the request fires.
-    if (!warnedPrivacyFor.has(targetModel)) {
-      warnedPrivacyFor.add(targetModel);
+    // Privacy notice: one-time-per-instance, before the request fires.
+    if (!warnedPrivacy.has(targetModel)) {
+      warnedPrivacy.add(targetModel);
       // eslint-disable-next-line no-console
       console.warn(
         `[afk/compact] Cross-provider compaction: transcript will be sent to ` +
@@ -167,14 +167,17 @@ function buildForeignSummarize(
       );
     } catch (err) {
       // Aborts must propagate as-is so the compaction core records 'aborted'.
+      // Contract: check signal.aborted first (most reliable), then accept any
+      // object whose .name is 'AbortError' — DOMException may not be instanceof
+      // Error in all environments.
       const isAbort =
-        (err instanceof Error && err.name === 'AbortError') ||
-        (signal !== undefined && signal.aborted);
+        signal?.aborted === true ||
+        (err != null && (err as { name?: unknown }).name === 'AbortError');
       if (isAbort) throw err;
 
-      // One-time failure warning per target model id.
-      if (!warnedFailureFor.has(targetModel)) {
-        warnedFailureFor.add(targetModel);
+      // One-time failure warning per instance and target model id.
+      if (!warnedFailure.has(targetModel)) {
+        warnedFailure.add(targetModel);
         const msg = err instanceof Error ? err.message : String(err);
         // eslint-disable-next-line no-console
         console.warn(
@@ -187,11 +190,12 @@ function buildForeignSummarize(
   };
 }
 
-/** Reset one-time warning state — used by tests only (vitest imports via __test-utils__). */
-export function __resetCrossProviderWarnState(): void {
-  warnedPrivacyFor.clear();
-  warnedFailureFor.clear();
-}
+// History: __resetCrossProviderWarnState was previously used by tests to clear
+// module-scope Sets. Now that warn state lives per-closure (inside
+// buildForeignSummarize), each resolveCrossProviderSummarize call gets fresh
+// state automatically. The export is kept as a no-op so existing test imports
+// don't break. See PR #2474 Fix 1.
+export function __resetCrossProviderWarnState(): void {}
 
 // ---------------------------------------------------------------------------
 // Per-provider one-shot helpers
