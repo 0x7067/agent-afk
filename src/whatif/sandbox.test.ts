@@ -305,17 +305,80 @@ describe('materializeSandboxes: home layout', () => {
     await cleanup();
   });
 
-  it('cleanup removes sandboxes directory', async () => {
+  // Issue #2466: each arm now gets its own root under os.tmpdir(), so there
+  // is no shared sandboxes/ dir under runDir. The arm roots are cleaned up
+  // independently; we verify the homes are gone after cleanup.
+  it('cleanup removes both arm home directories', async () => {
     const spec: ChangeSpec = { title: 'noop', changes: [] };
-    const { cleanup } = await materializeSandboxes({
+    const { baseline, candidate, cleanup } = await materializeSandboxes({
       realHome,
       realCwd: root,
       runDir,
       spec,
       baseLaunch: BASE_LAUNCH,
     });
+    // Record arm roots (parent of home)
+    const baselineRoot = resolve(join(baseline.home, '..'));
+    const candidateRoot = resolve(join(candidate.home, '..'));
     await cleanup();
-    expect(existsSync(join(runDir, 'sandboxes'))).toBe(false);
+    expect(existsSync(baselineRoot)).toBe(false);
+    expect(existsSync(candidateRoot)).toBe(false);
+  });
+
+  // Issue #2466: arm sandboxes must be isolated — neither arm's home nor
+  // project should be reachable by walking up from the other arm's paths
+  // within 4 levels (excluding os.tmpdir() itself and filesystem root).
+  it('arm sandbox roots share no whatif-owned ancestor within 4 levels', async () => {
+    const spec: ChangeSpec = { title: 'noop', changes: [] };
+    const { baseline, candidate, cleanup } = await materializeSandboxes({
+      realHome,
+      realCwd: root,
+      runDir,
+      spec,
+      baseLaunch: BASE_LAUNCH,
+    });
+    try {
+      const sysTmpdir = resolve(os.tmpdir());
+
+      function ancestorsWithin(p: string, levels: number): string[] {
+        const acc: string[] = [];
+        let cur = resolve(p);
+        for (let i = 0; i < levels; i++) {
+          const parent = resolve(join(cur, '..'));
+          if (parent === cur) break; // filesystem root
+          if (resolve(parent) === sysTmpdir) break; // stop at os.tmpdir()
+          acc.push(parent);
+          cur = parent;
+        }
+        return acc;
+      }
+
+      const baselineHome = resolve(baseline.home);
+      const candidateHome = resolve(candidate.home);
+      const baselineRoot = resolve(join(baselineHome, '..'));
+      const candidateRoot = resolve(join(candidateHome, '..'));
+
+      // Ancestors of baseline's home (up to 4 levels, stopping at tmpdir)
+      const baselineAncestors = ancestorsWithin(baselineHome, 4);
+      // Ancestors of candidate's home (up to 4 levels, stopping at tmpdir)
+      const candidateAncestors = ancestorsWithin(candidateHome, 4);
+
+      // candidate root must NOT appear among baseline's ancestors
+      for (const anc of baselineAncestors) {
+        expect(resolve(anc)).not.toBe(candidateRoot);
+      }
+      // baseline root must NOT appear among candidate's ancestors
+      for (const anc of candidateAncestors) {
+        expect(resolve(anc)).not.toBe(baselineRoot);
+      }
+
+      // Also assert: baseline home is not a descendant of candidate root
+      expect(baselineHome.startsWith(candidateRoot + '/')).toBe(false);
+      // And candidate home is not a descendant of baseline root
+      expect(candidateHome.startsWith(baselineRoot + '/')).toBe(false);
+    } finally {
+      await cleanup();
+    }
   });
 });
 
@@ -696,8 +759,13 @@ describe('materializeSandboxes: git worktrees', () => {
     // Real repo untouched
     expect(existsSync(join(gitRepo, 'NEW.md'))).toBe(false);
 
+    // Record arm roots (parent of home) before cleanup
+    const baselineRoot = resolve(join(baseline.home, '..'));
+    const candidateRoot = resolve(join(candidate.home, '..'));
     await cleanup();
-    expect(existsSync(join(runDir, 'sandboxes'))).toBe(false);
+    // Both per-arm roots should be removed (issue #2466: no shared sandboxes/ dir)
+    expect(existsSync(baselineRoot)).toBe(false);
+    expect(existsSync(candidateRoot)).toBe(false);
   });
 
   it('throws when specTouchesProject but cwd is not a git repo', async () => {
