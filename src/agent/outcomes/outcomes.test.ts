@@ -133,12 +133,13 @@ describe('recoverCommitSHAs', () => {
 });
 
 describe('recoverPRURLs', () => {
-  it('extracts a GitHub PR URL from result preview', () => {
+  it('extracts the PR URL from a gh pr create event', () => {
     const turns: Turn[] = [
       {
         toolEvents: [
           {
             toolName: 'bash',
+            input: 'cd /repo && gh pr create --body-file /tmp/b.md',
             result: 'https://github.com/myorg/myrepo/pull/42',
           },
         ],
@@ -147,22 +148,59 @@ describe('recoverPRURLs', () => {
     expect(recoverPRURLs(turns)).toEqual(['https://github.com/myorg/myrepo/pull/42']);
   });
 
-  it('extracts PR URL from assistant text', () => {
+  it('accepts a bare-URL result when the stored input was truncated', () => {
     const turns: Turn[] = [
       {
-        assistant: 'PR created: https://github.com/org/repo/pull/99',
-        toolEvents: [],
+        toolEvents: [
+          {
+            toolName: 'bash',
+            input: 'cd /Users/x/Projects/very/long/path/.afk-worktrees/slug && git push -u origin \u2026',
+            result: 'https://github.com/org/repo/pull/7\n',
+          },
+        ],
       },
     ];
-    expect(recoverPRURLs(turns)).toEqual(['https://github.com/org/repo/pull/99']);
+    expect(recoverPRURLs(turns)).toEqual(['https://github.com/org/repo/pull/7']);
+  });
+
+  it('ignores PR URLs in assistant text', () => {
+    const turns: Turn[] = [
+      { assistant: 'See https://github.com/org/repo/pull/99', toolEvents: [] },
+    ];
+    expect(recoverPRURLs(turns)).toEqual([]);
+  });
+
+  it('ignores PR URLs printed by read-only gh queries', () => {
+    const turns: Turn[] = [
+      {
+        toolEvents: [
+          {
+            toolName: 'bash',
+            input: 'gh pr view 12 --json url -q .url',
+            result: 'https://github.com/org/repo/pull/12',
+          },
+          {
+            toolName: 'bash',
+            input: 'gh pr list --state open',
+            result: '12  fix thing  https://github.com/org/repo/pull/12',
+          },
+          {
+            toolName: 'bash',
+            input: 'cd /very/long/path && gh pr view 13 --json url \u2026',
+            result: 'https://github.com/org/repo/pull/13',
+          },
+        ],
+      },
+    ];
+    expect(recoverPRURLs(turns)).toEqual([]);
   });
 
   it('deduplicates PR URLs', () => {
     const turns: Turn[] = [
       {
         toolEvents: [
-          { toolName: 'bash', result: 'https://github.com/org/repo/pull/1' },
-          { toolName: 'bash', result: 'https://github.com/org/repo/pull/1' },
+          { toolName: 'bash', input: 'gh pr create', result: 'https://github.com/org/repo/pull/1' },
+          { toolName: 'bash', input: 'gh pr create', result: 'https://github.com/org/repo/pull/1' },
         ],
       },
     ];
@@ -249,12 +287,59 @@ describe('lfVerification', () => {
     const turns: Turn[] = [{
       toolEvents: [
         { toolName: 'write_file', input: '{}' },
-        { toolName: 'bash', input: 'pnpm test src/foo' },
+        { toolName: 'bash', input: 'pnpm test src/foo', isError: false },
       ],
     }];
     const vote = lfVerification(turns, now);
     expect(vote?.vote).toBe(1);
     expect(vote?.strength).toBe('strong');
+  });
+
+  it('abstains when isError was not recorded', () => {
+    const turns: Turn[] = [{
+      toolEvents: [
+        { toolName: 'write_file', input: '{}' },
+        { toolName: 'bash', input: 'pnpm test src/foo' },
+      ],
+    }];
+    expect(lfVerification(turns, now)).toBeNull();
+  });
+
+  it.each([
+    ['piped to tail', 'pnpm test 2>&1 | tail -5'],
+    ['masked with || true', 'pnpm lint || true'],
+    ['masked with || echo', 'pnpm build || echo failed'],
+    ['masked with ; true', 'pnpm test; true'],
+    ['truncated stored input', 'cd /very/long/path/.afk-worktrees/x && pnpm test src/agent/outcomes \u2026'],
+  ])('abstains when the exit status is untrustworthy (%s)', (_label, input) => {
+    const turns: Turn[] = [{
+      toolEvents: [
+        { toolName: 'write_file', input: '{}' },
+        { toolName: 'bash', input, isError: false },
+      ],
+    }];
+    expect(lfVerification(turns, now)).toBeNull();
+  });
+
+  it('abstains when the LAST verification is untrustworthy even if an earlier one was clean', () => {
+    const turns: Turn[] = [{
+      toolEvents: [
+        { toolName: 'write_file', input: '{}' },
+        { toolName: 'bash', input: 'pnpm test', isError: false },
+        { toolName: 'bash', input: 'pnpm test 2>&1 | tail -3', isError: false },
+      ],
+    }];
+    expect(lfVerification(turns, now)).toBeNull();
+  });
+
+  it('trusts the structured test_run tool', () => {
+    const turns: Turn[] = [{
+      toolEvents: [
+        { toolName: 'edit_file', input: '{}' },
+        { toolName: 'test_run', input: '{"file":"src/x.test.ts"}', isError: true },
+      ],
+    }];
+    expect(lfVerification(turns, now)?.vote).toBe(-1);
   });
 
   it('votes -1 when pnpm test fails (isError) after write', () => {

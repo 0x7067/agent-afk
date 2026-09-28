@@ -16,7 +16,7 @@ import {
   lfCommitSurvival,
   combine,
 } from '../src/agent/outcomes/index.js';
-import type { Vote, OutcomeLabel } from '../src/agent/outcomes/index.js';
+import type { Vote, OutcomeLabel, SelfReport } from '../src/agent/outcomes/index.js';
 import type { FetchPrState, PrState } from '../src/agent/outcomes/lf-delayed.js';
 import type { Turn } from '../src/agent/outcomes/artifacts.js';
 
@@ -134,6 +134,7 @@ export interface SessionResult {
   label: OutcomeLabel;
   confidence: number;
   sessionKind: 'mutating' | 'text';
+  selfReport: SelfReport;
   votes: Vote[];
   hasPr: boolean;
   hasCommit: boolean;
@@ -196,6 +197,7 @@ export async function processSession(
     label,
     confidence,
     sessionKind,
+    selfReport,
     votes: allVotes,
     hasPr: artifacts.prs.length > 0,
     hasCommit: artifacts.commits.length > 0,

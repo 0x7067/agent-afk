@@ -206,9 +206,9 @@ function appendCaveats(lines: string[], noGh: boolean, noGit: boolean): void {
   lines.push('- **Closure LF (0% coverage)**: joining the closure LF requires scanning');
   lines.push('  17k+ trace directories for `session_id_assigned` events — skipped in M0.');
   lines.push('  Will be populated at session teardown in M2.');
-  lines.push('- **Subagent tool events**: session JSON only contains the parent session\'s');
+  lines.push('- **Subagent tool events (UNVERIFIED hypothesis)**: session JSON may only contain the parent session\'s');
   lines.push('  turns. Worktree-isolated children\'s tool events (including commits) appear');
-  lines.push('  in separate session files — invisible to parent artifact recovery.');
+  lines.push('  in separate session files, invisible to parent artifact recovery. Not yet checked.');
   lines.push('- **fix_of_fix LF**: skipped (weak -1, cannot flip succeeded). M2 daemon job.');
   lines.push('- **dir-based sessions**: 16k+ directory-based sessions (events.jsonl format)');
   lines.push('  not processed; only 1001 JSON-sidecar sessions have toolEvents data.');

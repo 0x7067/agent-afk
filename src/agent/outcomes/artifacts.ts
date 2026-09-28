@@ -24,6 +24,14 @@ const COMMIT_PATTERN =
 // Matches a full GitHub PR URL anywhere in the result preview
 const PR_URL_PATTERN = /https:\/\/github\.com\/([^/\s]+\/[^/\s]+)\/pull\/(\d+)/g;
 
+// A result that is nothing but a PR URL (optionally after one gh warning line):
+// the stdout shape of `gh pr create`.
+const BARE_PR_URL_RESULT =
+  /^\s*(?:Warning:[^\n]*\n)?\s*https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/\d+\s*$/;
+
+// Read-only gh queries that can also print a bare PR URL.
+const PR_QUERY_INPUT = /gh\s+(?:pr|api|search)\s+(?:view|list|status|prs)|--json|\s-q\s|--jq/;
+
 // ---------------------------------------------------------------------------
 // ToolEvent input shape (minimal — not importing the whole facet schema)
 // ---------------------------------------------------------------------------
@@ -70,7 +78,29 @@ export function recoverCommitSHAs(turns: Turn[]): string[] {
 }
 
 /**
- * Extract PR URLs from all tool events and assistant text in a session.
+ * Contract: true only when this tool event most likely CREATED a PR.
+ * Either the (possibly truncated) bash input names `gh pr create`, or the
+ * input was truncated before the gh verb (stored inputs end in an ellipsis)
+ * and the result is exactly a bare PR URL, the stdout shape of
+ * `gh pr create`, and the visible input is not a read-only gh query.
+ *
+ * History: the first M0 cut scanned every tool result and all assistant text,
+ * so any PR merely mentioned (gh pr view, PR lists, links in prose) was
+ * attributed to the session, and pr_fate then scored other PRs' merges as
+ * this session's success. On real data that inflated PR-bearing sessions from
+ * ~143-216 to 457 of 1001.
+ */
+export function isPRCreateEvent(ev: ToolEvent): boolean {
+  if (ev.toolName !== 'bash' || ev.isError === true) return false;
+  const input = ev.input ?? '';
+  if (/gh\s+pr\s+create/.test(input)) return true;
+  const truncated = input.trimEnd().endsWith('\u2026');
+  return truncated && BARE_PR_URL_RESULT.test(ev.result ?? '') && !PR_QUERY_INPUT.test(input);
+}
+
+/**
+ * Extract URLs of PRs the session CREATED (see `isPRCreateEvent`).
+ * Assistant prose and read-only gh output are deliberately ignored.
  * Returns deduplicated URLs in encounter order.
  */
 export function recoverPRURLs(turns: Turn[]): string[] {
@@ -90,13 +120,9 @@ export function recoverPRURLs(turns: Turn[]): string[] {
   }
 
   for (const turn of turns) {
-    // Scan tool result previews
     for (const ev of turn.toolEvents ?? []) {
-      if (ev.isError === true) continue;
-      scanText(ev.result ?? '');
+      if (isPRCreateEvent(ev)) scanText(ev.result ?? '');
     }
-    // Also scan assistant text (gh pr create output sometimes appears there)
-    scanText(turn.assistant ?? '');
   }
   return urls;
 }

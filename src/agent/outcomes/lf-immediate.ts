@@ -61,6 +61,30 @@ function isVerificationCommand(input: string): boolean {
   return VERIFICATION_PATTERNS.some((p) => p.test(input));
 }
 
+// A single `|` (not `||`), or an explicit exit-status mask.
+const MASKED_EXIT = /(?<!\|)\|(?!\|)|\|\|\s*(?:true|:|echo)\b|;\s*(?:true|exit 0)\b/;
+
+/**
+ * Contract: true only when `isError` on this event reflects the verification
+ * command's own exit status.
+ *
+ * History: on real data 1,591 of 2,196 stored verification-like bash commands
+ * were piped (`pnpm test 2>&1 | tail -5`) or masked, so the recorded exit
+ * status was the pipe's last stage, not the test run's, and the ~90-char
+ * result preview (`…+3 lines`) carried no pass/fail text either. The first M0
+ * cut counted those as passes. Rules: `test_run` is structured and trusted;
+ * bash is trusted only when its stored input is complete (stored inputs are
+ * truncated with a trailing ellipsis, which could hide a pipe) and unmasked;
+ * and `isError` must be explicitly recorded (older events omit it).
+ */
+function exitStatusTrustworthy(ev: ToolEvent): boolean {
+  if (ev.isError !== true && ev.isError !== false) return false;
+  if (ev.toolName === 'test_run') return true;
+  const input = ev.input ?? '';
+  if (input.trimEnd().endsWith('\u2026')) return false;
+  return !MASKED_EXIT.test(input);
+}
+
 // ---------------------------------------------------------------------------
 // Correction keyword heuristic
 // ---------------------------------------------------------------------------
@@ -222,15 +246,17 @@ export function lfVerification(turns: Turn[], now: string): Vote | null {
     if (ev === undefined) continue;
     if (ev.toolName === 'bash' || ev.toolName === 'test_run') {
       const input = ev.input ?? '';
-      if (isVerificationCommand(input)) {
+      if (ev.toolName === 'test_run' || isVerificationCommand(input)) {
         lastVerifyEv = ev;
       }
     }
   }
 
-  if (lastVerifyEv === null) return null;
+  // Abstain when the last verification's exit status cannot be trusted; an
+  // earlier trustworthy run is not evidence about the final state.
+  if (lastVerifyEv === null || !exitStatusTrustworthy(lastVerifyEv)) return null;
 
-  const passed = lastVerifyEv.isError !== true;
+  const passed = lastVerifyEv.isError === false;
   return {
     lf: 'verification',
     vote: passed ? 1 : -1,

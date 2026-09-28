@@ -1,7 +1,8 @@
 # Proposal: `verified_outcome`, a session outcome label built from observed facts
 
 Status: ACCEPTED design (2026-09-27). Operator decisions recorded under
-"Resolved decisions". M0 in progress.
+"Resolved decisions". M0 done; see "M0 results" (exit check FAILED, which
+re-ordered M2).
 
 ## Why
 
@@ -196,6 +197,75 @@ src/agent/outcomes/
   index.ts
 scripts/outcomes-backfill.ts  # M0 offline pass over existing history
 ```
+
+## M0 results (2026-09-27)
+
+Script: `scripts/outcomes-backfill.ts`. Aggregate report:
+`docs/proposals/verified-outcome-m0-report.md`. Input: all 1,001 session JSON
+files (see finding 4 for why only 1,001).
+
+| Label | Count |
+|---|---|
+| succeeded | 259 (26%) |
+| failed | 5 (0.5%) |
+| blocked | 8 |
+| interrupted | 0 (closure LF not joined in M0) |
+| unknown | 729 (73%) |
+
+**Exit check: FAIL** (272 non-unknown against a bar of 300). The count is not
+the real problem, though.
+
+### Findings
+
+1. **The label can confirm success but cannot detect failure.** 229 of the
+   259 successes rest on `pr_fate` (merged) or `commit_survival`. Across all
+   1,001 sessions the only negative evidence is 8 PRs closed unmerged and 32
+   weak in-session corrections; `commit_survival` found 0 reverts and
+   `error_tail` fired 0 times (sessions end on an assistant turn after
+   recovering from errors). 605 sessions ended with a `**Done**` block and
+   have no evidence either way. A 259:5 label cannot train or validate a
+   router: the devils-advocate falsifier required at least 200 minority-class
+   examples.
+2. **Two precision bugs were caught and fixed during review**, each of which
+   had inflated `succeeded`:
+   - PR attribution scanned every tool result and all assistant prose, so any
+     PR merely *mentioned* (via `gh pr view`, lists, links) was scored as the
+     session's own. Now only `gh pr create` events count
+     (`isPRCreateEvent`). PR-bearing sessions: 457 → 206.
+   - `verification` trusted the exit status of piped commands. 1,591 of 2,196
+     stored test/lint/build commands are piped (`pnpm test 2>&1 | tail -5`) or
+     masked, so `isError` reflected `tail`, not the tests. Now these abstain,
+     as do truncated inputs and events with no recorded `isError`.
+     `verification`-only successes: 168 → 24.
+   Before the fixes the run reported 523 successes and a PASS.
+3. **Self-reports are unreliable as success evidence, as designed.** 84% of
+   sessions report Done; 72% of those have no corroborating evidence.
+4. **Session JSON is retained for only 30 days / 1,000 files**
+   (`src/agent/session-sidecar-sweep.ts`, `AFK_SESSION_MAX_AGE_DAYS`,
+   `AFK_SESSION_MAX_COUNT`). The 16k older session directories hold only
+   `events.jsonl`. So M2's teardown hook must copy artifacts and immediate
+   votes into the outcome store; delayed probes must never depend on the
+   session JSON still existing. An events.jsonl reader could extend the
+   backfill to the older history (follow-up).
+
+### What this changes in M2 (re-prioritised)
+
+Negative evidence is now the critical path. Build these before anything that
+consumes the label:
+
+1. **Explicit feedback (`/good`, `/bad`, Telegram reaction).** It is the only
+   cheap, high-precision source of `failed`.
+2. **Record the tail of verification output.** For bash commands matching the
+   verification patterns, store the last ~200 characters of output (where
+   `Tests N passed | M failed` and `Found N errors` summaries live), not just
+   the first ~90. This recovers pass/fail even for piped commands, which are
+   72% of test runs.
+3. **`cross_session_reask`** and the **closure join** (trivial at teardown,
+   where the trace label is known).
+4. Only then the store, the relabel job, and the `get_facet` join.
+
+The router experiment (M3) stays blocked until the label has at least 200
+`failed` examples.
 
 ## Milestones
 

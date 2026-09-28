@@ -162,7 +162,7 @@ async function main(): Promise<void> {
       state: 'provisional',
       settles_after: null,
       session_kind: result.sessionKind,
-      self_report: 'none',
+      self_report: result.selfReport,
       artifacts,
       votes: result.votes,
       history: [{ at: now, label: result.label, reason: 'M0 backfill' }],
