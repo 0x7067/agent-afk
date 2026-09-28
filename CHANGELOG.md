@@ -11,6 +11,18 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.263.0] - 2026-09-28
+
+### Added
+- M2 part 2 — session-end hook, child attribution, closure LF, cross_session_reask (762b7fb6)
+- outcome store, /good and /bad feedback, get_facet join (5d3391a1)
+
+### Changed
+- episodes are not blind; the agent can detect the experiment and read which change was applied (#2447) (ebc4ac4f)
+- Merge pull request #2441 from griffinwork40/afk/verified-outcome-m2 (dec21498)
+- Merge remote-tracking branch 'origin/main' into afk/sync-m2 (1da2fef8)
+- Merge remote-tracking branch 'origin/main' into afk/sync-m2 (a9cb26ad)
+
 ## [5.262.1] - 2026-09-28
 
 ### Added
