@@ -307,3 +307,53 @@ The router experiment (M3) stays blocked until the label has at least 200
    Revisit if M1 shows reverts arriving after day 7.
 4. `unknown` sessions are excluded from the router experiment (treated as
    missing data, never as zero).
+
+## M2 status: relabel job
+
+Implemented in PR stacked on #2429 (afk/verified-outcome-relabel branch).
+
+### Files
+
+| File | Purpose |
+|---|---|
+| `src/agent/outcomes/lf-ci.ts` | Delayed LF: `ci` — `gh pr checks` conclusion; weak vote |
+| `src/agent/outcomes/lf-fof.ts` | Delayed LF: `fix_of_fix` — reuses gh-fix-of-fix.ts patterns; weak -1 only |
+| `src/agent/outcomes/relabel-job.ts` | Batch runner: scans provisional records, runs LFs, upserts votes, settles |
+| `scripts/outcomes-relabel.ts` | Shell entrypoint: `--dry-run`, `--limit`; prints one-line summary |
+
+### How to schedule the relabel job
+
+Run this `create_schedule` call from an interactive session (not from code — the schedule is a persistent shared change):
+
+```json
+{
+  "name": "Nightly outcome relabel",
+  "cron": "17 3 * * *",
+  "executor": "shell",
+  "command": "npx tsx /Users/griffinlong/Projects/open_source/agent-afk/scripts/outcomes-relabel.ts",
+  "cwd": "/Users/griffinlong/Projects/open_source/agent-afk",
+  "notifyOn": "failure"
+}
+```
+
+Rationale for 03:17: avoids the :00 scheduling pileup; runs after midnight when
+GH rate limits have reset; well outside the daytime interactive window.
+
+### Settle semantics
+
+A record transitions from `provisional` to `settled` when:
+- All PRs in its artifacts have reached a terminal state (MERGED or CLOSED), OR
+- `settles_after` + 2-day grace period has passed (force-settle to avoid infinite
+  retry of records with deleted repos or revoked GH access).
+
+### Error handling contract
+
+- GH failures (rate limit, network, auth): `fetchPrState` / `execFnCi` /
+  `execFnFof` return null/empty and the record is NOT settled. It will be
+  retried the next night.
+- Missing or non-git `cwd` (repo path in artifacts no longer exists): `existsSync`
+  check skips `commit_survival`; `pr_fate` and `ci` still run via GH API.
+- Unexpected throws inside `processRecord`: caught by `Promise.allSettled`-style
+  wrapper in `runRelabelJob`; counted as an error in the summary line but never
+  crash the batch.
+- The job itself never throws at the top level (all errors are internal).
