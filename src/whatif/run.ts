@@ -17,6 +17,7 @@
 
 import * as fsp from 'node:fs/promises';
 import * as path from 'node:path';
+import { randomBytes } from 'node:crypto';
 import { getWhatifDir } from '../paths.js';
 import { materializeSandboxes } from './sandbox.js';
 import { describeChange } from './operators/index.js';
@@ -150,16 +151,8 @@ async function collectVerifyEpisodes(
 }
 
 // ---------------------------------------------------------------------------
-// Slug helper
+// Run-dir helper
 // ---------------------------------------------------------------------------
-
-function slugify(title: string): string {
-  return title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 40) || 'run';
-}
 
 function dateStamp(now: Date): string {
   const pad = (n: number): string => String(n).padStart(2, '0');
@@ -194,9 +187,13 @@ export async function runWhatif(
 
   // ── a) Run directory ──────────────────────────────────────────────────────
 
+  // Run dir is a timestamp plus an opaque suffix — omitting the change title
+  // keeps the path opaque to the agent during an episode (issue #2425), and
+  // the suffix stops two runs started in the same second from colliding.
+  // The title is recorded in results.json so it is never lost.
   const runDir = path.join(
     getWhatifDir(),
-    `${dateStamp(now)}-${slugify(spec.title)}`,
+    `${dateStamp(now)}-${randomBytes(3).toString('hex')}`,
   );
   await fsp.mkdir(runDir, { recursive: true });
 
