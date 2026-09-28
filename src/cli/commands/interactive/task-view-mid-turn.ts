@@ -67,31 +67,14 @@ export interface MidTurnTaskViewOptions {
 // ---------------------------------------------------------------------------
 
 /**
- * Leave the alternate screen and hand the terminal back to the compositor.
- *
- * Invariant (ordering):
- *   1. stdout.write(LEAVE_ALT_SCREEN)  — escape the alt buffer FIRST
- *   2. compositor.resumeInput()        — compositor may now repaint
- *   3. compositor.repaint()            — force immediate redraw
- *
- * LEAVE_ALT_SCREEN must precede resumeInput() on every exit path; otherwise
- * the compositor repaints into the alt buffer and the main screen is never
- * restored. Teardown helper declared before launchMidTurnTaskView
- * (ordered-sequence rule).
- */
-function leaveAltScreen(compositor: TerminalCompositor): void {
-  compositor.stdout.write(LEAVE_ALT_SCREEN);
-  compositor.resumeInput();
-  compositor.repaint();
-}
-
-/**
  * Enter the alternate screen buffer and register two complementary teardown
  * guards so that LEAVE_ALT_SCREEN is always written on signal- or exit-driven
  * teardown, not only on the normal Esc path.
  *
- * Returns an `disarmCleanup` function that the normal exit path MUST call
- * before invoking `leaveAltScreen()` to prevent a double-leave.
+ * Returns `{ disarmCleanup, leaveAltScreen }`.  The normal exit path MUST call
+ * `disarmCleanup()` and then `leaveAltScreen()` — the same `fired` flag is
+ * shared by all three paths so LEAVE_ALT_SCREEN is written at most once no
+ * matter which path executes first.
  *
  * Invariant (cleanup ordering):
  *   - The cleanup-registry function runs during runCleanupFunctions() called
@@ -102,14 +85,36 @@ function leaveAltScreen(compositor: TerminalCompositor): void {
  *   - The process.on('exit') fallback fires synchronously on process.exit()
  *     and catches any path that bypasses the cleanup registry (e.g. SIGINT
  *     double-press in the interactive cleanup or an unhandled rejection).
- *   - Both guards are disarmed atomically by disarmCleanup() so the normal
- *     leaveAltScreen() call is the sole writer on the happy path.
+ *   - Both guards and the happy-path leaveAltScreen share the `fired` flag,
+ *     so the first writer wins and all subsequent calls are no-ops.
+ *
+ * Invariant (leave ordering inside leaveAltScreen):
+ *   1. stdout.write(LEAVE_ALT_SCREEN)  — escape the alt buffer FIRST
+ *   2. compositor.resumeInput()        — compositor may now repaint
+ *   3. compositor.repaint()            — force immediate redraw
+ *
+ * Teardown helper declared before launchMidTurnTaskView (ordered-sequence rule).
  */
-function enterAltScreen(compositor: TerminalCompositor): () => void {
+function enterAltScreen(compositor: TerminalCompositor): {
+  disarmCleanup: () => void;
+  leaveAltScreen: () => void;
+} {
   compositor.stdout.write(ENTER_ALT_SCREEN + '\x1b[2J\x1b[H');
 
-  // Idempotent writer — safe to call from either guard; writes the escape once.
-  const writeLeave = (): void => { compositor.stdout.write(LEAVE_ALT_SCREEN); };
+  // Invariant: `fired` is the single source of truth for whether LEAVE_ALT_SCREEN
+  // has been emitted.  All three paths (cleanup registry, process.exit guard, and
+  // the normal leaveAltScreen call) check and set this flag atomically.  The first
+  // path to run wins; the others are no-ops.  This makes writeLeave genuinely
+  // idempotent across all teardown routes, including the SIGTERM path described
+  // in interactive.cleanup.ts: runCleanupFunctions() fires the registry function,
+  // then process.exit(0) fires the still-registered 'exit' listener — without this
+  // flag the sequence writes LEAVE_ALT_SCREEN twice and corrupts the main screen.
+  let fired = false;
+  const writeLeave = (): void => {
+    if (fired) return;
+    fired = true;
+    compositor.stdout.write(LEAVE_ALT_SCREEN);
+  };
 
   // One-shot process.on('exit') fallback: fires synchronously on any
   // process.exit() call that bypasses the cleanup registry (e.g. SIGINT
@@ -123,14 +128,26 @@ function enterAltScreen(compositor: TerminalCompositor): () => void {
     writeLeave();
   });
 
-  // disarmCleanup: call on normal (Esc / stream-end) leave BEFORE calling
-  // leaveAltScreen(), so the two guards don't write a redundant leave sequence.
+  // disarmCleanup: removes both guards before the happy-path leaveAltScreen
+  // writes the sequence, so the guards cannot fire a redundant write afterward.
   const disarmCleanup = (): void => {
     unregisterCleanup();
     process.removeListener('exit', writeLeave);
   };
 
-  return disarmCleanup;
+  // leaveAltScreen: the normal exit path.  Uses the shared `fired` flag so a
+  // guard that races the normal path (e.g. a process.exit() arriving between
+  // disarmCleanup and leaveAltScreen) cannot produce a second write.
+  //
+  // Invariant (ordering): stdout.write(LEAVE_ALT_SCREEN) BEFORE resumeInput;
+  // otherwise the compositor repaints into the alt buffer on resumeInput.
+  const leaveAltScreen = (): void => {
+    writeLeave();
+    compositor.resumeInput();
+    compositor.repaint();
+  };
+
+  return { disarmCleanup, leaveAltScreen };
 }
 
 /**
@@ -276,7 +293,7 @@ export async function launchMidTurnTaskView(
   // and register two teardown guards so LEAVE_ALT_SCREEN is written even on
   // signal- or exit-driven teardown.  disarmCleanup() MUST be called on every
   // normal exit path before leaveAltScreen() to prevent a double-leave.
-  const disarmCleanup = enterAltScreen(compositor);
+  const { disarmCleanup, leaveAltScreen } = enterAltScreen(compositor);
   const status = handle.status ?? 'running';
   stdout.write(clamp(renderTaskViewHeader(id, status, agentType)) + '\n\n');
 
@@ -314,7 +331,7 @@ export async function launchMidTurnTaskView(
     // Disarm before leaveAltScreen so the cleanup guards do not emit a
     // redundant LEAVE_ALT_SCREEN after the normal leave writes it.
     disarmCleanup();
-    leaveAltScreen(compositor);
+    leaveAltScreen();
     return true;
   }
 
@@ -386,10 +403,18 @@ export async function launchMidTurnTaskView(
     });
 
     if (!signal.aborted) {
+      // Invariant: remove the onData listener BEFORE waitForEsc() so keystrokes
+      // typed during the 'Press Esc to return.' pause do not mutate inputBuf or
+      // trigger renderPrompt.  waitForEsc() installs its own independent listener
+      // that only reacts to Esc.  The finally below keeps a harmless idempotent
+      // backstop for any path that bypasses this branch.
+      process.stdin.removeListener('data', onData);
       stdout.write('\r\x1b[K\n' + clamp(palette.dim('  Subagent completed. Press Esc to return.')) + '\n');
       await waitForEsc();
     }
   } finally {
+    // Idempotent backstop: removeListener is a no-op when the listener is
+    // already gone (removed above on the completed path or never added).
     process.stdin.removeListener('data', onData);
     // Item 1: restore cooked mode before handing terminal back to compositor.
     try { process.stdin.setRawMode?.(false); } catch { /* non-TTY */ }
@@ -398,7 +423,7 @@ export async function launchMidTurnTaskView(
     // Disarm before leaveAltScreen so the cleanup guards do not emit a
     // redundant LEAVE_ALT_SCREEN after the normal leave writes it.
     disarmCleanup();
-    leaveAltScreen(compositor);
+    leaveAltScreen();
   }
 
   return true;

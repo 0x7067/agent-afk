@@ -1474,12 +1474,19 @@ describe('alternate screen buffer', () => {
       write: (s: string) => { written.push(s); return true; },
     };
 
-    // Capture the exit listener.
+    // Capture the exit listener; also track whether it was ever registered
+    // (wasRegistered) separately from whether it was disarmed (capturedExitListener
+    // becomes null on disarm).  This lets us assert registration unconditionally
+    // without conflating "was registered and then disarmed" with "was never registered".
+    // History: the original code used `if (capturedExitListener)` as the guard for
+    // firing the simulated process.exit(), which silently skipped the simulation when
+    // disarmCleanup had already nulled the reference — masking the F1 double-write bug.
     let capturedExitListener: ((...args: unknown[]) => void) | null = null;
+    let wasRegistered = false;
     const origProcessOn = process.on.bind(process);
     const origProcessRemoveListener = process.removeListener.bind(process);
     vi.spyOn(process, 'on').mockImplementation((event: string, listener: (...args: unknown[]) => void) => {
-      if (event === 'exit') capturedExitListener = listener;
+      if (event === 'exit') { capturedExitListener = listener; wasRegistered = true; }
       return origProcessOn(event as never, listener as never);
     });
     vi.spyOn(process, 'removeListener').mockImplementation((event: string, listener: (...args: unknown[]) => void) => {
@@ -1513,11 +1520,14 @@ describe('alternate screen buffer', () => {
     const leaveCountAfterNormalExit = written.filter((s) => s === LEAVE_ALT).length;
     expect(leaveCountAfterNormalExit).toBe(1);
 
-    // Now simulate redundant cleanup calls that would fire AFTER normal exit.
-    // The exit guard must have been disarmed (capturedExitListener === null).
-    // If it was NOT disarmed, calling it here would write a second LEAVE_ALT.
+    // Assert the spy captured the listener at some point during the run.
+    // Without this unconditional assertion the spy failure goes undetected.
+    // F3 fix: `wasRegistered` separates "registered then disarmed" from "never registered".
+    expect(wasRegistered).toBe(true);
+
+    // After normal exit, capturedExitListener is null IFF disarmCleanup ran.
+    // If still non-null (not disarmed), call it to expose the double-write.
     if (capturedExitListener) {
-      // Guard was not disarmed — call it to show the double-write.
       (capturedExitListener as () => void)();
     }
     await runCleanupFunctions();
@@ -1527,5 +1537,224 @@ describe('alternate screen buffer', () => {
     expect(leaveCountAfterRedundant).toBe(1);
 
     vi.restoreAllMocks();
+  });
+
+  // -------------------------------------------------------------------------
+  // F1 regression: writeLeave one-shot flag
+  //
+  // Simulates the SIGTERM path: runCleanupFunctions() fires the cleanup-
+  // registry writer, then process.exit(0) fires the still-registered
+  // process.on('exit') listener.  Without the `fired` flag both calls emit
+  // LEAVE_ALT; with the flag only the first one does.
+  //
+  // Revert check: remove the `fired` guard from writeLeave and this fails
+  // because `written.filter(s => s === LEAVE_ALT).length` equals 2.
+  // -------------------------------------------------------------------------
+  it('F1: LEAVE_ALT is written exactly once when both cleanup registry and exit guard fire', async () => {
+    const { launchMidTurnTaskView } = await import('./task-view-mid-turn.js');
+    const { runCleanupFunctions } = await import('../../../utils/cleanupRegistry.js');
+    const written: string[] = [];
+
+    const fakeStdout = {
+      columns: 80,
+      write: (s: string) => { written.push(s); return true; },
+    };
+
+    // Capture process.on('exit') listener so we can fire it manually.
+    let capturedExitListener: ((...args: unknown[]) => void) | null = null;
+    const origProcessOn = process.on.bind(process);
+    const origProcessRemoveListener = process.removeListener.bind(process);
+    vi.spyOn(process, 'on').mockImplementation((event: string, listener: (...args: unknown[]) => void) => {
+      if (event === 'exit') capturedExitListener = listener;
+      return origProcessOn(event as never, listener as never);
+    });
+    vi.spyOn(process, 'removeListener').mockImplementation((event: string, listener: (...args: unknown[]) => void) => {
+      if (event === 'exit' && listener === capturedExitListener) capturedExitListener = null;
+      return origProcessRemoveListener(event as never, listener as never);
+    });
+
+    // Hang the stream so the view stays open while we fire the guards.
+    let resolveStream!: () => void;
+    const streamReady = new Promise<void>((r) => { resolveStream = r; });
+
+    const fakeSession = {
+      getHistory: () => [],
+      getOutputStream: async function* () {
+        resolveStream();
+        await new Promise<void>((r) => setTimeout(r, 150));
+      },
+    };
+    const fakeHandle = { status: 'running' as const, session: fakeSession, sendMessage: vi.fn() };
+    const fakeManager = {
+      list: () => [{ id: 'sub-f1-double', status: 'running' as const }],
+      get: (_id: string) => fakeHandle as never,
+    };
+
+    let capturedDataListener: ((data: Buffer) => void) | null = null;
+    const origOn = process.stdin.on.bind(process.stdin);
+    const origRemoveListener = process.stdin.removeListener.bind(process.stdin);
+    vi.spyOn(process.stdin, 'on').mockImplementation((event: string, listener: (...args: unknown[]) => void) => {
+      if (event === 'data') capturedDataListener = listener as (d: Buffer) => void;
+      return origOn(event as never, listener as never);
+    });
+    vi.spyOn(process.stdin, 'removeListener').mockImplementation((event: string, listener: (...args: unknown[]) => void) => {
+      return origRemoveListener(event as never, listener as never);
+    });
+
+    const fakeCompositor = {
+      stdout: fakeStdout as never,
+      suspendInput: vi.fn(),
+      resumeInput: vi.fn(),
+      repaint: vi.fn(),
+    };
+
+    const viewDone = launchMidTurnTaskView({ manager: fakeManager as never, compositor: fakeCompositor as never });
+
+    // Wait until enterAltScreen has registered both guards.
+    await streamReady;
+
+    // Sanity: spy must have captured the exit listener.
+    expect(capturedExitListener).not.toBeNull();
+
+    // Reset the write log so we only measure what the two guard firings emit.
+    written.length = 0;
+
+    // Simulate SIGTERM path: runCleanupFunctions fires the registry function first.
+    await runCleanupFunctions();
+
+    // Then process.exit(0) fires the still-registered exit listener.
+    // (capturedExitListener is non-null because runCleanupFunctions does NOT
+    // call process.removeListener — only disarmCleanup does.)
+    if (capturedExitListener) {
+      (capturedExitListener as () => void)();
+    }
+
+    // Exactly one LEAVE_ALT must have been emitted across both guard firings.
+    const leaveCount = written.filter((s) => s === LEAVE_ALT).length;
+    expect(leaveCount).toBe(1);
+
+    // Let the view exit cleanly.
+    if (capturedDataListener) capturedDataListener(Buffer.from('\x1b'));
+    await viewDone;
+    vi.restoreAllMocks();
+  });
+
+  // -------------------------------------------------------------------------
+  // F2 regression: onData listener removed before waitForEsc
+  //
+  // During the 'Subagent completed. Press Esc to return.' pause, keystrokes
+  // must NOT mutate inputBuf or trigger renderPrompt — the onData listener
+  // must be removed before waitForEsc starts.
+  //
+  // Test strategy: spy on process.stdin.removeListener to record the order of
+  // removals relative to when waitForEsc's own listener is registered via
+  // process.stdin.on('data', onEsc).  With the F2 fix, onData is removed BEFORE
+  // onEsc is added; without the fix, onData is removed AFTER onEsc (in finally).
+  //
+  // Revert check: move removeListener back into the finally block (after
+  // waitForEsc) and this test fails because the onData removal happens after
+  // the waitForEsc listener is registered, not before.
+  // -------------------------------------------------------------------------
+  it('F2: onData listener is removed before waitForEsc starts (ordering invariant)', async () => {
+    const { launchMidTurnTaskView } = await import('./task-view-mid-turn.js');
+    const written: string[] = [];
+
+    const fakeStdout = {
+      columns: 80,
+      write: (s: string) => { written.push(s); return true; },
+    };
+
+    // Record the sequence of (event, action) pairs to verify ordering.
+    // Each entry is either 'on:data' (listener added) or 'remove:data' (removed).
+    const sequence: string[] = [];
+    let onDataListener: ((...args: unknown[]) => void) | null = null;
+
+    const origOn = process.stdin.on.bind(process.stdin);
+    const origRemoveListener = process.stdin.removeListener.bind(process.stdin);
+    vi.spyOn(process.stdin, 'on').mockImplementation((event: string, listener: (...args: unknown[]) => void) => {
+      if (event === 'data') sequence.push('on:data');
+      return origOn(event as never, listener as never);
+    });
+    vi.spyOn(process.stdin, 'removeListener').mockImplementation((event: string, listener: (...args: unknown[]) => void) => {
+      if (event === 'data') {
+        // Record the removal identity: is it the onData listener (captured
+        // as the first 'data' registration) or the onEsc listener (subsequent)?
+        if (onDataListener === null) {
+          // First removal of a 'data' listener — this is onData.
+          onDataListener = listener as never;
+          sequence.push('remove:onData');
+        } else {
+          sequence.push('remove:other');
+        }
+      }
+      return origRemoveListener(event as never, listener as never);
+    });
+
+    // Capture which listener was registered first (onData) so the spy can
+    // distinguish it from onEsc.  We re-wire the on spy to also capture it.
+    let firstDataListener: ((...args: unknown[]) => void) | null = null;
+    vi.restoreAllMocks();
+    vi.spyOn(process.stdin, 'on').mockImplementation((event: string, listener: (...args: unknown[]) => void) => {
+      if (event === 'data') {
+        if (!firstDataListener) firstDataListener = listener as never;
+        sequence.push('on:data');
+      }
+      return origOn(event as never, listener as never);
+    });
+    vi.spyOn(process.stdin, 'removeListener').mockImplementation((event: string, listener: (...args: unknown[]) => void) => {
+      if (event === 'data') {
+        if (listener === firstDataListener) sequence.push('remove:onData');
+        else sequence.push('remove:other');
+      }
+      return origRemoveListener(event as never, listener as never);
+    });
+
+    // Stream ends immediately (signal.aborted is false) so waitForEsc fires.
+    const fakeSession = {
+      getHistory: () => [],
+      getOutputStream: async function* () {
+        // no events — stream ends cleanly; signal.aborted is false so
+        // the view proceeds to the 'Press Esc to return.' pause.
+      },
+    };
+    const fakeHandle = { status: 'running' as const, session: fakeSession, sendMessage: vi.fn() };
+    const fakeManager = {
+      list: () => [{ id: 'sub-f2-order', status: 'running' as const }],
+      get: (_id: string) => fakeHandle as never,
+    };
+    const fakeCompositor = {
+      stdout: fakeStdout as never,
+      suspendInput: vi.fn(),
+      resumeInput: vi.fn(),
+      repaint: vi.fn(),
+    };
+
+    // Resolve waitForEsc quickly by emitting Esc shortly after the view starts.
+    // We do this by waiting a tick then emitting via process.stdin.emit to let
+    // the waitForEsc listener register first.
+    setTimeout(() => {
+      process.stdin.emit('data', Buffer.from('\x1b'));
+    }, 50);
+
+    await launchMidTurnTaskView({ manager: fakeManager as never, compositor: fakeCompositor as never });
+    vi.restoreAllMocks();
+
+    // With F2 fix: the sequence contains 'remove:onData' before the second 'on:data'
+    // (which is waitForEsc's onEsc listener).  Without the fix, 'remove:onData'
+    // comes after the second 'on:data'.
+    //
+    // Sequence with fix:    on:data, remove:onData, on:data, ...
+    // Sequence without fix: on:data, on:data, remove:onData, ...
+    const firstOnData = sequence.indexOf('on:data');
+    const removeOnData = sequence.indexOf('remove:onData');
+    const secondOnData = sequence.indexOf('on:data', firstOnData + 1);
+
+    // Sanity: onData was registered.
+    expect(firstOnData).toBeGreaterThanOrEqual(0);
+    // Sanity: onData was eventually removed.
+    expect(removeOnData).toBeGreaterThanOrEqual(0);
+    // Key assertion: the removal happened before waitForEsc's listener was added.
+    // waitForEsc adds its own 'data' listener (onEsc) — that is the second 'on:data'.
+    expect(removeOnData).toBeLessThan(secondOnData);
   });
 });
