@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.265.1] - 2026-09-28
+
+### Fixed
+- ground synthetic probes in real repo paths (#2407) (#2430) (fb3bea51)
+
 ## [5.265.0] - 2026-09-28
 
 ### Added
