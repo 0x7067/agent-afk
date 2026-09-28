@@ -35,3 +35,10 @@ export {
 
 export type { CombinerInput, CombinerResult } from './combine.js';
 export { combine, computeConfidence } from './combine.js';
+
+export type { UpsertVotesOptions } from './store.js';
+export { readRecord, writeRecord, listRecords, upsertVotes, appendArtifacts } from './store.js';
+
+export { createOutcomeSessionEndHook } from './session-end-hook.js';
+export { createChildAttributionHook } from './child-attribution.js';
+export { lfReask, normalizeTokens, jaccardSimilarity, REASK_THRESHOLD } from './lf-reask.js';

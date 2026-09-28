@@ -363,3 +363,35 @@ The router experiment (M3) stays blocked until the label has at least 200
    Revisit if M1 shows reverts arriving after day 7.
 4. `unknown` sessions are excluded from the router experiment (treated as
    missing data, never as zero).
+
+## M2 status (2026-09-28)
+
+### What is wired
+
+**M2 part 1 (commit 5d3391a1):**
+
+- `src/agent/outcomes/store.ts` — `readRecord`, `writeRecord`, `listRecords`, `upsertVotes`, `appendArtifacts`. Atomic tmp+rename writes. `appendArtifacts` handles the read-modify-write race between parent teardown and child attribution.
+- `src/cli/slash/commands/feedback.ts` + `src/telegram/handlers/feedback.ts` — `/good [note]` and `/bad [note]` REPL and Telegram commands. Write an `explicit_feedback` vote at confidence 1.0.
+- `src/agent/tools/handlers/get-facet.ts` — joins `verified_outcome` at read time.
+- `src/paths.ts` — `getOutcomesDir()`, `getOutcomeRecordPath()`.
+- Telegram bot refactor: `bot.command-descriptors.ts`, `bot.delegating-commands.ts`, `bot.feedback-commands.ts`.
+
+**M2 part 2 (this commit):**
+
+1. **Session-end immediate pass** (`src/agent/outcomes/session-end-hook.ts`, wired via `registerFacetAndOutcomeHooks` in `src/agent/default-hook-registry.ts:110`): at root-session teardown, loads session JSON turns, recovers artifacts, runs all immediate LFs (`closure`, `budget_cap`, `error_tail`, `verification`, `in_session_correction`, `self_report`). Closure info is read from `context.tracePath` synchronously. Stores `first_prompt` / `first_cwd` for reask. Upserts as `provisional` + 7-day settles_after when artifacts present; `settled` immediately otherwise. Fire-and-forget; never blocks teardown; skips forked children via `isSubagentContext`.
+
+2. **Child artifact attribution** (`src/agent/outcomes/child-attribution.ts`, `PostToolUse` hook in `registerFacetAndOutcomeHooks`): forked children inherit the shared hook registry and set `parentSessionId` on every `PostToolUse` context. This hook catches bash tool results from children, extracts commit SHAs and PR URLs using `recoverCommitSHAs` / `isPRCreateEvent`, and calls `appendArtifacts(parentSessionId, ...)`. Fire-and-forget; merges deduplicate; atomic rename avoids torn writes.
+
+3. **Closure LF** (`src/agent/outcomes/session-end-hook.ts:closureFromTrace`): reads `context.tracePath` (the sealed trace.jsonl threaded by the hook dispatch) and scans for `{kind:'closure'}` events to extract `reason`. Feeds `lfClosure` and `lfBudgetCap` inside `runImmediateLFs`.
+
+4. **`cross_session_reask` LF** (`src/agent/outcomes/lf-reask.ts`): when a new root session starts in the same `cwd` and its `first_prompt` has normalized-token Jaccard ≥ 0.6 with a prior session in the same `cwd` within 30 minutes, upserts a weak -1 onto the prior session's record. Jaccard threshold 0.6 documented in the module. Bounded scan of 20 most-recent records. Fire-and-forget; called from session-end hook after upsert.
+
+5. **Schema extension** (`src/agent/outcomes/schema.ts`): additive optional fields `first_prompt?: string` and `first_cwd?: string`. Existing records without them still parse (Zod `optional()`).
+
+### Follow-ups
+
+- **Telegram thumbs reactions**: `message_reaction` updates are not wired; `/good /bad` is the only explicit-feedback channel.
+- **Delayed LF job**: `src/agent/outcomes/lf-delayed.ts` is implemented but no daemon shell task calls it yet. Wire via `create_schedule` when the gold set (M1) is ready.
+- **Backfill**: the `scripts/outcomes-backfill.ts` M0 script covers existing history but not events.jsonl (sessions > 30 days). A follow-up reader could extend coverage.
+- **`fix_of_fix` LF**: scaffolded but skip-commented in `lf-delayed.ts`; requires the `FIX_OF_FIX_WINDOW_DAYS` probe to run during the nightly delayed pass.
+- **Deep nesting attribution**: child attribution routes to `parentSessionId`, which is the immediate parent. For grandchildren the intermediate child's `PostToolUse` events also fire on the grandparent's registry (all levels share the same hook registry), but the grandchild's `parentSessionId` points at the intermediate child, not the root. In practice the dominant pattern is single-level nesting (worktree-isolated children created by the root). Multi-level nesting attribution is a future follow-up.
