@@ -11,6 +11,7 @@
 
 import { palette } from './palette.js';
 import { stripAnsi } from './display.js';
+import { getGlyphs, type Glyphs } from './commands/interactive/tool-lane-render.js';
 import { renderStatusLine, type ImageAttachment } from './input/attachments.js';
 import type { SpinnerController } from './input/spinner.js';
 import type { CompositorScrollRegionGuard } from './terminal-compositor.types.js';
@@ -97,12 +98,33 @@ export function truncateOverlayPreservingHead(lines: string[], budget: number): 
   return [...head, indicator, ...tail];
 }
 
-/** Glyphs whose rail continues UP out of their cell (so the row above must draw `│`). */
+/** Glyphs whose rail continues UP out of their cell (so the row above must draw a rail). */
 const RAIL_UP = new Set(['│', '├', '╰', '└', '┤', '┼', '┴']);
 /** Glyphs whose rail continues DOWN out of their cell. */
 const RAIL_DOWN = new Set(['│', '├', '╭', '┌', '┤', '┼', '┬']);
 /** Tree node glyphs that sit ON a parent rail (e.g. nested `◉ → Agent(...)`). */
 const NODE = new Set(['◉', '○', '●', '◆', '◇']);
+
+interface GutterGlyphs { rail: string; up: Set<string>; down: Set<string>; horiz: Set<string>; node: Set<string> }
+
+/**
+ * Contract: the Unicode box-drawing sets are always recognised (they never
+ * lead ordinary content). ASCII spine chars (`|`, `+`, `\\`, `-`, `o`) DO lead
+ * ordinary content (markdown bullets, tables, "+2 more"), so they are added only
+ * when the tool lane is actually drawing with {@link getGlyphs}' ASCII set, and
+ * the drawn rail follows the active set.
+ */
+function gutterGlyphs(g: Readonly<Glyphs>): GutterGlyphs {
+  const rail = g.spine[0]!;
+  const up = new Set(RAIL_UP), down = new Set(RAIL_DOWN), horiz = new Set(['─']), node = new Set(NODE);
+  if (rail !== '│') {
+    up.add(rail).add(g.midConnector[0]!).add(g.lastConnector[0]!);
+    down.add(rail).add(g.midConnector[0]!);
+    horiz.add(g.midConnector[1]!);
+    node.add(g.turnRoot[0]!);
+  }
+  return { rail, up, down, horiz, node };
+}
 
 /**
  * Contract: derive the leading gutter for the synthetic "N earlier lines hidden"
@@ -111,23 +133,28 @@ const NODE = new Set(['◉', '○', '●', '◆', '◇']);
  *
  * Scans the leading run of `below` (the first non-blank row after the
  * indicator) cell by cell: spaces are copied, any glyph whose rail connects
- * upward becomes `│`, horizontal `─` becomes a space. The scan stops at the
- * first content glyph; if that glyph is a tree node sitting on a rail that the
- * row `above` carries down, a `│` is drawn in its column. Returns a string
+ * upward becomes the active rail, a horizontal run directly after a connector
+ * (`├─`, `+-`) becomes spaces. The scan stops at the first content glyph; if that glyph is a tree node sitting on a rail that the
+ * row `above` carries down, a rail is drawn in its column. Returns a string
  * ending in whitespace (or empty) so the indicator text never touches a rail.
  * Box-drawing glyphs are single-cell, so code-point index == column.
  */
-export function hiddenIndicatorGutter(above: string | undefined, below: string | undefined): string {
+export function hiddenIndicatorGutter(
+  above: string | undefined,
+  below: string | undefined,
+  glyphs: Readonly<Glyphs> = getGlyphs(),
+): string {
+  const { rail, up: railUp, down: railDown, horiz, node } = gutterGlyphs(glyphs);
   const a = [...stripAnsi(above ?? '')];
   const b = [...stripAnsi(below ?? '')];
   let out = '';
   for (let i = 0; i < b.length; i++) {
     const ch = b[i]!;
     if (ch === ' ') { out += ' '; continue; }
-    if (RAIL_UP.has(ch)) { out += '│'; continue; }
-    if (ch === '─') { out += ' '; continue; }
+    if (railUp.has(ch)) { out += rail; continue; }
+    if (horiz.has(ch) && i > 0 && (railUp.has(b[i - 1]!) || horiz.has(b[i - 1]!))) { out += ' '; continue; }
     const up = a[i];
-    if (NODE.has(ch) && up !== undefined && RAIL_DOWN.has(up)) out += '│';
+    if (node.has(ch) && up !== undefined && railDown.has(up)) out += rail;
     break;
   }
   return out.length === 0 || out.endsWith(' ') ? out : out + ' ';

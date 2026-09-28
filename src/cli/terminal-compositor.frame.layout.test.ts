@@ -31,6 +31,7 @@ import {
 } from './terminal-compositor.frame.layout.js';
 import { stripAnsi } from './display.js';
 import { palette } from './palette.js';
+import { ASCII_GLYPHS, UNICODE_GLYPHS } from './commands/interactive/tool-lane-render.js';
 
 // ---------------------------------------------------------------------------
 // Sentinel chalk helper — lets us assert WHICH palette role was applied
@@ -298,5 +299,22 @@ describe('hidden-lines indicator gutter', () => {
     const lines = ['◉ root', ...Array.from({ length: 10 }, () => 'x'), '', `${M}│ tail`, `${M}│ tail2`];
     const result = truncateOverlayPreservingHead(lines, 5).map((l) => stripAnsi(l));
     expect(result[1]).toBe(`${M}│ 10 earlier lines hidden`);
+  });
+});
+
+describe('hidden-lines indicator gutter (ASCII glyph mode)', () => {
+  it('continues ASCII rails when the ASCII glyph set is active', () => {
+    expect(hiddenIndicatorGutter('', '|  +- o x', ASCII_GLYPHS)).toBe('|  |  ');
+    expect(hiddenIndicatorGutter('  |  \\- bash', '  o Agent', ASCII_GLYPHS)).toBe('  | ');
+  });
+
+  it('does not treat ASCII lookalikes as rails under the Unicode set', () => {
+    expect(hiddenIndicatorGutter('', '  | a | b |', UNICODE_GLYPHS)).toBe('  ');
+    expect(hiddenIndicatorGutter('', '  +2 more', UNICODE_GLYPHS)).toBe('  ');
+  });
+
+  it('keeps a content bullet that is not preceded by a connector', () => {
+    expect(hiddenIndicatorGutter('', '│  │      - Whether', UNICODE_GLYPHS)).toBe('│  │      ');
+    expect(hiddenIndicatorGutter('', '|  - item', ASCII_GLYPHS)).toBe('|  ');
   });
 });
