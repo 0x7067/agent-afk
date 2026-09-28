@@ -37,6 +37,7 @@ import {
 } from './episodes.js';
 import { estimateVerifyCost } from './cost.js';
 import { buildHeadline, standardLimits } from './report.js';
+import { isUnderpowered, mdeGateRefusedMessage, mdePreflightLine } from './mde.js';
 import { persistRun } from './run.persist.js';
 import { verifyRun } from './run.verify.js';
 import type {
@@ -67,6 +68,20 @@ export class WhatifBudgetError extends Error {
     this.name = 'WhatifBudgetError';
     this.estimateUsd = estimateUsd;
     this.maxUsd = maxUsd;
+  }
+}
+
+/**
+ * Thrown before running any episode when the run is underpowered (MDE exceeds
+ * the gate threshold) and `--force` was not passed.
+ */
+export class WhatifMdeError extends Error {
+  readonly episodesPerArm: number;
+
+  constructor(episodesPerArm: number) {
+    super(mdeGateRefusedMessage(episodesPerArm));
+    this.name = 'WhatifMdeError';
+    this.episodesPerArm = episodesPerArm;
   }
 }
 
@@ -181,6 +196,54 @@ function dateStamp(now: Date): string {
 }
 
 // ---------------------------------------------------------------------------
+// Preflight helper (MDE gate + budget gate)
+// ---------------------------------------------------------------------------
+
+interface PreflightInput {
+  episodesPerArm: number;
+  force: boolean;
+  samples: number;
+  agentModel: string;
+  analystModel: string;
+  systemTokens: { baseline: number; candidate: number };
+  judgeExternal: boolean;
+  analystCostUsd: number;
+  maxUsd: number;
+  onProgress: ((p: { stage: 'preflight'; message: string }) => void) | undefined;
+}
+
+/**
+ * Emit MDE preflight info, check the MDE gate, and check the budget gate.
+ * Throws `WhatifMdeError` or `WhatifBudgetError` on gate violations.
+ */
+function runPreflightChecks(input: PreflightInput): void {
+  const {
+    episodesPerArm, force, samples, agentModel, analystModel,
+    systemTokens, judgeExternal, analystCostUsd, maxUsd, onProgress,
+  } = input;
+
+  onProgress?.({ stage: 'preflight', message: mdePreflightLine(episodesPerArm) });
+
+  if (isUnderpowered(episodesPerArm) && !force) {
+    throw new WhatifMdeError(episodesPerArm);
+  }
+
+  const estimate = estimateVerifyCost({
+    episodes: episodesPerArm,
+    samples,
+    agentModel,
+    analystModel,
+    systemTokens,
+    judgeExternal,
+  });
+
+  const totalEstimate = estimate.usd + analystCostUsd;
+  if (totalEstimate > maxUsd) {
+    throw new WhatifBudgetError(totalEstimate, maxUsd);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // runWhatif
 // ---------------------------------------------------------------------------
 
@@ -287,24 +350,28 @@ export async function runWhatif(
       return undefined;
     });
 
-    // Preflight cost estimate
-    const estimate = estimateVerifyCost({
-      episodes: episodes.length,
-      samples: options.samples,
-      agentModel: options.agentModel,
-      analystModel: options.analystModel,
-      systemTokens: {
-        baseline: structural.tokens.baseline,
-        candidate: structural.tokens.candidate,
-      },
-      judgeExternal: resolvedJudge.external,
-    });
-
-    const totalEstimate = estimate.usd + analystCostUsd;
-    if (totalEstimate > options.maxUsd) {
+    // Preflight: MDE info + MDE gate + budget gate
+    const episodesPerArm = episodes.length;
+    try {
+      runPreflightChecks({
+        episodesPerArm,
+        force: options.force ?? false,
+        samples: options.samples,
+        agentModel: options.agentModel,
+        analystModel: options.analystModel,
+        systemTokens: {
+          baseline: structural.tokens.baseline,
+          candidate: structural.tokens.candidate,
+        },
+        judgeExternal: resolvedJudge.external,
+        analystCostUsd,
+        maxUsd: options.maxUsd,
+        onProgress: deps.onProgress as ((p: { stage: 'preflight'; message: string }) => void) | undefined,
+      });
+    } catch (preflightErr) {
       await resolvedJudge.close?.();
       await crossCheckJudge?.close?.();
-      throw new WhatifBudgetError(totalEstimate, options.maxUsd);
+      throw preflightErr;
     }
 
     deps.onProgress?.({ stage: 'run', message: 'Running episodes' });
@@ -350,7 +417,11 @@ export async function runWhatif(
     const totalCostUsd = analystCostUsd + episodesCostUsd;
 
     const limits = [
-      ...standardLimits({ verified: true, judgeExternal: resolvedJudge.external }),
+      ...standardLimits({
+        verified: true,
+        judgeExternal: resolvedJudge.external,
+        verifiedPredictions: verifyResult!.predictions,
+      }),
       ...verifyShortfallLimits(verifyResult!),
       ...hookIsolationLimits({ keepContextHooks: autoKeepContextHooks, structural }),
     ];

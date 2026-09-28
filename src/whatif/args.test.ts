@@ -7,6 +7,7 @@ import { writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { parseWhatifArgs, tokenizeSlashArgs, loadSpecFile } from './args.js';
+import type { ParsedWhatifArgs } from './args.js';
 
 // ---------------------------------------------------------------------------
 // tokenizeSlashArgs
@@ -484,5 +485,30 @@ describe('loadSpecFile', () => {
 
   it('throws when the file does not exist', () => {
     expect(() => loadSpecFile(join(dir, 'no-such-file.json'))).toThrow(/cannot read/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// --force flag
+// ---------------------------------------------------------------------------
+
+describe('parseWhatifArgs — --force flag', () => {
+  it('defaults force to false', () => {
+    const r = parseWhatifArgs(['--append', 'text']) as ParsedWhatifArgs;
+    expect(r.force).toBe(false);
+  });
+
+  it('sets force to true when --force is passed', () => {
+    const r = parseWhatifArgs(['--append', 'text', '--force']) as ParsedWhatifArgs;
+    expect(r.force).toBe(true);
+  });
+
+  it('--force can be combined with --verify and --yes', () => {
+    const r = parseWhatifArgs([
+      '--append', 'text', '--verify', '--yes', '--force',
+    ]) as ParsedWhatifArgs;
+    expect(r.force).toBe(true);
+    expect(r.yes).toBe(true);
+    expect(r.options.verify).toBe(true);
   });
 });

@@ -62,6 +62,7 @@ RUN OPTIONS
   --timeout <sec>              Episode timeout in seconds (default: 180)
   --keep-sandboxes             Keep sandbox directories after run
   --yes                        Skip confirmation of compiled spec
+  --force                      Bypass the MDE underpowered gate (--verify only)
   --json                       Print results as JSON to stdout
 
 ENV VARS (episode behaviour)
