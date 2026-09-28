@@ -12,6 +12,7 @@
 
 import type { ProviderQuery, ProviderQueryArgs } from '../../provider.js';
 import { AnthropicDirectQuery } from './query-runtime.js';
+import { anthropicJournalAdapter } from './journal-adapter.js';
 import {
   resolveAnthropicTemperature,
   resolveAutoCompactThreshold,
@@ -58,7 +59,10 @@ export function buildProviderQuery(
   // resume behavior — so supplying a minted id here is inert apart from
   // making the id known earlier.
   const resumedSessionId = resolvedSessionId;
-  const initialMessages = resumeHistoryToMessages(config.resumeHistory);
+  // Full-fidelity journal resume wins over the lossy sidecar transcript.
+  const initialMessages = config.resumeMessages !== undefined && config.resumeMessages.length > 0
+    ? anthropicJournalAdapter.fromJournalMessages(config.resumeMessages)
+    : resumeHistoryToMessages(config.resumeHistory);
   // Seed the context-overflow guard from the last stored turn's token count
   // (#1294). The last turn of resumeHistory carries `inputTokens` when the
   // session was saved with a recent enough sidecar; absent on legacy sidecars.
@@ -127,6 +131,7 @@ export function buildProviderQuery(
     toolDispatcher: queryDispatcher,
     ...(resumedSessionId !== undefined ? { sessionId: resumedSessionId } : {}),
     ...(initialMessages !== undefined ? { initialMessages } : {}),
+    ...(config.messageJournal ? { messageJournal: config.messageJournal } : {}),
     ...(initialUsageInputTokens !== undefined ? { initialUsageInputTokens } : {}),
     model,
     // Preserve the requested alias (e.g. opus_1m) so context-window lookups

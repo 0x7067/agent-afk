@@ -28,6 +28,7 @@ export interface TurnRequestInput {
   throttleQueue?: RunTurnInput['throttleQueue'];
   onUsageProgress?: RunTurnInput['onUsageProgress'];
   beforeNextRound?: RunTurnInput['beforeNextRound'];
+  journalSync?: RunTurnInput['journalSync'];
 }
 
 /** Snapshot eligibility and construct the immutable input reused by all rounds/retries. */
@@ -75,6 +76,7 @@ export function prepareTurnRequest(input: TurnRequestInput): {
       ...(input.throttleQueue ? { throttleQueue: input.throttleQueue } : {}),
       ...(input.onUsageProgress ? { onUsageProgress: input.onUsageProgress } : {}),
       ...(input.beforeNextRound ? { beforeNextRound: input.beforeNextRound } : {}),
+      ...(input.journalSync ? { journalSync: input.journalSync } : {}),
     },
   };
 }

@@ -211,6 +211,12 @@ export async function* openRound({
     });
   }
 
+  // Journal commit point: history is final for this request (orphan repair and
+  // image degradation applied, cache marker not yet stamped — the clone below
+  // never reaches stored history). Captures the new user turn and the previous
+  // round's tool_result turn with its FULL content.
+  input.journalSync?.sync(input.messages);
+
   // Stamp a prompt-cache breakpoint on the last content block of the last
   // message before sending — non-mutating clone-and-stamp so the marker never
   // accumulates back into stored history. Cache lookup walks back over

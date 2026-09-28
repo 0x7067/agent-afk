@@ -111,6 +111,7 @@ import { AFK_MODE_ADDENDUM_TEXT } from '../shared/afk-mode-addendum.js';
 import { EXIT_PLAN_MODE_TOOL_NAME } from '../../tools/handlers/exit-plan-mode.js';
 import { summarizeToolInput } from '../shared/tool-input-summary.js';
 import { dispatchAndAppendToolCalls } from './query/dispatch-append.js';
+import { OpenAIJournalWiring } from './query/journal-wiring.js';
 import {
   TOOL_USE_LOOP_CAPPED,
   WIND_DOWN_NOTE,
@@ -233,8 +234,10 @@ export class OpenAICompatibleQuery implements ProviderQuery {
   private readonly traceWriter: TraceSink | undefined;
   private readonly fastTier: FastTierSession;
 
-  /** Running conversation state for multi-turn sessions. */
-  private priorTurns: OpenAIMessage[] = [];
+  /** Running conversation state for multi-turn sessions (journal-seeded on resume). */
+  private priorTurns: OpenAIMessage[];
+  /** Message-journal commit points + resume seeding (query/journal-wiring.ts). */
+  private readonly journal: OpenAIJournalWiring;
 
   private currentModel: string;
   private currentPermissionMode: string;
@@ -339,15 +342,9 @@ export class OpenAICompatibleQuery implements ProviderQuery {
     // session was saved with a recent enough sidecar; absent on legacy sidecars.
     // Conservative: over-estimate (triggers compaction) > under-estimate
     // (lets a full context reach the wire, rejected with HTTP 400).
-    const lastResumedTurn = opts.config.resumeHistory?.at(-1);
-    if (lastResumedTurn?.inputTokens !== undefined && lastResumedTurn.inputTokens > 0) {
-      this.lastUsage = {
-        inputTokens: lastResumedTurn.inputTokens,
-        stopReason: null,
-        resultSubtype: 'success',
-        isError: false,
-      };
-    }
+    this.journal = new OpenAIJournalWiring(opts.config);
+    this.lastUsage = this.journal.resumedUsage();
+    this.priorTurns = this.journal.initialTurns();
 
     if (opts.auth.apiKey === null) {
       this.client = null as unknown as OpenAI;
@@ -846,6 +843,7 @@ export class OpenAICompatibleQuery implements ProviderQuery {
     turnStartTime: number,
   ): Generator<ProviderEvent> {
     this.lastUsage = accumulatedUsage;
+    this.journal.sync(this.priorTurns); // commit point: turn end (final assistant message)
     yield {
       type: 'turn.completed',
       usage: { ...accumulatedUsage, durationMs: Date.now() - turnStartTime },
@@ -872,11 +870,10 @@ export class OpenAICompatibleQuery implements ProviderQuery {
      */
     windDown: typeof TOOL_USE_LOOP_CAPPED | typeof SOFT_DEADLINE_WIND_DOWN | null = null,
   ): AsyncGenerator<ProviderEvent, IterationResult | null> {
+    this.journal.sync(this.priorTurns); // commit point: what is about to be sent
     const messages = buildMessages({
       config: this.opts.config,
-      ...(this.opts.config.resumeHistory !== undefined
-        ? { resumeHistory: this.opts.config.resumeHistory }
-        : {}),
+      ...this.journal.legacyResumeHistory(),
       priorTurns: this.priorTurns,
       vision,
     });
@@ -998,7 +995,7 @@ export class OpenAICompatibleQuery implements ProviderQuery {
     signal: AbortSignal,
     vision: boolean,
   ): AsyncGenerator<ProviderEvent, ToolResult | undefined> {
-    return yield* dispatchAndAppendToolCalls({
+    const denialTrip = yield* dispatchAndAppendToolCalls({
       state,
       signal,
       vision,
@@ -1011,6 +1008,8 @@ export class OpenAICompatibleQuery implements ProviderQuery {
       // config, the same source this query reads autoCompact/permissionMode.
       subagentId: this.opts.config.subagentId,
     });
+    this.journal.sync(this.priorTurns); // commit point: tool round (full results) on disk
+    return denialTrip;
   }
 
   // ---- ProviderQuery surface ------------------------------------------------
@@ -1109,7 +1108,7 @@ export class OpenAICompatibleQuery implements ProviderQuery {
       contextWindowTokensUsed(this.lastUsage ?? {}),
       autoCompactLimitFor(this.currentModel),
     );
-    return compactOpenAIHistory({
+    const compactResult = await compactOpenAIHistory({
       priorTurns: this.priorTurns,
       usedFraction,
       shrinkAtFraction: readShrinkFraction(),
@@ -1139,6 +1138,8 @@ export class OpenAICompatibleQuery implements ProviderQuery {
       trigger,
       traceWriter: this.traceWriter,
     });
+    if (compactResult.compacted) this.journal.sync(this.priorTurns, true);
+    return compactResult;
   }
 
   /**

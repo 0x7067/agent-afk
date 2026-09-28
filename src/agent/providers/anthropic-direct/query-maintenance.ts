@@ -16,7 +16,14 @@ export function compactQueryHistory(options: {
   initSessionId: string;
   traceWriter?: import('../../trace/index.js').TraceSink;
 }): Promise<ProviderCompactResult> {
-  return compactHistory(options);
+  return compactHistory(options).then((result) => {
+    // Journal the compaction splice as truncate + re-append of the summary.
+    if (result.compacted) {
+      options.state.journalSync.sync(options.state.messages, { reason: 'compact' });
+      options.state.messageJournal?.mark('compact');
+    }
+    return result;
+  });
 }
 
 export function queryRewindTargets(state: SessionState): RewindTarget[] {
