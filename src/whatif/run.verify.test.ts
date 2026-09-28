@@ -264,4 +264,126 @@ describe('scorePrediction', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Cross-check agreement downgrade (#2413)
+// ---------------------------------------------------------------------------
+
+describe('verifyRun: cross-check agreement downgrade (#2413)', () => {
+  /**
+   * A cross-check judge that always DISAGREES with the primary judge:
+   * primary returns 1 for BEHAVIOR, cross-check returns 0, and vice versa.
+   * With enough sampled traces this produces agreement = 0.0.
+   */
+  function disagreeingCrossCheckJudge(): Judge {
+    return {
+      name: 'claude',
+      external: false,
+      grade: vi.fn(async (inp: JudgeInput): Promise<JudgeResult> => {
+        const out: JudgeResult = {};
+        for (const q of inp.questions) {
+          // opposite of the keyword judge: no BEHAVIOR → 1, BEHAVIOR → 0
+          out[q.id] = inp.output.includes('BEHAVIOR') ? 0 : 1;
+        }
+        return out;
+      }),
+    };
+  }
+
+  /**
+   * A cross-check judge that always AGREES with the primary judge.
+   */
+  function agreeingCrossCheckJudge(): Judge {
+    return {
+      name: 'claude',
+      external: false,
+      grade: vi.fn(async (inp: JudgeInput): Promise<JudgeResult> => {
+        const out: JudgeResult = {};
+        for (const q of inp.questions) {
+          out[q.id] = inp.output.includes('BEHAVIOR') ? 1 : 0;
+        }
+        return out;
+      }),
+    };
+  }
+
+  /**
+   * Run with enough episodes so that the ~10% cross-check sample picks up
+   * CROSS_CHECK_MIN_ITEMS (5) items for the prediction's question.
+   * We use 60 total episodes (2 targeted + 58 real) so ~6 get cross-checked
+   * across all questions.
+   */
+  function manyEpisodes(): Episode[] {
+    const eps: Episode[] = [
+      { id: 's1', source: 'synthetic', prompt: 'probe one', targets: 'p1' },
+      { id: 's2', source: 'synthetic', prompt: 'probe two', targets: 'p1' },
+    ];
+    for (let i = 1; i <= 58; i++) eps.push({ id: `r${i}`, source: 'real', prompt: `real turn ${i}` });
+    return eps;
+  }
+
+  it('disagreeing cross-check judge with enough items: confirmed → unclear (judges disagree)', async () => {
+    const episodes = manyEpisodes();
+    const crossCheckJudge = disagreeingCrossCheckJudge();
+    const { verifyResult } = await verifyRun(
+      input(episodes, [pred('p1')], { crossCheckJudge }),
+    );
+    const vp = verifyResult.predictions[0]!;
+    // Without cross-check this would be confirmed (delta = 1.0).
+    // With a disagreeing cross-check and enough items it should be unclear.
+    expect(vp.verdict).toBe('unclear');
+    expect(vp.verdictReason).toBe('judges disagree');
+    expect(vp.crossCheckAgreement).toBeDefined();
+    expect(vp.crossCheckAgreement!).toBeLessThan(0.75);
+  });
+
+  it('agreeing cross-check judge: verdict stays confirmed', async () => {
+    const episodes = manyEpisodes();
+    const crossCheckJudge = agreeingCrossCheckJudge();
+    const { verifyResult } = await verifyRun(
+      input(episodes, [pred('p1')], { crossCheckJudge }),
+    );
+    const vp = verifyResult.predictions[0]!;
+    expect(vp.verdict).toBe('confirmed');
+    expect(vp.verdictReason).toBeUndefined();
+    expect(vp.crossCheckAgreement).toBeGreaterThanOrEqual(0.75);
+  });
+
+  it('too few cross-check items: does not downgrade, sets crossCheckTooFew', async () => {
+    // With only 2 episodes total and ~10% sample ≈ 1 trace cross-checked,
+    // fewer than CROSS_CHECK_MIN_ITEMS items per prediction → flag only.
+    const episodes: Episode[] = [
+      { id: 's1', source: 'synthetic', prompt: 'probe one', targets: 'p1' },
+      { id: 's2', source: 'synthetic', prompt: 'probe two', targets: 'p1' },
+    ];
+    const crossCheckJudge = disagreeingCrossCheckJudge();
+    const { verifyResult } = await verifyRun(
+      input(episodes, [pred('p1')], { crossCheckJudge }),
+    );
+    const vp = verifyResult.predictions[0]!;
+    // Should NOT be downgraded (too few cross-check items).
+    expect(vp.verdict).toBe('confirmed');
+    expect(vp.crossCheckTooFew).toBe(true);
+    expect(vp.crossCheckAgreement).toBeUndefined();
+  });
+
+  it('per-prediction crossCheckAgreement appears in results.json when present', async () => {
+    const episodes = manyEpisodes();
+    const crossCheckJudge = agreeingCrossCheckJudge();
+    const { verifyResult } = await verifyRun(
+      input(episodes, [pred('p1')], { crossCheckJudge }),
+    );
+    const json = JSON.parse(JSON.stringify(verifyResult)) as typeof verifyResult;
+    const vp = json.predictions[0]!;
+    expect(typeof vp.crossCheckAgreement).toBe('number');
+  });
+
+  it('no cross-check judge: crossCheckAgreement and crossCheckTooFew absent', async () => {
+    const episodes = acceptanceEpisodes();
+    const { verifyResult } = await verifyRun(input(episodes, [pred('p1')]));
+    const vp = verifyResult.predictions[0]!;
+    expect(vp.crossCheckAgreement).toBeUndefined();
+    expect(vp.crossCheckTooFew).toBeUndefined();
+  });
+});
+
 // Observability (#2409) is covered in run.verify.observability.test.ts.

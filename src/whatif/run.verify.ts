@@ -11,7 +11,7 @@
  */
 
 import { extractFeatures, featureIndicators, FEATURE_LABELS } from './observe.js';
-import { compareRates, predictionAccuracy, agreementRate } from './stats.js';
+import { compareRates, predictionAccuracy, agreementRate, applyAgreementDowngrade } from './stats.js';
 import { scorePrediction, scoresForQuestion, traceKey } from './run.verify.scoring.js';
 import { discoverDifferences, type OutputPair } from './discover.js';
 import { appendCalibration, type CalibrationRecord } from './ledger.js';
@@ -145,6 +145,8 @@ interface GradeResult {
   judgeResults: Map<string, Record<string, number>>;
   crossCheckMainScores: number[];
   crossCheckCrossScores: number[];
+  /** Per-question cross-check score pairs, keyed by question id. */
+  crossCheckPerQuestion: Map<string, { main: number[]; cross: number[] }>;
   judgeFailures: number;
 }
 
@@ -166,6 +168,7 @@ async function gradeOutputs(
   const judgeResults = new Map<string, Record<string, number>>();
   const crossCheckMainScores: number[] = [];
   const crossCheckCrossScores: number[] = [];
+  const crossCheckPerQuestion = new Map<string, { main: number[]; cross: number[] }>();
   let judgeFailures = 0;
 
   // Hoist cross-check set out of the per-trace closure; crossCheckIndices is
@@ -194,6 +197,11 @@ async function gradeOutputs(
             if (main === undefined || cross === undefined) continue;
             crossCheckMainScores.push(main);
             crossCheckCrossScores.push(cross);
+            // Track per-question pairs for per-prediction agreement (#2413).
+            let entry = crossCheckPerQuestion.get(q.id);
+            if (!entry) { entry = { main: [], cross: [] }; crossCheckPerQuestion.set(q.id, entry); }
+            entry.main.push(main);
+            entry.cross.push(cross);
           }
         } catch { /* non-fatal */ }
       }
@@ -220,7 +228,7 @@ async function gradeOutputs(
   }
   await Promise.allSettled(running);
 
-  return { judgeResults, crossCheckMainScores, crossCheckCrossScores, judgeFailures };
+  return { judgeResults, crossCheckMainScores, crossCheckCrossScores, crossCheckPerQuestion, judgeFailures };
 }
 
 // ---------------------------------------------------------------------------
@@ -297,7 +305,7 @@ export async function verifyRun(input: VerifyRunInput): Promise<VerifyRunOutput>
 
   const predQuestions = predictions.map((p) => ({ id: p.id, question: p.testQuestion }));
 
-  const { judgeResults, crossCheckMainScores, crossCheckCrossScores, judgeFailures } = await gradeOutputs(
+  const { judgeResults, crossCheckMainScores, crossCheckCrossScores, crossCheckPerQuestion, judgeFailures } = await gradeOutputs(
     goodTraces, episodes, predQuestions, judge, crossCheckJudge, concurrency, signal, onProgress,
   );
 
@@ -343,7 +351,15 @@ export async function verifyRun(input: VerifyRunInput): Promise<VerifyRunOutput>
 
   // Each prediction is scored on its own probes; other episodes are reported
   // as a background rate, never pooled (#2403).
-  const verifiedPredictions = predictions.map((p) => scorePrediction(p, episodes, goodTraces, judgeResults));
+  // After scoring, apply the per-prediction cross-check agreement downgrade
+  // (#2413): a decisive verdict (confirmed/refuted) is downgraded to unclear
+  // when the primary and cross-check judge disagree heavily on this question.
+  const verifiedPredictions = predictions.map((p) => {
+    const vp = scorePrediction(p, episodes, goodTraces, judgeResults);
+    const ccEntry = crossCheckPerQuestion.get(p.id);
+    if (!ccEntry) return vp;
+    return applyAgreementDowngrade(vp, ccEntry.main, ccEntry.cross);
+  });
 
   const verifiedDiscovered = discovered
     .map((d) => {
