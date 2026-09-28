@@ -181,12 +181,11 @@ function preCommitBannerSync(self: CommittedBandHost, rows: number): void {
 export function commitAbove(self: CommittedBandHost, text: string): void {
   self.debugLog('commitAbove:enter', { textLen: text.length, anchorRow: self.anchorRow ?? null, committing: self.committing, topRow: self.logUpdate?.topRow ?? null });
 
-  // Contract (queue-and-replay, issue #2382): while suspended, the band model
-  // has been forgotten (forgetCommittedBand in suspendInput) and repaint() is
-  // suppressed. Writing to stdout at stale pre-suspend coordinates or running
-  // the band-hold path with a zeroed model would produce duplicates (S2) when
-  // the owner's scroll moved the old band rows into native scrollback. Queue
-  // the text instead; resumeInput() replays it through the NORMAL commit path
+  // Contract (queue-and-replay, issue #2382): while suspended, repaint() is
+  // suppressed and the frame does not exist. Writing to stdout at stale
+  // pre-suspend coordinates or running the band-hold path would produce
+  // duplicates when the owner's scroll moved band rows into native scrollback.
+  // Queue the text; resumeInput() replays it through the NORMAL commit path
   // after the frame is re-established with fresh geometry. disarm() while still
   // suspended archives queued blocks to scrollback directly.
   if (self.suspended) {

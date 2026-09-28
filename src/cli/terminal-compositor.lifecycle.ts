@@ -8,9 +8,10 @@
  *
  * This file is the state-machine skeleton. Concern-specific logic lives in
  * sibling files (see #2108 decomposition):
- *   • terminal-compositor.lifecycle.resize.ts  — SIGWINCH / disarm-window resize
- *   • terminal-compositor.lifecycle.mode.ts    — raw-mode + bracketed-paste transitions
- *   • terminal-compositor.lifecycle.teardown.ts — band flush (endTurnFlush, flushPending)
+ *   • terminal-compositor.lifecycle.resize.ts       — SIGWINCH / disarm-window resize
+ *   • terminal-compositor.lifecycle.mode.ts         — raw-mode + bracketed-paste transitions
+ *   • terminal-compositor.lifecycle.teardown.ts     — band flush (endTurnFlush, flushPending)
+ *   • terminal-compositor.lifecycle.suspend-observer.ts — stdout write observer (counted handoff)
  */
 
 import { CupFrameRenderer } from './cup-frame-renderer.js';
@@ -33,6 +34,8 @@ import { enterRawMode, exitRawMode, enableBracketedPasteAndScrollKey, disableBra
 import { flushPendingCommittedBand, endTurnFlush } from './terminal-compositor.lifecycle.teardown.js';
 import { decomposeCommitText } from './terminal-compositor.commit-text.js';
 import { buildBandMeta, buildScrollbackArchiveEscape, scrollbackFlushLines } from './terminal-compositor.scrollback.js';
+import { installObserver, type SuspendObserverHandle } from './terminal-compositor.lifecycle.suspend-observer.js';
+import { cup } from './cup-frame-renderer.escapes.js';
 
 // Re-export for callers that imported endTurnFlush from this module directly.
 export { endTurnFlush } from './terminal-compositor.lifecycle.teardown.js';
@@ -118,6 +121,13 @@ export interface LifecycleHost {
   lifecycleStateDirty: boolean;
   // #540 Stage 3: clear the committed band after a full end-of-turn flush.
   clearCommittedBand(): void;
+  // Counted handoff (issue #2382): forget the band model WITHOUT erasing
+  // on-screen rows. Called at resume time when the owner wrote to stdout and
+  // the pre-suspend geometry can no longer be trusted.
+  forgetCommittedBand(): void;
+  // Counted handoff (issue #2382): write observer installed by suspendInput
+  // and removed by resumeInput / disarm. Null when not suspended.
+  suspendObserver: SuspendObserverHandle | null;
 }
 
 /**
@@ -129,26 +139,53 @@ export interface LifecycleHost {
  * restores the listener and raw mode without going through the full
  * arm/disarm cycle. Idempotent: calling when already suspended is a
  * no-op. Must be paired with a matching `resumeInput()`.
+ *
+ * Counted handoff (issue #2382, PR #2400): instead of the former
+ * settle+queue design that called endTurnFlush here (archiving the whole
+ * band to scrollback and leaving the viewport blank), this implementation
+ * preserves the committed-band model through suspension so a no-write
+ * resume can repaint the frame at the exact pre-suspend position. A write
+ * observer on stdout tracks cursor movements while the owner holds the TTY;
+ * resumeInput reads the final cursor row (R) and scroll count (S) and
+ * branches:
+ *   • R == P and S == 0 (owner wrote nothing): band model is still valid;
+ *     resume with a straight repaint.
+ *   • Owner wrote: forget the band model (on-screen rows become plain
+ *     terminal content), advance the working anchor to R+1, repaint from
+ *     the new anchor, then drain the commit queue.
  */
 export function suspendInput(self: LifecycleHost): void {
   if (!self.armed || self.suspended) return;
-  // Clear the live overlay so the compositor frame doesn't visually
-  // compete with the readline prompt that is about to appear below it.
+
+  // Step 1: Materialize any owed band rows so the painted-rows count is
+  // accurate before we hand off to the owner.  This ensures the band rows
+  // that are about to become plain terminal content have actually been drawn.
+  self.repaint();
+
+  // Step 2: Erase only the live frame (not the committed band).
+  // After clear() the cursor is at the frame top row; done() shows the cursor.
+  const frameTopBeforeClear = self.lastMeasuredFrameTop;
   if (self.logUpdate) {
-    try { self.logUpdate.clear(self.scrollRegion?.getExtraRows() ?? 0); self.logUpdate.done(); } catch { /* noop */ }
+    try {
+      self.logUpdate.clear(self.scrollRegion?.getExtraRows() ?? 0);
+      self.logUpdate.done();
+    } catch { /* noop */ }
   }
-  // Invariant (queue-and-replay, issue #2382): the frame is about to be erased
-  // and the owner is about to write freely to stdout. The committed band (all
-  // painted + any pending rows) is flushed to scrollback NOW as a complete,
-  // single-copy archive — before the owner's writes can scroll viewport rows
-  // and make band tracking coordinates stale. endTurnFlush erases the painted
-  // rows on screen (CUP+EL, no scroll, so the archive is the single copy) and
-  // archives the full band to scrollback, then clears the model. The resume
-  // repaint starts with an empty band and fresh geometry: repositionCommittedBand
-  // has nothing to re-pin, so neither stale-coordinate overwrites (S2 duplicate
-  // root cause) nor content loss occur. Queued commits replay through the normal
-  // commit path after the frame is re-established.
-  endTurnFlush(self);
+
+  // Step 3: Park the cursor at column 1 of the frame-top row (P).
+  // This establishes a known absolute position for the write observer.
+  // P = 0 means no frame has ever been rendered; treat as row 1.
+  const P = frameTopBeforeClear > 0 ? frameTopBeforeClear : 1;
+  try {
+    self.stdout.write(cup(P, 1));
+  } catch { /* noop */ }
+
+  // Step 4: Install the write observer AFTER parking the cursor so the
+  // cursor-park CUP itself is not counted as owner output.
+  const rows = Math.max(1, self.stdout.rows ?? 24);
+  const cols = Math.max(1, self.stdout.columns ?? 80);
+  self.suspendObserver = installObserver(self.stdout, P, rows, cols);
+
   if (self.handleKeypress) {
     self.stdin.removeListener('keypress', self.handleKeypress);
   }
@@ -162,14 +199,56 @@ export function suspendInput(self: LifecycleHost): void {
 /**
  * Restore the keypress listener and raw mode after a `suspendInput()`
  * call. Idempotent: calling when not suspended is a no-op.
+ *
+ * Counted handoff (issue #2382, PR #2400): reads cursor-row (R) and
+ * scroll-count (S) from the write observer, then branches:
+ *   • No-write path (R == P, S == 0): the band model is still valid; repaint
+ *     re-establishes the frame at the pre-suspend position — viewport is
+ *     byte-identical to before the suspension.
+ *   • Owner-wrote path: forget the band model (on-screen rows are now plain
+ *     terminal content), advance the working anchor to R+1 so the compositor
+ *     never paints over the owner's rows, clear stale frame geometry, then
+ *     repaint and drain the queue through the normal commit path.
  */
 export function resumeInput(self: LifecycleHost): void {
   if (!self.armed || !self.suspended) return;
+
+  // Remove the write observer and collect final cursor position.
+  const observerState = self.suspendObserver?.remove() ?? { cursorRow: self.lastMeasuredFrameTop > 0 ? self.lastMeasuredFrameTop : 1, scrollCount: 0 };
+  self.suspendObserver = null;
+  const R = observerState.cursorRow;
+  const S = observerState.scrollCount;
+  // P was the cursor row we parked at in suspendInput.
+  const P = self.lastMeasuredFrameTop > 0 ? self.lastMeasuredFrameTop : 1;
+
   try { self.stdin.setRawMode(true); } catch { /* noop */ }
   if (self.handleKeypress) {
     self.stdin.on('keypress', self.handleKeypress);
   }
   self.suspended = false;
+
+  // Invariant (owner-wrote branch): the committed-band model recorded geometry
+  // for rows [bandTopRow, frameTop-1], but the owner's writes (or any terminal
+  // scroll) have moved the screen content so those absolute row numbers no
+  // longer point to the compositor's content. Forget the model (on-screen rows
+  // become plain terminal content — they must NOT be re-emitted), advance the
+  // working anchor to the row after the owner's last output, and clear stale
+  // frame geometry so the first repaint starts fresh.
+  // No-write path: R == P and S == 0. The band model is intact; repaint will
+  // re-establish the frame exactly where it was. The viewport is preserved.
+  if (R !== P || S !== 0) {
+    // Owner-wrote path.
+    self.forgetCommittedBand();
+    const rows = Math.max(1, self.stdout.rows ?? 24);
+    // Advance anchor to R+1 (the row after the owner's last line), clamped to
+    // the viewport bottom. This protects rows [P, R] from being overwritten.
+    self.anchorRow = Math.min(R + 1, rows);
+    // Clear stale frame geometry: the repaint below will re-measure.
+    self.lastMeasuredFrameTop = 0;
+    self.lastMeasuredFrameBottom = 0;
+    self.bandGeometryStale = true;
+  }
+
   self.repaint();
 
   // Contract (queue-and-replay, issue #2382): drain the suspend queue through
@@ -383,17 +462,47 @@ export function disarm(self: LifecycleHost): void {
     self.resizeImmediateUnsub = null;
   }
 
-  // Contract (queue-and-replay, issue #2382): if disarm fires while still
-  // suspended (Ctrl-C / abort / mid-turn exit), the suspend queue holds commits
-  // that were never written to stdout or to the band model. Archive them
-  // directly to scrollback as soft-wrappable logical lines — bypassing the full
-  // commitAbove pipeline (which would call repaint() on an erased screen and
-  // re-engage the geometry guard) and the band model (which is empty after
-  // forgetCommittedBand). The archive uses the same buildScrollbackArchiveEscape
-  // path as the normal overflow archive, so C1 (single-copy) is preserved.
-  // This runs BEFORE flushPendingCommittedBand so the queue is cleared first;
-  // the band model is already empty (forgetCommittedBand ran at suspendInput)
-  // so flushPendingCommittedBand will be a no-op anyway.
+  // Counted handoff (issue #2382): remove the write observer if disarm fires
+  // while still suspended (Ctrl-C / abort / mid-turn exit). Read cursor-row R
+  // and scroll-count S from the observer — we need them to decide how to handle
+  // the committed band (see below). The observer's stdout.write patch must be
+  // removed before any further stdout writes in this function.
+  let disarmOwnerWrote = false;
+  if (self.suspended && self.suspendObserver) {
+    const observerState = self.suspendObserver.remove();
+    self.suspendObserver = null;
+    const P = self.lastMeasuredFrameTop > 0 ? self.lastMeasuredFrameTop : 1;
+    disarmOwnerWrote = observerState.cursorRow !== P || observerState.scrollCount !== 0;
+    self.debugLog('disarm:observer', { P, R: observerState.cursorRow, S: observerState.scrollCount, ownerWrote: disarmOwnerWrote });
+  }
+
+  // Contract (queue-and-replay, issue #2382 counted handoff): handle the
+  // committed band at disarm-while-suspended based on whether the owner wrote.
+  //
+  // No-write path (owner wrote nothing — R==P, S==0): band rows are still on
+  // screen. Archive them to scrollback via endTurnFlush (erase + archive + clear)
+  // so the subsequent queue archive does not overwrite them. The queue archive
+  // uses buildScrollbackArchiveEscape which CUP-writes to anchorFloor — if the
+  // band rows were still occupying anchorFloor, they would be silently overwritten.
+  //
+  // Owner-wrote path (R!=P or S!=0): band rows MAY already be in native terminal
+  // scrollback (scrolled off by the owner's writes). Re-archiving via endTurnFlush
+  // would emit ANSI sequences that duplicate rows already present in native
+  // scrollback (S2 defect root cause). forgetCommittedBand zeroes the model with
+  // zero writes — no duplicate risk. Pending (never-painted) rows are discarded
+  // without archiving; they have never appeared on screen, and the owner's output
+  // context makes their position unknowable.
+  if (self.suspended) {
+    if (!disarmOwnerWrote) {
+      endTurnFlush(self);
+    } else {
+      self.forgetCommittedBand();
+    }
+  }
+
+  // Archive queued commits to scrollback directly (bypassing commitAbove which
+  // would call repaint() against a disarmed frame). The archive uses the same
+  // buildScrollbackArchiveEscape path as the normal overflow path (C1-safe).
   if (self.suspended && self.suspendCommitQueue.length > 0) {
     const queued = self.suspendCommitQueue.splice(0);
     const rows = Math.max(1, self.stdout.rows ?? 24);

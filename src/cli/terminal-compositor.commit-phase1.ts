@@ -20,7 +20,7 @@ export function commitPhase1Teardown(
   route: CommitRoute,
 ): number {
   const { fitsAboveFrame, anchorFloor, rows, cols } = geo;
-  const { lineCount, textLines, useBandHold, overflowRun, overflowRunMeta, archiveCount } = route;
+  const { lineCount, textLines, useBandHold, overflowRun, overflowRunMeta, archiveCount, overflowPriorContiguous } = route;
 
   // Invariant (single-copy commit): each committed line reaches the
   // terminal EXACTLY ONCE. The whole-block duplication bug came from
@@ -141,6 +141,23 @@ export function commitPhase1Teardown(
         const archiveLines = scrollbackFlushLines(overflowRun, overflowRunMeta, archiveCount);
         const escape = buildScrollbackArchiveEscape(archiveLines, anchorFloor, rows, cols);
         if (escape.length > 0) self.stdout.write(escape);
+      }
+      // Contract (prior-band archive, issue #2382 counted-handoff): when the prior
+      // committed band was NOT merged into overflowRun (overflowPriorContiguous is
+      // false — requires anchorRow > 1), its painted rows are about to be
+      // overwritten by Phase 3's CUP writes without ever reaching scrollback.
+      // Archive them explicitly here so they survive. Only the painted suffix
+      // (committedBandPaintedRows) is archived — unpainted pending rows have never
+      // appeared on screen and are simply discarded when Phase 3 replaces the model.
+      // This path is the symmetric counterpart to the LF-emit fallback in the
+      // fitsAboveFrame branch (the Merge-path guard comment above) — both protect
+      // prior band content when anchorRow > 1 prevents the merge.
+      if (!overflowPriorContiguous && self.committedBand.length > 0 && self.committedBandPaintedRows > 0) {
+        const priorPainted = self.committedBand.slice(self.committedBand.length - self.committedBandPaintedRows);
+        const priorMeta = self.committedBandMeta.slice(self.committedBandMeta.length - self.committedBandPaintedRows);
+        const priorArchiveLines = scrollbackFlushLines(priorPainted, priorMeta, priorPainted.length);
+        const priorEscape = buildScrollbackArchiveEscape(priorArchiveLines, anchorFloor, rows, cols);
+        if (priorEscape.length > 0) self.stdout.write(priorEscape);
       }
     } else if (fitsAboveFrame) {
       if (bandOverflow > 0) {
