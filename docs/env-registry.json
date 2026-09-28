@@ -525,6 +525,14 @@
       "category": "misc"
     },
     {
+      "name": "AFK_MESSAGE_JOURNAL_DISABLED",
+      "description": "Disable the per-session message journal (state/sessions/<id>/journal.jsonl + blobs/). The journal records the full conversation, including full tool results, and is the source for --resume and /fork. Set to 1 to skip journal writes; resume then falls back to the text-only sidecar history.",
+      "type": "boolean",
+      "required": false,
+      "example": "1",
+      "category": "debug"
+    },
+    {
       "name": "AFK_MICROCOMPACT_DELEGATION_BYTES",
       "description": "Byte threshold for delegation tool results (agent/compose/skill). These results carry pre-compressed subagent findings that are expensive to re-derive -- clearing them destroys irreplaceable synthesized knowledge. A delegation tool result must be at least this large before microcompaction considers clearing it. Default 16384 (16KB, vs 2KB for ordinary tools). Set to match AFK_MICROCOMPACT_TOOL_RESULT_BYTES to disable the elevated threshold.",
       "type": "number",

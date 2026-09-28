@@ -1,0 +1,22 @@
+/**
+ * Message journal public surface. Import from here, not from sub-paths.
+ * Design: docs/message-journal.md.
+ *
+ * @module agent/journal
+ */
+
+export * from './types.js';
+export { JournalSync, type SyncOptions } from './sync.js';
+export { createMessageJournal, type CreateMessageJournalOptions } from './writer.js';
+export {
+  findToolResult,
+  foldJournal,
+  hydrateMessages,
+  journalExists,
+  listSubagentJournals,
+  loadJournalMessages,
+  readJournalRecords,
+  type FoldResult,
+  type JournalLocator,
+} from './reader.js';
+export { forkJournal } from './fork.js';

@@ -1518,6 +1518,18 @@ export const ENV_REGISTRY = [
     category: 'misc',
   },
   {
+    name: 'AFK_MESSAGE_JOURNAL_DISABLED',
+    description:
+      'Disable the per-session message journal (state/sessions/<id>/journal.jsonl + blobs/). ' +
+      'The journal records the full conversation, including full tool results, and is the ' +
+      'source for --resume and /fork. Set to 1 to skip journal writes; resume then falls back ' +
+      'to the text-only sidecar history.',
+    type: 'boolean',
+    required: false,
+    example: '1',
+    category: 'debug',
+  },
+  {
     name: 'AFK_SESSION_LEDGER_DISABLED',
     description:
       'Disable the per-session durable event ledger (state/sessions/<id>/events.jsonl). ' +
