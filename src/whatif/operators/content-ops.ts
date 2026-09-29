@@ -39,7 +39,7 @@ export const appendOperator: ChangeOperator<'append'> = {
     assertInsideSandbox(dirname(target), env);
     const raw = existsSync(target) ? readFileSync(target, 'utf8') : '';
     const base = raw.replace(/\n+$/, '');
-    const text = change.text.replace(/\n+$/, '');
+    const text = change.text.replace(/^\n+|\n+$/g, '');
     const newContent = (base ? base + '\n\n' + text : text) + '\n';
     mkdirSync(dirname(target), { recursive: true });
     writeFileSync(target, newContent, 'utf8');
