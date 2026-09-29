@@ -11,6 +11,19 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.272.0] - 2026-09-29
+
+### Added
+- measure baseline headroom with a small baseline-only sample (#2511) (15516608)
+
+### Fixed
+- baseline sample cost estimate includes its cold-cache start (92b9e8ed)
+- a refused baseline sample writes refused.json with its evidence and spend (13cebc97)
+- baseline sample gates on the full run's MDE and is not bypassed by --force (9fdd170e)
+
+### Changed
+- Merge pull request #2518 from griffinwork40/afk/whatif-baseline-sample (144d578c)
+
 ## [5.271.3] - 2026-09-29
 
 ### Fixed
