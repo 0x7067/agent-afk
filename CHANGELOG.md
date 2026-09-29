@@ -11,6 +11,19 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.274.8] - 2026-09-29
+
+### Fixed
+- address advisory findings from PR #2385 review (#2539) (6d476bf2)
+- document regex matcher alias asymmetry in hook config docs (#2533) (80694d78)
+- replace non-null assertions with explicit guards, drop redundant cast, move test hooks inside describe (#2534) (9a73762d)
+- add --probes/--max-predictions to flags, Set-based dedupe, Map-based syntheticPerArm (#2536) (01fd7342)
+- advisory findings from journal provenance adapters review (61008718)
+
+### Changed
+- Merge pull request #2546 from griffinwork40/afk/iso-agent-tool-11-sd0rtt (85a9dcd4)
+- Merge branch 'main' into afk/iso-agent-tool-11-sd0rtt (9d92842c)
+
 ## [5.274.7] - 2026-09-29
 
 ### Fixed
