@@ -1,16 +1,16 @@
 /**
- * Unit tests for content operators (append, file, hot).
+ * Unit tests for appendOperator.apply — specifically the blank-line
+ * normalization fix for issue #2412, including
+ * leading-newline stripping of change.text.
  *
- * Focuses on the append operator's leading-newline stripping guarantee:
- *   - Empty file: change.text with leading newlines → no leading blank lines.
- *   - Non-empty file: change.text with leading newlines → one blank-line separator.
- *   - touchesProject: true for 'project-afk-md', false for 'user-afk-md'.
+ * @module whatif/operators/content-ops.test
  */
 
-import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtempSync, writeFileSync, readFileSync, mkdirSync, rmSync } from 'node:fs';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { mkdirSync, writeFileSync, readFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import os from 'node:os';
+
 import { appendOperator } from './content-ops.js';
 import type { Environment, OperatorContext } from '../types.js';
 
@@ -18,100 +18,125 @@ import type { Environment, OperatorContext } from '../types.js';
 // Helpers
 // ---------------------------------------------------------------------------
 
-function tmpDir(): string {
+function makeTmpDir(): string {
   return mkdtempSync(join(os.tmpdir(), 'content-ops-test-'));
 }
 
-function makeEnv(root: string): Environment {
-  return {
-    label: 'candidate',
-    home: join(root, 'home'),
-    cwd: join(root, 'cwd'),
-    launch: { env: {} },
-  };
+function makeEnv(home: string, cwd: string): Environment {
+  return { label: 'candidate', home, cwd, launch: { env: {} } };
 }
 
-const FAKE_CTX: OperatorContext = {
-  realHome: '/tmp/real-home',
-  realCwd: '/tmp/real-cwd',
-};
+const ctx: OperatorContext = { realHome: '/fake/home', realCwd: '/fake/cwd' };
 
 // ---------------------------------------------------------------------------
-// append operator: leading-newline stripping
+// appendOperator — blank-line normalisation (#2412)
 // ---------------------------------------------------------------------------
 
-describe('appendOperator: leading-newline stripping', () => {
+describe('appendOperator.apply — blank-line normalisation', () => {
   let root: string;
+  let home: string;
+  let cwd: string;
+  let env: Environment;
+  let afkMdPath: string;
+
+  beforeEach(() => {
+    root = makeTmpDir();
+    home = join(root, 'home');
+    cwd = join(root, 'cwd');
+    mkdirSync(home, { recursive: true });
+    mkdirSync(cwd, { recursive: true });
+    env = makeEnv(home, cwd);
+    afkMdPath = join(home, 'AFK.md');
+  });
 
   afterEach(() => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  it('appends to empty file with leading-newline change.text — no leading blank lines', async () => {
-    root = tmpDir();
-    const env = makeEnv(root);
-    // Both home and cwd must exist (assertInsideSandbox calls realpathSync on env.cwd)
-    mkdirSync(env.home, { recursive: true });
-    mkdirSync(env.cwd, { recursive: true });
+  const change = (text: string) =>
+    ({ kind: 'append', target: 'user-afk-md', text } as const);
 
-    await appendOperator.apply(
-      { kind: 'append', target: 'user-afk-md', text: '\n\nRule' },
-      env,
-      FAKE_CTX,
-    );
-
-    const result = readFileSync(join(env.home, 'AFK.md'), 'utf8');
-    // Must start with 'Rule', not with blank lines
-    expect(result).toBe('Rule\n');
-    expect(result).not.toMatch(/^\n/);
+  it('missing file — no leading blank lines, ends with exactly one newline', async () => {
+    // AFK.md does not exist
+    await appendOperator.apply(change('Hello'), env, ctx);
+    const result = readFileSync(afkMdPath, 'utf8');
+    expect(result).toBe('Hello\n');
   });
 
-  it('appends to non-empty file with leading-newline change.text — one blank-line separator', async () => {
-    root = tmpDir();
-    const env = makeEnv(root);
-    mkdirSync(env.home, { recursive: true });
-    mkdirSync(env.cwd, { recursive: true });
-    // Pre-existing content (trailing newline as a normal file would have)
-    writeFileSync(join(env.home, 'AFK.md'), 'existing content\n', 'utf8');
-
-    await appendOperator.apply(
-      { kind: 'append', target: 'user-afk-md', text: '\n\nRule' },
-      env,
-      FAKE_CTX,
-    );
-
-    const result = readFileSync(join(env.home, 'AFK.md'), 'utf8');
-    // Exactly one blank line (two newlines) between existing content and appended text
-    expect(result).toBe('existing content\n\nRule\n');
-    // No extra leading blank lines in the appended portion
-    expect(result).not.toMatch(/existing content\n{3,}/);
+  it('empty file — no leading blank lines, ends with exactly one newline', async () => {
+    writeFileSync(afkMdPath, '', 'utf8');
+    await appendOperator.apply(change('Hello'), env, ctx);
+    const result = readFileSync(afkMdPath, 'utf8');
+    expect(result).toBe('Hello\n');
   });
 
-  it('appends trailing-newline change.text without accumulating trailing blank lines', async () => {
-    root = tmpDir();
-    const env = makeEnv(root);
-    mkdirSync(env.home, { recursive: true });
-    mkdirSync(env.cwd, { recursive: true });
-    writeFileSync(join(env.home, 'AFK.md'), 'existing content\n', 'utf8');
+  it('file ending in single newline — exactly one blank line before appended text', async () => {
+    writeFileSync(afkMdPath, '# Existing\n', 'utf8');
+    await appendOperator.apply(change('Appended'), env, ctx);
+    const result = readFileSync(afkMdPath, 'utf8');
+    expect(result).toBe('# Existing\n\nAppended\n');
+  });
 
+  it('file ending in multiple newlines — exactly one blank line before appended text', async () => {
+    writeFileSync(afkMdPath, '# Existing\n\n\n', 'utf8');
+    await appendOperator.apply(change('Appended'), env, ctx);
+    const result = readFileSync(afkMdPath, 'utf8');
+    expect(result).toBe('# Existing\n\nAppended\n');
+  });
+
+  it('file without trailing newline — exactly one blank line before appended text', async () => {
+    writeFileSync(afkMdPath, '# Existing', 'utf8');
+    await appendOperator.apply(change('Appended'), env, ctx);
+    const result = readFileSync(afkMdPath, 'utf8');
+    expect(result).toBe('# Existing\n\nAppended\n');
+  });
+
+  it('change.text with trailing newlines — result ends with exactly one newline', async () => {
+    writeFileSync(afkMdPath, '# Existing\n', 'utf8');
+    await appendOperator.apply(change('Appended\n\n'), env, ctx);
+    const result = readFileSync(afkMdPath, 'utf8');
+    expect(result).toBe('# Existing\n\nAppended\n');
+  });
+
+  it('result always ends with exactly one newline regardless of input', async () => {
+    for (const existing of ['content\n', 'content\n\n', 'content', '']) {
+      writeFileSync(afkMdPath, existing, 'utf8');
+      await appendOperator.apply(change('New\n\n'), env, ctx);
+      const result = readFileSync(afkMdPath, 'utf8');
+      expect(result.endsWith('\n'), `expected trailing newline for existing=${JSON.stringify(existing)}`).toBe(true);
+      expect(result.endsWith('\n\n'), `unexpected double newline at end for existing=${JSON.stringify(existing)}`).toBe(false);
+    }
+  });
+
+  it('change.text with leading newlines into empty file — no leading blank lines', async () => {
+    writeFileSync(afkMdPath, '', 'utf8');
+    await appendOperator.apply(change('\n\nRule'), env, ctx);
+    expect(readFileSync(afkMdPath, 'utf8')).toBe('Rule\n');
+  });
+
+  it('change.text with leading newlines into non-empty file — exactly one blank line separator', async () => {
+    writeFileSync(afkMdPath, '# Existing\n', 'utf8');
+    await appendOperator.apply(change('\n\nRule'), env, ctx);
+    expect(readFileSync(afkMdPath, 'utf8')).toBe('# Existing\n\nRule\n');
+  });
+
+  it('project-afk-md target — normalises the project AFK.md under env.cwd', async () => {
+    const projectPath = join(cwd, 'AFK.md');
+    writeFileSync(projectPath, '# Project\n\n\n', 'utf8');
     await appendOperator.apply(
-      { kind: 'append', target: 'user-afk-md', text: 'Rule\n\n' },
+      { kind: 'append', target: 'project-afk-md', text: '\nRule\n' },
       env,
-      FAKE_CTX,
+      ctx,
     );
-
-    const result = readFileSync(join(env.home, 'AFK.md'), 'utf8');
-    // Trailing newlines in change.text should be stripped; final file ends with exactly one '\n'
-    expect(result).toBe('existing content\n\nRule\n');
-    expect(result).not.toMatch(/\n{3,}$/);
+    expect(readFileSync(projectPath, 'utf8')).toBe('# Project\n\nRule\n');
   });
 });
 
 // ---------------------------------------------------------------------------
-// appendOperator.touchesProject smoke test
+// appendOperator.touchesProject
 // ---------------------------------------------------------------------------
 
-describe('appendOperator: touchesProject', () => {
+describe('appendOperator.touchesProject', () => {
   it('returns true for project-afk-md target', () => {
     expect(
       appendOperator.touchesProject({ kind: 'append', target: 'project-afk-md', text: 'x' }),
