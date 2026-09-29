@@ -224,4 +224,21 @@ describe('getOrDeriveFacet with journal', () => {
     expect(facet?.tool_counts?.['read_file']).toBe(1);
     expect(facet?.tool_counts?.['bash']).toBe(1);
   });
+  it('ignores the default-home journal when sessionsDir is overridden', () => {
+    // A foreign sessions dir holds only a sidecar; the default home has a
+    // journal for the same id. The journal must NOT be attributed to it.
+    writeJournal(metaLine() + toolUseLine(0, 'j1', 'read_file', { file_path: '/x.ts' }));
+    const foreign = join(home(), 'other-home', 'sessions');
+    mkdirSync(foreign, { recursive: true });
+    writeFileSync(join(foreign, `${SESSION_ID}.json`), JSON.stringify(makeSession()), 'utf8');
+    const facet = getOrDeriveFacet(SESSION_ID, { sessionsDir: foreign, cacheDir: cacheDir() });
+    expect(facet?.tool_counts?.['bash']).toBe(1);
+    expect(facet?.tool_counts?.['read_file']).toBeUndefined();
+  });
+  it('detects git commits from the journal bash command', () => {
+    writeSession(makeSession());
+    writeJournal(metaLine() + toolUseLine(0, 'c1', 'bash', { command: 'cd repo &&\n  git commit -F msg.txt' }));
+    const facet = getOrDeriveFacet(SESSION_ID, { cacheDir: cacheDir() });
+    expect(facet?.world_changes?.commits).toBe(1);
+  });
 });

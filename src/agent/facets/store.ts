@@ -15,7 +15,7 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'fs';
-import { basename, dirname, join } from 'path';
+import { basename, dirname, join, resolve } from 'path';
 import { getFacetCacheDir, getSessionJournalPath, getSessionsDir, getSubagentJournalPath, validateSessionId } from '../../paths.js';
 import { journalExists, listSubagentJournals, readJournalRecords } from '../journal/reader.js';
 import { isMessageJournalDisabled } from '../journal/noop.js';
@@ -113,13 +113,17 @@ function safeMtimeMs(path: string): number {
  * when the journal is disabled, absent, or unreadable (safe fallback to
  * sidecar). Never throws.
  */
-function tryReadJournal(sessionId: string): {
+function tryReadJournal(sessionId: string, sessionsDir: string): {
   parentEvents: ToolEventInput[];
   subagentBreakdown: SubagentToolSummary[];
   journalMtimeMs: number;
 } | undefined {
   try {
     if (isMessageJournalDisabled()) return undefined;
+    // The journal reader always resolves under the default sessions dir. When a
+    // caller overrides `sessionsDir` (e.g. `afk insights --afk-home`), a journal
+    // found there would belong to a different home — use the sidecar instead.
+    if (resolve(sessionsDir) !== resolve(getSessionsDir())) return undefined;
     if (!journalExists(sessionId)) return undefined;
 
     const records = readJournalRecords(sessionId);
@@ -168,7 +172,7 @@ export function getOrDeriveFacet(
 
   // Read journal once per session — never per-facet. Falls back to undefined
   // (sidecar path) when the journal is absent, disabled, or unreadable.
-  const journalData = tryReadJournal(sessionId);
+  const journalData = tryReadJournal(sessionId, sessionsDir);
 
   // Effective mtime for staleness: max(sidecar, journal files) so a journal
   // append after the sidecar is saved still triggers a re-derive.

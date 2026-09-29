@@ -71,6 +71,20 @@ function extractResultText(parts: readonly JournalResultPart[], cap: number): st
  * Scan a flat list of JournalBlocks for all tool_use / tool_result blocks,
  * returning them in encounter order.
  */
+/**
+ * In-memory command summary for bash calls so derive.ts can still detect
+ * `git commit` (it reads `ev.input` when `inputRaw` has no `command`). Never
+ * persisted: derive only regex-tests it. Flattened + capped like the sidecar's
+ * summarized input, but with a larger cap since the journal has the full text.
+ */
+const COMMAND_SUMMARY_CAP = 2000;
+function commandSummary(name: string, input: unknown): string | undefined {
+  if (name !== 'bash' || !input || typeof input !== 'object') return undefined;
+  const cmd = (input as Record<string, unknown>)['command'];
+  if (typeof cmd !== 'string') return undefined;
+  return cmd.replace(/\s+/g, ' ').trim().slice(0, COMMAND_SUMMARY_CAP);
+}
+
 function extractToolBlocks(blocks: readonly JournalBlock[]): Array<Extract<JournalBlock, { type: 'tool_use' | 'tool_result' }>> {
   const out: Array<Extract<JournalBlock, { type: 'tool_use' | 'tool_result' }>> = [];
   for (const b of blocks) {
@@ -99,6 +113,7 @@ export function journalRecordsToToolEvents(
   const toolUseOrder: string[] = []; // first-seen order
   const toolUseNames = new Map<string, string>(); // id → name
   const toolUseInputRaw = new Map<string, string | undefined>(); // id → extracted inputRaw
+  const toolUseCommand = new Map<string, string | undefined>(); // id → bash command summary
   const toolResultText = new Map<string, string>(); // id → result text
   const toolResultError = new Map<string, boolean>(); // id → isError
 
@@ -111,10 +126,12 @@ export function journalRecordsToToolEvents(
           toolUseOrder.push(block.id);
           toolUseNames.set(block.id, block.name);
           toolUseInputRaw.set(block.id, extractRawToolInput(block.input));
+          toolUseCommand.set(block.id, commandSummary(block.name, block.input));
         } else {
           // Re-append after compaction: update name + input, keep position.
           toolUseNames.set(block.id, block.name);
           toolUseInputRaw.set(block.id, extractRawToolInput(block.input));
+          toolUseCommand.set(block.id, commandSummary(block.name, block.input));
         }
       } else {
         // tool_result: last-write-wins (latest append after compaction is canonical)
@@ -133,11 +150,13 @@ export function journalRecordsToToolEvents(
     const toolName = toolUseNames.get(id);
     if (!toolName) continue; // should never happen
     const inputRaw = toolUseInputRaw.get(id);
+    const input = toolUseCommand.get(id);
     const result = toolResultText.get(id);
     const isError = toolResultError.get(id);
     const ev: ToolEventInput = {
       toolName,
       toolUseId: id,
+      ...(input !== undefined ? { input } : {}),
       ...(inputRaw !== undefined ? { inputRaw } : {}),
       ...(result !== undefined ? { result } : {}),
       ...(isError !== undefined ? { isError } : {}),
