@@ -11,6 +11,14 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.274.6] - 2026-09-29
+
+### Fixed
+- improve thinking-chunk exclusion test coverage (fccdf961)
+
+### Changed
+- Merge pull request #2549 from griffinwork40/afk/iso-agent-tool-20-qclu1t (966ca8a7)
+
 ## [5.274.5] - 2026-09-29
 
 ### Fixed
