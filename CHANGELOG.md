@@ -11,6 +11,22 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.274.5] - 2026-09-29
+
+### Fixed
+- address advisory findings from /pr-triage 2026-09-27 (693ced57)
+- advisory findings from #2507 — turn budgets across retry-tier replays (7f7360b5)
+- document above/below contract, defensive rail sets, and add missing tests (42bac34e)
+- advisory findings from #2476 (MDE preflight and gate) (7e2372d9)
+- betaSample degenerate guard + ICC clamp comment (9d607d24)
+
+### Changed
+- Merge pull request #2550 from griffinwork40/afk/iso-agent-tool-17-7rv2wh (8dcf3b67)
+- Merge pull request #2555 from griffinwork40/afk/iso-agent-tool-24-p6atnz (9a7d8d23)
+- Merge pull request #2552 from griffinwork40/afk/iso-agent-tool-18-jtnfy4 (e1babded)
+- Merge pull request #2558 from griffinwork40/afk/iso-agent-tool-25-ya41kq (32e8a39c)
+- Merge pull request #2564 from griffinwork40/afk/iso-agent-tool-27-nx7lh8 (77a0057d)
+
 ## [5.274.4] - 2026-09-29
 
 ### Fixed
