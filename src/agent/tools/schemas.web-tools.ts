@@ -24,7 +24,7 @@ export const sendTelegramTool: AnthropicToolDef = {
     'your primary chat (the first private chat in `AFK_TELEGRAM_ALLOWED_CHAT_IDS`, or ' +
     '`AFK_TELEGRAM_PRIMARY_CHAT_ID` if set); set `telegram.notify` in afk.config.json to ' +
     'broadcast to all allowed chats or target a custom set.\n\n' +
-    'Plain text only — Telegram\'s 4096-character limit per message is enforced. ' +
+    'Markdown is rendered as Telegram HTML, with plain-text fallback on formatting errors — Telegram\'s 4096-character limit per message is enforced. ' +
     'Returns an error if Telegram is not configured (missing `TELEGRAM_BOT_TOKEN` or empty ' +
     'allowlist) so the tool is safe to attempt unconditionally.\n\n' +
     'Use sparingly: this is a real push notification to a human. Reserve for terminal states ' +

@@ -66,6 +66,21 @@ describe('send_telegram handler', () => {
 
   const signal = new AbortController().signal;
 
+  it('renders Markdown through the default sender', async () => {
+    makeHarness({ token: 't', allowed: '123' });
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const result = await createSendTelegramHandler()({ message: '**repo/name** (8)' }, signal);
+      expect(result.isError).toBeUndefined();
+      const body = JSON.parse(fetchMock.mock.calls[0]?.[1].body);
+      expect(body.text).toBe('<b>repo/name</b> (8)');
+      expect(body.parse_mode).toBe('HTML');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   describe('input validation', () => {
     it('rejects non-object input', async () => {
       const { handler } = makeHarness({ token: 't', allowed: '123' });
