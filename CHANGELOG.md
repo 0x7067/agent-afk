@@ -11,6 +11,14 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.274.2] - 2026-09-29
+
+### Fixed
+- extract compact summarize wiring to restore the filesize ratchet (b5aba032)
+
+### Changed
+- Merge pull request #2554 from griffinwork40/afk/fix-query-filesize-ratchet (84be5439)
+
 ## [5.274.1] - 2026-09-29
 
 ### Fixed
