@@ -209,6 +209,12 @@ export interface PredictInput {
   probesPerPrediction?: number;
   /** Maximum number of predictions to retain (resolved via resolveMaxPredictions). */
   maxPredictions?: number;
+  /**
+   * Optional redundancy-preflight section from {@link checkRedundancy} (#2414).
+   * When present, injected into the analyst prompt so the model can return []
+   * when the change merely restates an existing baseline instruction.
+   */
+  redundancySection?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -228,7 +234,7 @@ export async function predictChanges(
   complete: CompleteFn,
   model: string,
 ): Promise<Prediction[]> {
-  const { spec, changeDescriptions, structural, trackRecord, repoManifest } = input;
+  const { spec, changeDescriptions, structural, trackRecord, repoManifest, redundancySection } = input;
 
   const probesPerPrediction = input.probesPerPrediction ?? DEFAULT_PROBES;
   const maxPredictions = input.maxPredictions ?? resolveMaxPredictions(probesPerPrediction);
@@ -247,6 +253,13 @@ export async function predictChanges(
 
   if (trackRecord) {
     sections.push(`## Engine track record (calibration)\n${headTail(trackRecord, 2000)}`);
+  }
+
+  // Redundancy preflight (#2414): inject before repo context so the model
+  // sees the warning early and can return [] when the change restates an
+  // existing rule.
+  if (redundancySection) {
+    sections.push(redundancySection);
   }
 
   if (repoManifest) {
