@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.271.3] - 2026-09-29
+
+### Fixed
+- show the real Anthropic credential source in `afk status` (#2458) (38046fab)
+
 ## [5.271.2] - 2026-09-29
 
 ### Fixed
