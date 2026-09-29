@@ -53,7 +53,7 @@ const STOPWORDS = new Set([
   'not', 'no', 'nor', 'so', 'yet', 'both', 'either', 'neither', 'each',
   'than', 'too', 'very', 'can', 'will', 'just', 'should', 'now', 'if',
   'when', 'where', 'how', 'what', 'which', 'who', 'that', 'this', 'these',
-  'those', 'such', 'any', 'all', 'more', 'most', 'also', 'then', 'than',
+  'those', 'such', 'any', 'all', 'more', 'most', 'also', 'then',
   'into', 'over', 'after', 'before', 'between', 'out', 'about', 'up',
 ]);
 
@@ -74,12 +74,13 @@ const STOPWORDS = new Set([
  * always at least 2 characters long.
  */
 function stem(token: string): string {
-  if (token.length > 5 && token.endsWith('ings')) return token.slice(0, -4);
-  if (token.length > 4 && token.endsWith('ing')) return token.slice(0, -3);
-  if (token.length > 4 && token.endsWith('ied')) return token.slice(0, -3) + 'y';
-  if (token.length > 4 && token.endsWith('ies')) return token.slice(0, -3) + 'y';
-  if (token.length > 3 && token.endsWith('ed')) return token.slice(0, -2);
-  if (token.length > 3 && token.endsWith('es')) return token.slice(0, -2);
+  // Guard: only strip a suffix when at least 3 characters remain.
+  if (token.length > 6 && token.endsWith('ings')) return token.slice(0, -4);
+  if (token.length > 6 && token.endsWith('ing')) return token.slice(0, -3);
+  if (token.length > 5 && token.endsWith('ied')) return token.slice(0, -3) + 'y';
+  if (token.length > 5 && token.endsWith('ies')) return token.slice(0, -3) + 'y';
+  if (token.length > 4 && token.endsWith('ed')) return token.slice(0, -2);
+  if (token.length > 4 && token.endsWith('es')) return token.slice(0, -2);
   if (token.length > 3 && token.endsWith('s')) return token.slice(0, -1);
   return token;
 }
@@ -214,10 +215,12 @@ export function findNearestHeading(
   const paraFirstLine = paragraph.split('\n')[0]?.trim() ?? '';
   if (!paraFirstLine) return undefined;
 
-  // Find the line index of the paragraph in the baseline
+  // Find the line index of the paragraph in the baseline.
+  // Use trimmed full-line equality to avoid false matches when two paragraphs
+  // share a common opening phrase.
   let paraIndex = -1;
   for (let i = 0; i < lines.length; i++) {
-    if (lines[i]?.trim().includes(paraFirstLine.slice(0, 60))) {
+    if (lines[i]?.trim() === paraFirstLine) {
       paraIndex = i;
       break;
     }

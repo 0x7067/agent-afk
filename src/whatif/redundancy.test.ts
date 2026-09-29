@@ -57,6 +57,22 @@ describe('tokenize', () => {
     expect(tokens.size).toBe(1);
     expect(tokens.has('cat')).toBe(true);
   });
+
+  it('does not over-stem short words ending in -ing (bring, thing, string)', () => {
+    // These words are short enough that stem() should leave them intact.
+    const tokens = tokenize('bring thing string');
+    expect(tokens.has('bring')).toBe(true);
+    expect(tokens.has('thing')).toBe(true);
+    expect(tokens.has('string')).toBe(true);
+  });
+
+  it('does not over-stem things (plural of thing)', () => {
+    const tokens = tokenize('things');
+    // 'things' has 6 chars; -ings rule requires >6, so it stays as 'things'
+    // then -s rule (>3) strips to 'thing' — that is correct, not 'th'
+    expect(tokens.has('th')).toBe(false);
+    expect(tokens.has('thing')).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -211,6 +227,26 @@ describe('findNearestHeading', () => {
     const heading = findNearestHeading(baseline, 'This text does not exist in baseline.');
     expect(heading).toBeUndefined();
   });
+
+  it('returns the correct heading when two paragraphs share an opening prefix', () => {
+    const twoSectionBaseline = [
+      '## First Section',
+      '',
+      'Common opening phrase: rule alpha.',
+      '',
+      '## Second Section',
+      '',
+      'Common opening phrase: rule beta.',
+    ].join('\n');
+
+    // The second paragraph starts with the same prefix but belongs to Second Section.
+    const heading = findNearestHeading(twoSectionBaseline, 'Common opening phrase: rule beta.');
+    expect(heading).toBe('Second Section');
+
+    // The first paragraph should point to First Section.
+    const heading2 = findNearestHeading(twoSectionBaseline, 'Common opening phrase: rule alpha.');
+    expect(heading2).toBe('First Section');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -282,16 +318,17 @@ describe('checkRedundancy', () => {
   });
 
   it('includes the sourceSection in the warning message', () => {
+    // This line very closely restates the Response Style baseline paragraph —
+    // it should reliably score above the threshold.
     const addedLine =
-      'Always respond concisely and avoid unnecessary verbosity in your answers.';
+      'Always respond concisely and avoid unnecessary verbosity in your answers. ' +
+      'Keep replies short and to the point.';
     const systemDiff = `@@ -9,0 +10,1 @@\n+${addedLine}`;
     const warnings = checkRedundancy(baselineSystem, systemDiff);
-    // May or may not fire depending on similarity, but if it fires it has a section
-    if (warnings.length > 0) {
-      const w = warnings[0]!;
-      expect(w.message).toContain('§');
-      expect(w.sourceSection).toBeDefined();
-    }
+    expect(warnings.length).toBeGreaterThan(0);
+    const w = warnings[0]!;
+    expect(w.message).toContain('§');
+    expect(w.sourceSection).toBeDefined();
   });
 
   it('similarity score is included in the warning', () => {
@@ -300,10 +337,9 @@ describe('checkRedundancy', () => {
       'work directly without skills or subagents.';
     const systemDiff = `@@ -5,0 +6,1 @@\n+${addedLine}`;
     const warnings = checkRedundancy(baselineSystem, systemDiff);
-    if (warnings.length > 0) {
-      expect(warnings[0]!.similarity).toBeGreaterThan(0);
-      expect(warnings[0]!.similarity).toBeLessThanOrEqual(1);
-    }
+    expect(warnings.length).toBeGreaterThan(0);
+    expect(warnings[0]!.similarity).toBeGreaterThan(0);
+    expect(warnings[0]!.similarity).toBeLessThanOrEqual(1);
   });
 });
 

@@ -147,7 +147,12 @@ async function runPredictPhase(
   // onProgress BEFORE the model call so a user can abort a paid run early.
   const redundancyWarnings = checkRedundancy(structural.baseline.system, structural.systemDiff);
   for (const w of redundancyWarnings) {
-    deps.onProgress?.({ stage: 'predict', message: `[redundancy] ${w.message}` });
+    const sectionNote = w.sourceSection ? ` (§ ${w.sourceSection})` : '';
+    const scoreNote = ` [${(w.similarity * 100).toFixed(0)}% similar]`;
+    deps.onProgress?.({
+      stage: 'predict',
+      message: `[redundancy] Added paragraph may restate an existing rule${sectionNote}${scoreNote}`,
+    });
   }
   const redundancySection = formatRedundancySection(redundancyWarnings);
 
