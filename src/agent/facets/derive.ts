@@ -18,13 +18,14 @@ import {
   FACET_VERSION,
   SessionFacetSchema,
   type FacetOutcome,
-  type ParallelDispatchStats,
   type SessionFacet,
   type StoredSessionInput,
   type SubagentInvocation,
+  type SubagentToolSummary,
   type ToolEventInput,
   type YieldTracking,
 } from './schema.js';
+import { computeParallelDispatch } from './parallel-dispatch.js';
 
 export interface DeriveOptions {
   /** Absolute path of the source session sidecar (recorded for provenance). */
@@ -33,6 +34,19 @@ export interface DeriveOptions {
   sourceSessionMtimeMs?: number;
   /** Injectable clock for deterministic tests. Defaults to `new Date()`. */
   derivedAt?: Date;
+  /**
+   * Journal-derived tool events for the PARENT session only (subagent tool
+   * calls excluded). When provided, these replace the sidecar `turns[].toolEvents`
+   * for tool aggregation so compacted-away calls still count.
+   * Populated by `store.ts` when a journal is available. (#2461)
+   */
+  journalEvents?: ToolEventInput[];
+  /**
+   * Per-subagent breakdown from the journal's subagent files. Stored as an
+   * optional field in the facet; subagent tool calls are NOT added to the
+   * parent's `tool_counts`. (#2461)
+   */
+  subagentBreakdown?: SubagentToolSummary[];
 }
 
 const SUBAGENT_TOOLS = new Set(['agent', 'compose', 'skill']);
@@ -97,61 +111,18 @@ function dedupeToolEvents(events: ToolEventInput[]): ToolEventInput[] {
   return [...byId.values(), ...noId];
 }
 
-/**
- * Compute the parallel dispatch ratio for a session.
- *
- * A "parallel turn" is any assistant turn that emitted more than one
- * deduplicated tool call (i.e. the model returned multiple tool_use blocks
- * in one response). The `dedupeToolEvents` pass must have already run on
- * each turn's events before calling this function.
- *
- * Design note: we count tool calls AT THE TURN LEVEL (using `turns` directly)
- * rather than re-grouping the flattened `allEvents` list. This preserves the
- * natural grouping the sidecar writer already recorded — each `TurnRecord`
- * corresponds to exactly one assistant response, so multiple toolEvents entries
- * in one turn = the model issued multiple tool_use blocks simultaneously.
- *
- * `ratio` is null when there are no tool calls to measure (avoids 0/0).
- */
-function computeParallelDispatch(
-  turns: Array<{ toolEvents?: ToolEventInput[] }>,
-): ParallelDispatchStats {
-  let totalToolCalls = 0;
-  let parallelToolCalls = 0;
-  let parallelTurns = 0;
-  let toolTurns = 0;
-
-  for (const turn of turns) {
-    const deduped = dedupeToolEvents(turn.toolEvents ?? []);
-    const count = deduped.length;
-    if (count === 0) continue;
-
-    toolTurns += 1;
-    totalToolCalls += count;
-
-    if (count > 1) {
-      parallelTurns += 1;
-      parallelToolCalls += count;
-    }
-  }
-
-  const ratio = totalToolCalls > 0 ? parallelToolCalls / totalToolCalls : null;
-
-  return {
-    total_tool_calls: totalToolCalls,
-    parallel_tool_calls: parallelToolCalls,
-    parallel_turns: parallelTurns,
-    tool_turns: toolTurns,
-    ratio,
-  };
-}
-
 export function deriveSessionFacet(
   session: StoredSessionInput,
   options: DeriveOptions = {},
 ): SessionFacet {
   const turns = session.turns ?? [];
-  const allEvents: ToolEventInput[] = dedupeToolEvents(turns.flatMap((t) => t.toolEvents ?? []));
+  // When journal events are supplied (post-#2461), they replace the sidecar
+  // toolEvents for aggregation — they are already deduped by the adapter.
+  // The sidecar path is kept as the fallback for older sessions or when the
+  // journal is unavailable / disabled.
+  const allEvents: ToolEventInput[] = options.journalEvents !== undefined
+    ? options.journalEvents
+    : dedupeToolEvents(turns.flatMap((t) => t.toolEvents ?? []));
 
   // --- mechanical: tool + error aggregation ---
   const toolCounts: Record<string, number> = {};
@@ -330,6 +301,12 @@ export function deriveSessionFacet(
 
     decisions: [],
     evidence_pointers: evidencePointers,
+
+    // Subagent breakdown: populated from journal subagent files when available.
+    // Absent when journal is disabled or no subagent journals exist. (#2461)
+    ...(options.subagentBreakdown !== undefined && options.subagentBreakdown.length > 0
+      ? { subagent_breakdown: options.subagentBreakdown }
+      : {}),
   };
 
   // Populate token_breakdown when cost data is available.
