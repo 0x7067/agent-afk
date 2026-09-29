@@ -11,6 +11,45 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.275.0] - 2026-09-29
+
+### Added
+- yield-to-user contract; wait_for ends early when the user types (174bedd4)
+
+### Fixed
+- image-bearing queued messages also wake a yielding tool (aa516af0)
+- advance turn index only after a turn passes its gate, add ordinal-list and anaphora test coverage, scope corpusExclusions JSDoc (850d9a32)
+
+### Changed
+- Merge pull request #2540 from griffinwork40/afk/iso-agent-tool-12-oia21r (fb0fc39f)
+- Merge pull request #2541 from griffinwork40/afk/tool-user-yield (a9bc7668)
+- Merge branch 'main' into afk/tool-user-yield (4837051e)
+- Merge branch 'main' into afk/iso-agent-tool-12-oia21r (a98bc831)
+
+## [5.274.8] - 2026-09-29
+
+### Fixed
+- address advisory findings from PR #2385 review (#2539) (6d476bf2)
+- document regex matcher alias asymmetry in hook config docs (#2533) (80694d78)
+- replace non-null assertions with explicit guards, drop redundant cast, move test hooks inside describe (#2534) (9a73762d)
+- add --probes/--max-predictions to flags, Set-based dedupe, Map-based syntheticPerArm (#2536) (01fd7342)
+- advisory findings from journal provenance adapters review (61008718)
+
+### Changed
+- Merge pull request #2546 from griffinwork40/afk/iso-agent-tool-11-sd0rtt (85a9dcd4)
+- Merge branch 'main' into afk/iso-agent-tool-11-sd0rtt (9d92842c)
+
+## [5.274.7] - 2026-09-29
+
+### Fixed
+- address advisory findings from #2494 review (9ba5a742)
+
+### Changed
+- Merge pull request #2566 from griffinwork40/afk/pnpm-11-migration (0446aec3)
+- Merge pull request #2548 from griffinwork40/afk/iso-agent-tool-16-sw8jmm (deeea47a)
+- raise Node floor to 22.13 to match pnpm 11 (4066f2f0)
+- migrate to pnpm 11 (531c8031)
+
 ## [5.274.6] - 2026-09-29
 
 ### Fixed

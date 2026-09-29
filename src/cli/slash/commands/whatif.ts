@@ -266,6 +266,8 @@ export const whatifCmd: SlashCommand = {
     '--max-turns',
     '--timeout',
     '--keep-sandboxes',
+    '--probes',
+    '--max-predictions',
     '--yes',
     '--json',
   ],
