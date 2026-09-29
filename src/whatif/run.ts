@@ -83,11 +83,19 @@ export class WhatifBudgetError extends Error {
  */
 export class WhatifMdeError extends Error {
   readonly episodesPerArm: number;
+  readonly kind: 'mde' | 'headroom';
+  readonly predictionId?: string;
 
-  constructor(minProbesPerPrediction: number, message?: string) {
+  constructor(
+    minProbesPerPrediction: number,
+    message?: string,
+    opts?: { kind?: 'mde' | 'headroom'; predictionId?: string },
+  ) {
     super(message ?? mdeGateRefusedMessage(minProbesPerPrediction));
     this.name = 'WhatifMdeError';
     this.episodesPerArm = minProbesPerPrediction;
+    this.kind = opts?.kind ?? 'mde';
+    this.predictionId = opts?.predictionId;
   }
 }
 
@@ -257,7 +265,7 @@ function runPreflightChecks(input: PreflightInput): void {
   onProgress?.({ stage: 'preflight', message: mdePreflightLine(minProbesPerPrediction) });
 
   if (isUnderpowered(minProbesPerPrediction) && !force) {
-    throw new WhatifMdeError(minProbesPerPrediction);
+    throw new WhatifMdeError(minProbesPerPrediction, undefined, { kind: 'mde' });
   }
 
   // Headroom check (#2504): per-prediction baseline headroom vs. achieved MDE.
@@ -266,12 +274,16 @@ function runPreflightChecks(input: PreflightInput): void {
   // only the refusal is bypassed by --force.
   for (const pred of predictions) {
     if (!isHeadroomUnderpowered(pred, minProbesPerPrediction)) continue;
-    const line = headroomPreflightLine(pred, minProbesPerPrediction);
+    // Contract: isHeadroomUnderpowered returns true only when baselineEstimate
+    // is defined, so the narrowed type assertion is safe here.
+    const narrowed = pred as typeof pred & { baselineEstimate: number };
+    const line = headroomPreflightLine(narrowed, minProbesPerPrediction);
     onProgress?.({ stage: 'preflight', message: line });
     if (!force) {
       throw new WhatifMdeError(
         minProbesPerPrediction,
         `${line} More probes will not fix this; choose probes where the baseline leaves room, or use --force.`,
+        { kind: 'headroom', predictionId: pred.id },
       );
     }
   }

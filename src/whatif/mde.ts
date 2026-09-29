@@ -219,15 +219,23 @@ export function isHeadroomUnderpowered(
 /**
  * Preflight line describing a headroom violation for a single prediction.
  *
- * @param prediction           The prediction whose headroom is insufficient.
+ * The parameter type is narrowed to require `baselineEstimate` because this
+ * function is only meaningful when the estimate is present.  Callers must
+ * check `isHeadroomUnderpowered` (which returns false when the estimate is
+ * absent) before calling this function.
+ *
+ * @param prediction           The prediction whose headroom is insufficient;
+ *                             must have a numeric `baselineEstimate`.
  * @param probesPerPrediction  Number of probes per prediction per arm.
  */
 export function headroomPreflightLine(
-  prediction: Prediction,
+  prediction: Prediction & { baselineEstimate: number },
   probesPerPrediction: number,
 ): string {
-  const estimate = prediction.baselineEstimate!;
-  const headroom = headroomForPrediction(estimate, prediction.direction)!;
+  const estimate = prediction.baselineEstimate;
+  // Contract: headroomForPrediction returns undefined only when estimate is
+  // undefined, which cannot happen given the narrowed parameter type.
+  const headroom = headroomForPrediction(estimate, prediction.direction) ?? 0;
   const mde = mdeForN(probesPerPrediction);
   const dirLabel = prediction.direction === 'added' || prediction.direction === 'strengthened'
     ? 'increase'
@@ -256,8 +264,10 @@ export function headroomLimitLine(
   n: number,
   label: string,
 ): string | undefined {
-  const headroom = headroomForPrediction(observedBaseline, direction);
-  if (headroom === undefined) return undefined;
+  // Contract: observedBaseline is typed number so headroomForPrediction always
+  // returns a number here (it only returns undefined when the first arg is
+  // undefined).  The nullish fallback is a defensive no-op.
+  const headroom = headroomForPrediction(observedBaseline, direction) ?? 0;
   const mde = mdeForN(n);
   if (headroom >= mde) return undefined;
   const dirLabel = direction === 'added' || direction === 'strengthened' ? 'increase' : 'decrease';
