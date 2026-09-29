@@ -292,6 +292,7 @@ export async function runVerifyPreflight(input: VerifyPreflightInput): Promise<{
     (s, p) => s + (episodeCountByPrediction.get(p.id) ?? 0),
     0,
   );
+  // Dynamic import breaks a circular dependency: baseline-sample → run → run.preflight.
   const { estimateBaselineSampleCost } = await import('./baseline-sample.js');
   const baselineSampleCostUsd = noBaselineSample ? 0 : estimateBaselineSampleCost({
     predictions,

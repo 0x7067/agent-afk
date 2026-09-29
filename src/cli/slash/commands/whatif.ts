@@ -74,7 +74,7 @@ export function makeProgressThrottle(ctx: SlashContext): (stage: string, message
     }
     if (stage === 'episodes' || stage === 'run') {
       episodeCount++;
-      if (done !== undefined && episodeCount % 10 === 0) {
+      if (episodeCount % 10 === 0) {
         ctx.out.info(`[whatif] ${stage}: ${message}`);
       }
     }
