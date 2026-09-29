@@ -116,7 +116,8 @@ All AFK state under `~/.afk/` (never `~/.claude/`), resolved exclusively through
   config/    afk.env, afk.config.json, mcp.json
   state/     sessions/  todos/  transcripts/  daemon/  witness/   ($AFK_STATE_DIR overrides this tier)
   plugins/   logs/  cache/
-  agent-framework/   # AFK telemetry + briefs
+  agent-framework/   # AFK telemetry + briefs (forge-telemetry.jsonl, routing-decisions.jsonl,
+                   #   preexisting-ledger.jsonl — see docs/preexisting-ledger.md)
 <cwd>/.afk/                      # project-scope: per-project skills + plugins, auto-discovered
 ```
 
