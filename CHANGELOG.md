@@ -11,6 +11,21 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.276.0] - 2026-09-29
+
+### Added
+- add overload pause tier to openai-compatible provider (70a30f0d)
+
+### Fixed
+- pin SHARED_CONTEXT_DIRECTIVE in ordering test and tighten separator count (9136739b)
+
+### Changed
+- Merge pull request #2569 from griffinwork40/afk/iso-agent-tool-4-xon4bj (b24066b6)
+- Merge pull request #2574 from griffinwork40/afk/iso-agent-tool-4-mh9o62 (262fa048)
+- Merge remote-tracking branch 'origin/main' into afk/fix-2574-conflict (f43e7208)
+- Merge origin/main into afk/iso-agent-tool-4-mh9o62 (#2574) (785a9ed3)
+- merge origin/main + apply review findings (#2574) (6039e638)
+
 ## [5.275.6] - 2026-09-29
 
 ### Fixed
