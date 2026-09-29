@@ -71,6 +71,11 @@ export interface WhatifOptions {
    * Defaults are resolved by resolveMaxPredictions(probes).
    */
   maxPredictions?: number;
+  /**
+   * When true, skip the baseline-sample preflight (#2511).
+   * The analyst-estimate headroom check is used instead when present.
+   */
+  noBaselineSample?: boolean;
 }
 
 export interface WhatifDeps {

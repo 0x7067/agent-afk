@@ -237,6 +237,9 @@ function makeOptions(overrides: Partial<WhatifOptions & { sessionsDir?: string }
     samples: 1,
     maxUsd: 10,
     judge: 'claude',
+    // These fixtures have 1 probe per prediction, so a measured baseline sample
+    // (#2511) would always refuse; sampling is covered in baseline-sample.test.ts.
+    noBaselineSample: true,
     concurrency: 2,
     maxTurns: 3,
     episodeTimeoutMs: 10_000,
@@ -564,7 +567,8 @@ describe('runWhatif — MDE gate', () => {
 describe('runWhatif — headroom preflight (#2504)', () => {
   it('prints the headroom warning even under --force, and still runs', async () => {
     const deps = makeDeps({ complete: makeFakeComplete(0.97) });
-    const options = makeOptions({ verify: true, maxUsd: 10, force: true });
+    // The analyst-estimate check applies only when the measured sample is off (#2511).
+    const options = makeOptions({ verify: true, maxUsd: 10, force: true, noBaselineSample: true });
     let threw = false;
     try {
       await runWhatif(options, deps);
