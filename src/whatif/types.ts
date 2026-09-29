@@ -395,6 +395,12 @@ export interface VerifyResult {
    * Absent when the run had no failures or the imbalance was within threshold.
    */
   armImbalance?: import('./run.failures.js').ArmImbalance;
+  /**
+   * Per-prediction baseline-sample preflight results (#2511).
+   * Present when the baseline-sample preflight ran; absent when
+   * --no-baseline-sample was passed or sampling was skipped.
+   */
+  baselineSample?: import('./baseline-sample.js').PredictionBaselineSample[];
 }
 
 export interface WhatifReport {

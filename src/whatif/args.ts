@@ -35,6 +35,7 @@
  *   --probes <n>               → synthetic probe episodes per prediction (1–12, default 6)
  *   --max-predictions <n>      → max predictions to retain (1–8, default resolved from --probes)
  *   --keep-sandboxes           → retain sandbox dirs after run
+ *   --no-baseline-sample       → skip the baseline-sample preflight (#2511)
  *   --yes                      → skip confirmation of compiled spec
  *   --json             → print JSON to stdout instead of terminal output
  *
@@ -127,6 +128,8 @@ export interface WhatifFlagOptions {
   probes?: number;
   /** Maximum number of predictions to retain (1–8; default resolved from probes). */
   maxPredictions?: number;
+  /** Skip the baseline-sample preflight; use analyst-estimate check instead (#2511). */
+  noBaselineSample?: boolean;
 }
 
 export interface ParsedWhatifArgs {
@@ -178,6 +181,7 @@ interface RunState {
   specFile?: string;
   probes?: number;
   maxPredictions?: number;
+  noBaselineSample: boolean;
 }
 
 /**
@@ -202,6 +206,7 @@ function parseRunOptionFlag(token: string, nextVal: string | undefined, state: R
     case '--force': state.force = true; return 1;
     case '--json': state.json = true; return 1;
     case '--keep-sandboxes': state.keepSandboxes = true; return 1;
+    case '--no-baseline-sample': state.noBaselineSample = true; return 1;
     case '--turns': {
       if (!nextVal) return `--turns requires a number\n\n${WHATIF_USAGE}`;
       const n = parseInt(nextVal, 10);
@@ -285,6 +290,7 @@ export function parseWhatifArgs(argv: string[]): ParseResult {
     yes: false,
     json: false,
     force: false,
+    noBaselineSample: false,
   };
 
   let i = 0;
@@ -344,6 +350,7 @@ export function parseWhatifArgs(argv: string[]): ParseResult {
       keepSandboxes: state.keepSandboxes,
       ...(state.probes !== undefined ? { probes: state.probes } : {}),
       ...(state.maxPredictions !== undefined ? { maxPredictions: state.maxPredictions } : {}),
+      ...(state.noBaselineSample ? { noBaselineSample: true } : {}),
     },
     yes: state.yes,
     json: state.json,
