@@ -11,6 +11,26 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.275.2] - 2026-09-29
+
+### Fixed
+- unref deferred exit timers and use fake timers in crash-handler tests (95d325db)
+- record kept sandbox roots in <runDir>/sandboxes.json (cb19fa3a)
+- defer crash-notification exit and guard against duplicate handler registration (def2b0ad)
+- address advisory findings from #2518 and #2512 (whatif) (adbd876b)
+
+### Changed
+- Merge pull request #2544 from griffinwork40/afk/iso-agent-tool-15-x0ud5c (7d8775f1)
+- Merge pull request #2537 from griffinwork40/afk/iso-agent-tool-6-2xmiio (6542bb2b)
+- Merge pull request #2547 from griffinwork40/afk/whatif-2478-consolidate (35f55f43)
+- merge remote afk/iso-agent-tool-6-2xmiio (already-resolved conflict) (e139b662)
+- resolve conflict with origin/main in src/whatif/run.ts (188bd348)
+- merge origin/main into afk/iso-agent-tool-6-2xmiio (54974335)
+- Merge remote-tracking branch 'origin/main' into afk/fix-2547-conflict (d9346ac9)
+- Merge branch 'main' into afk/iso-agent-tool-15-x0ud5c (1d6b44a8)
+- Merge branch 'main' into afk/iso-agent-tool-6-2xmiio (1fac705f)
+- Merge branch 'main' into afk/whatif-2478-consolidate (eba47b60)
+
 ## [5.275.1] - 2026-09-29
 
 ### Fixed
