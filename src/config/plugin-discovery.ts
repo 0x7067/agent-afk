@@ -38,9 +38,14 @@ function installedPlugins(root: string): DetectedAsset[] | undefined {
 }
 
 /** Read a plugin manifest's `name` field. Inlined to avoid an agent-layer import. */
+export function pluginManifestPath(dir: string): string {
+  const native = join(dir, '.codex-plugin', 'plugin.json');
+  return existsSync(native) ? native : join(dir, '.claude-plugin', 'plugin.json');
+}
+
 function manifestName(dir: string): string | null {
   try {
-    const raw = JSON.parse(readFileSync(join(dir, '.claude-plugin', 'plugin.json'), 'utf-8')) as {
+    const raw = JSON.parse(readFileSync(pluginManifestPath(dir), 'utf-8')) as {
       name?: unknown;
     };
     return typeof raw.name === 'string' && raw.name.length > 0 ? raw.name : null;
@@ -77,7 +82,7 @@ function walkPlugins(dir: string, depth: number, out: DetectedAsset[], seen: Set
   }
   if (depth > MAX_PLUGIN_SCAN_DEPTH || seen.has(canonical)) return;
   seen.add(canonical);
-  if (existsSync(join(dir, '.claude-plugin', 'plugin.json'))) {
+  if (existsSync(pluginManifestPath(dir))) {
     const name = manifestName(dir) ?? basename(dir) ?? dir;
     out.push({ name, path: dir });
     return; // plugins do not nest
@@ -88,7 +93,7 @@ function walkPlugins(dir: string, depth: number, out: DetectedAsset[], seen: Set
   } catch {
     return;
   }
-  for (const name of entries) {
+  for (const name of entries.sort((a, b) => b.localeCompare(a, 'en', { numeric: true }))) {
     if (name.startsWith('.')) continue;
     const full = join(dir, name);
     try {

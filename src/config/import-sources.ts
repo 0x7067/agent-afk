@@ -3,6 +3,8 @@ import { homedir } from 'os';
 import { join } from 'path';
 import { readMcpServers } from './import-mcp-discovery.js';
 export { readMcpServers } from './import-mcp-discovery.js';
+import { env } from './env.js';
+import { readCodexEnabledPlugins } from './codex-discovery.js';
 import { findPluginDirs } from './plugin-discovery.js';
 import { getJsonConfigPath, getLegacyJsonConfigPath } from '../paths.js';
 
@@ -87,13 +89,11 @@ const SOURCE_MAPS: Record<ImportSourceBinary, SourcePathMap> = {
   },
   codex: {
     label: 'Codex',
-    pluginRoots: (home) => [join(home, '.codex', 'plugins')],
-    skillRoots: (home) => [join(home, '.codex', 'skills')],
-    mcpConfigCandidates: (home) => [join(home, '.codex', 'config.toml')],
+    pluginRoots: (home) => [join(env.CODEX_HOME?.trim() || join(home, '.codex'), 'plugins')],
+    skillRoots: (home) => [join(env.CODEX_HOME?.trim() || join(home, '.codex'), 'skills'), join(home, '.agents', 'skills')],
+    mcpConfigCandidates: (home) => [join(env.CODEX_HOME?.trim() || join(home, '.codex'), 'config.toml')],
     mcpFormat: 'toml',
-    // Codex plugin import is detection-only today (see `afk migrate`), so
-    // there is no enabled-state read yet — a follow-up phase.
-    pluginEnabledState: () => EMPTY_SOURCE_ENABLED,
+    pluginEnabledState: (home) => readCodexEnabledPlugins(env.CODEX_HOME?.trim() || join(home, '.codex')),
   },
 };
 
@@ -333,7 +333,7 @@ function findSkillDirs(root: string): DetectedAsset[] {
   }
   const out: DetectedAsset[] = [];
   for (const entry of entries) {
-    if (!entry.isDirectory() || entry.name.startsWith('_') || entry.name.startsWith('.')) continue;
+    if ((!entry.isDirectory() && !entry.isSymbolicLink()) || entry.name.startsWith('_') || entry.name.startsWith('.')) continue;
     if (existsSync(join(root, entry.name, 'SKILL.md'))) {
       out.push({ name: entry.name, path: join(root, entry.name) });
     }

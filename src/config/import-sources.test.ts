@@ -4,7 +4,7 @@
  * `~/.claude` / `~/.codex` tree under a tmp dir without touching real state.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -35,11 +35,13 @@ function writeSkill(root: string, name: string): void {
 }
 
 beforeEach(() => {
+  vi.stubEnv('CODEX_HOME', '');
   home = join(tmpdir(), `afk-import-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   mkdirSync(home, { recursive: true });
 });
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   if (existsSync(home)) rmSync(home, { recursive: true, force: true });
 });
 
@@ -161,11 +163,10 @@ describe('readSourceEnabledState', () => {
     expect(map.has('c@mp')).toBe(false);
   });
 
-  it('returns an empty map for codex (plugin import is detection-only)', () => {
-    // Even with a config.toml present, v1 reads no Codex plugin-enable state.
+  it('reads disabled Codex plugins', () => {
     mkdirSync(join(home, '.codex'), { recursive: true });
     writeFileSync(join(home, '.codex', 'config.toml'), '[plugins."x@mp"]\nenabled = false\n');
-    expect(readSourceEnabledState('codex', home).size).toBe(0);
+    expect(readSourceEnabledState('codex', home).get('x@mp')).toBe(false);
   });
 });
 
@@ -198,6 +199,33 @@ describe('detectSources', () => {
     writePlugin(join(root, 'a'), 'demo');
     writePlugin(join(root, 'b'), 'demo');
     expect(detectSources(home).find((s) => s.binary === 'codex')?.plugins).toHaveLength(1);
+  });
+
+  it('uses CODEX_HOME for native plugins, skills, MCP and enablement', () => {
+    const codex = join(home, 'custom-codex');
+    vi.stubEnv('CODEX_HOME', codex);
+    for (const version of ['1.9', '1.10']) {
+      const dir = join(codex, 'plugins', 'cache', 'mp', 'native', version, '.codex-plugin');
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'plugin.json'), JSON.stringify({ name: 'native' }));
+    }
+    writePlugin(join(home, '.codex', 'plugins'), 'wrong-home');
+    writeSkill(join(codex, 'skills'), 'custom');
+    writeSkill(join(home, '.agents', 'skills'), 'shared');
+    writeFileSync(join(codex, 'config.toml'), '[plugins."native@mp"]\nenabled = false # disabled\n[mcp_servers.test]\ncommand = "server"\n');
+    const detected = detectSources(home).find((s) => s.binary === 'codex');
+    expect(detected?.plugins).toEqual([{ name: 'native', path: join(codex, 'plugins', 'cache', 'mp', 'native', '1.10') }]);
+    expect(detected?.skills.map((s) => s.name)).toEqual(['custom', 'shared']);
+    expect(detected?.mcpServers).toEqual([{ name: 'test', command: 'server' }]);
+    expect(readSourceEnabledState('codex', home).get('native@mp')).toBe(false);
+    expect(resolveImportedRoots({ codex: { plugins: true, skills: true, mcp: true } }, home)).toEqual({
+      pluginRoots: [{ dir: join(codex, 'plugins'), binary: 'codex' }],
+      skillRoots: [
+        { dir: join(codex, 'skills'), origin: 'imported:codex' },
+        { dir: join(home, '.agents', 'skills'), origin: 'imported:codex' },
+      ],
+      mcpConfigs: [{ source: join(codex, 'config.toml'), format: 'toml' }],
+    });
   });
 
   it('marks a binary not-present when nothing exists', () => {

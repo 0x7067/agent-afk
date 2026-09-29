@@ -17,7 +17,7 @@
  */
 
 import type { SdkPluginConfig } from './types/sdk-types.js';
-import { findPluginDirs } from '../config/plugin-discovery.js';
+import { findPluginDirs, pluginManifestPath } from '../config/plugin-discovery.js';
 import type { SourceEnabledMap } from '../config/import-sources.js';
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'fs';
 import { join, resolve as resolvePath } from 'path';
@@ -168,7 +168,7 @@ function walk(
   if (seen.has(seenKey)) return;
   seen.add(seenKey);
 
-  if (existsSync(join(dir, '.claude-plugin', 'plugin.json'))) {
+  if (existsSync(pluginManifestPath(dir))) {
     const key = indexKeyForPath(root, dir);
     if (key === null) {
       // Path that doesn't fit either layout — keep loading it (matches
@@ -232,7 +232,7 @@ function walk(
  */
 function readPluginMain(dir: string): string | undefined {
   try {
-    const raw = readFileSync(join(dir, '.claude-plugin', 'plugin.json'), 'utf8');
+    const raw = readFileSync(pluginManifestPath(dir), 'utf8');
     const parsed: unknown = JSON.parse(raw);
     if (parsed !== null && typeof parsed === 'object' && 'main' in parsed) {
       const main = (parsed as { main?: unknown }).main;

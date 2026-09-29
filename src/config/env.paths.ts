@@ -18,6 +18,13 @@ import type { EnvVarMeta } from './env.js';
 
 export const PATHS_ENV_REGISTRY = [
   {
+    name: 'CODEX_HOME',
+    description: 'Codex configuration, plugin, and skill directory used for imports. Defaults to ~/.codex.',
+    type: 'string',
+    required: false,
+    category: 'paths',
+  },
+  {
     name: 'AFK_HOME',
     description: 'Override the AFK home directory. Default: ~/.afk/.',
     type: 'string',

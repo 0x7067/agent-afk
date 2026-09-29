@@ -2,7 +2,7 @@
 
 Generated from `src/config/env.ts`. Do not edit by hand — run `pnpm scan:env` after changing the registry source.
 
-**203 vars** across 13 categories. Every `process.env[...]` read in `src/` outside `src/config/env.ts` is a CI failure (enforced by `pnpm audit:env:check`).
+**204 vars** across 13 categories. Every `process.env[...]` read in `src/` outside `src/config/env.ts` is a CI failure (enforced by `pnpm audit:env:check`).
 
 To add a var: edit `src/config/env.ts` (add a getter on `env` + an entry in `ENV_REGISTRY`), then run `pnpm scan:env`.
 
@@ -106,6 +106,7 @@ To add a var: edit `src/config/env.ts` (add a getter on `env` + an entry in `ENV
 | `AFK_FRAMEWORK_DIR` | string |  |  |  | Override the AFK agent-framework directory used for telemetry and briefs. Default: $AFK_HOME/agent-framework/. |
 | `AFK_HOME` | string |  | `~/.afk` | `/opt/afk` | Override the AFK home directory. Default: ~/.afk/. |
 | `AFK_STATE_DIR` | string |  |  |  | Override the entire AFK state tier (sessions/, todos/, transcripts/, memory/, daemon/, etc.), not just one subdirectory. Must be an absolute path (not /). Default: $AFK_HOME/state/. |
+| `CODEX_HOME` | string |  |  |  | Codex configuration, plugin, and skill directory used for imports. Defaults to ~/.codex. |
 
 ## Daemon
 

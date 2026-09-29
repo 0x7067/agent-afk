@@ -36,6 +36,8 @@ That's it. You're in.
 
 **Already using Claude Code or Codex?** `afk login` will detect your existing credentials automatically. Run `afk migrate` to import your plugins, skills, and MCP servers too -- it live-reads the source tool's dirs, so anything you install there keeps showing up in AFK with no re-run.
 
+Codex imports use `CODEX_HOME` when set (otherwise `~/.codex`) and also discover shared skills in `~/.agents/skills`. Native `.codex-plugin/plugin.json` manifests are recognized alongside Claude-format manifests; explicit `[plugins."name@marketplace"]` enable/disable settings apply at runtime. Without an installed-plugin registry, discovery selects one cached directory per marketplace/plugin using descending numeric-aware directory order. This is a filesystem fallback, not a guarantee of the version selected by Codex. Codex-hosted app connectors and TOML MCP server loading are not imported.
+
 > 📖 **Full documentation at [docs.agentafk.com](https://docs.agentafk.com)** -- quickstart, configuration, model setup, surfaces, skills, and SDK reference.
 
 ## What you can do with it

@@ -48,6 +48,14 @@ describe('plugins-scanner', () => {
     expect(scanLocalPlugins(tmpHome, { trustAll: true, sourceEnabled: new Map([['test@mp', false]]) })).toEqual([]);
   });
 
+  it('loads native Codex manifests and respects disabled imports', () => {
+    const dir = join(tmpHome, 'cache', 'mp', 'native', '1.0');
+    mkdirSync(join(dir, '.codex-plugin'), { recursive: true });
+    writeFileSync(join(dir, '.codex-plugin', 'plugin.json'), JSON.stringify({ name: 'native', main: 'index.js' }));
+    expect(scanLocalPlugins(tmpHome, { trustAll: true })).toEqual([{ type: 'local', path: dir, main: 'index.js' }]);
+    expect(scanLocalPlugins(tmpHome, { trustAll: true, sourceEnabled: new Map([['native@mp', false]]) })).toEqual([]);
+  });
+
   it('returns [] when the plugins dir does not exist', () => {
     expect(scanLocalPlugins(join(tmpHome, 'missing'))).toEqual([]);
   });

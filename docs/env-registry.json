@@ -1453,6 +1453,13 @@
       "secret": true
     },
     {
+      "name": "CODEX_HOME",
+      "description": "Codex configuration, plugin, and skill directory used for imports. Defaults to ~/.codex.",
+      "type": "string",
+      "required": false,
+      "category": "paths"
+    },
+    {
       "name": "COLORFGBG",
       "description": "Terminal-set \"foreground;background\" color hint (e.g. \"15;0\"), read only for AFK_THEME=auto detection. The trailing field is the background color index; >= 7 is treated as a light background, otherwise dark. Not set by AFK — emitted by some terminals (rxvt, Konsole, iTerm2). Absent or unparseable => dark.",
       "type": "string",
