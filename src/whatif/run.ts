@@ -84,8 +84,8 @@ export class WhatifBudgetError extends Error {
 export class WhatifMdeError extends Error {
   readonly episodesPerArm: number;
 
-  constructor(minProbesPerPrediction: number) {
-    super(mdeGateRefusedMessage(minProbesPerPrediction));
+  constructor(minProbesPerPrediction: number, message?: string) {
+    super(message ?? mdeGateRefusedMessage(minProbesPerPrediction));
     this.name = 'WhatifMdeError';
     this.episodesPerArm = minProbesPerPrediction;
   }
@@ -262,13 +262,17 @@ function runPreflightChecks(input: PreflightInput): void {
 
   // Headroom check (#2504): per-prediction baseline headroom vs. achieved MDE.
   // Uses the same gate (WhatifMdeError) so --force bypasses it identically.
-  if (!force) {
-    for (const pred of predictions) {
-      if (isHeadroomUnderpowered(pred, minProbesPerPrediction)) {
-        const line = headroomPreflightLine(pred, minProbesPerPrediction);
-        onProgress?.({ stage: 'preflight', message: line });
-        throw new WhatifMdeError(minProbesPerPrediction);
-      }
+  // The warning always prints (pilot runs use --force and must still see it);
+  // only the refusal is bypassed by --force.
+  for (const pred of predictions) {
+    if (!isHeadroomUnderpowered(pred, minProbesPerPrediction)) continue;
+    const line = headroomPreflightLine(pred, minProbesPerPrediction);
+    onProgress?.({ stage: 'preflight', message: line });
+    if (!force) {
+      throw new WhatifMdeError(
+        minProbesPerPrediction,
+        `${line} More probes will not fix this; choose probes where the baseline leaves room, or use --force.`,
+      );
     }
   }
 

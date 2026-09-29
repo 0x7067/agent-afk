@@ -33,6 +33,8 @@
  * @module whatif/mde
  */
 
+import type { Prediction, PredictionDirection } from './types.js';
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -90,6 +92,11 @@ export function nForMde(mde: number): number {
 
 function pp(proportion: number): string {
   return `${Math.round(proportion * 100)}pp`;
+}
+
+/** A rate (not a difference), e.g. a baseline P(yes): rendered as a percent. */
+function pct(proportion: number): string {
+  return `${Math.round(proportion * 100)}%`;
 }
 
 /**
@@ -170,7 +177,6 @@ export function mdeGateRefusedMessage(minProbesPerPrediction: number): string {
 // Headroom helpers (#2504)
 // ---------------------------------------------------------------------------
 
-import type { Prediction, PredictionDirection } from './types.js';
 
 /**
  * Compute the headroom in the predicted direction for a prediction.
@@ -228,7 +234,7 @@ export function headroomPreflightLine(
     : 'decrease';
   return (
     `Prediction ${prediction.id} (${prediction.direction}): ` +
-    `baseline estimate ${pp(estimate)}, leaving ${pp(headroom)} of headroom for an ${dirLabel}; ` +
+    `baseline estimate ${pct(estimate)}, leaving ${pp(headroom)} of headroom for an ${dirLabel}; ` +
     `this run can only detect shifts ≥${pp(mde)} — prediction is underpowered before the first episode runs.`
   );
 }
@@ -255,7 +261,7 @@ export function headroomLimitLine(
   const mde = mdeForN(n);
   if (headroom >= mde) return undefined;
   const dirLabel = direction === 'added' || direction === 'strengthened' ? 'increase' : 'decrease';
-  const baselinePct = pp(observedBaseline);
+  const baselinePct = pct(observedBaseline);
   return (
     `Prediction ${label}: baseline was ${baselinePct}, leaving ${pp(headroom)} of room for an ${dirLabel}; ` +
     `this run can only detect shifts ≥${pp(mde)}, so it could not confirm this prediction.`

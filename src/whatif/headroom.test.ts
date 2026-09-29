@@ -294,7 +294,7 @@ describe('headroomPreflightLine', () => {
     const line = headroomPreflightLine(pred, 11);
     expect(line).toContain('p1');
     expect(line).toContain('strengthened');
-    expect(line).toContain('93pp'); // pp() helper uses "pp" not "%"
+    expect(line).toContain('93%'); // a rate renders as a percent; differences as pp
     expect(line).toContain('7pp'); // headroom (1-0.93)
     // MDE at 11 probes ≈ 59pp
     expect(line).toMatch(/\d{2,}pp/); // at least some MDE mention
@@ -340,7 +340,7 @@ describe('headroomLimitLine', () => {
     const line = headroomLimitLine(0.93, 'strengthened', 11, 'p1');
     expect(line).toBeDefined();
     expect(line).toContain('p1');
-    expect(line).toContain('93pp'); // pp() helper uses "pp" not "%"
+    expect(line).toContain('93%'); // a rate renders as a percent; differences as pp
     expect(line).toContain('7pp');
     expect(line).toContain('increase');
   });
@@ -357,7 +357,8 @@ describe('headroomLimitLine', () => {
     const line = headroomLimitLine(0.05, 'removed', 11, 'p2');
     expect(line).toBeDefined();
     expect(line).toContain('p2');
-    expect(line).toContain('5pp'); // pp() helper uses "pp" not "%"
+    expect(line).toContain('5%'); // baseline rate as a percent
+    expect(line).toContain('5pp'); // headroom (a difference) in pp
     expect(line).toContain('decrease');
   });
 
