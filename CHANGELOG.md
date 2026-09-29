@@ -11,6 +11,112 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.273.0] - 2026-09-29
+
+### Added
+- AFK_COMPACT_MODEL works across providers (7aaf663a)
+
+### Fixed
+- route console.warn/error through the compositor while armed (5575382e)
+- reject still-expired xAI OAuth token in compaction (89531f3e)
+- address review feedback (c8ba85a5)
+- scope privacy warns per-instance, fix DOMException abort, normalize xai-oauth family (617b34f0)
+- stop persisting raw first prompts in the outcome store (d6bc5738)
+
+### Changed
+- Merge pull request #2517 from griffinwork40/afk/diagnose-error-wrapping (a1ebe921)
+- Merge pull request #2451 from griffinwork40/afk/issue-2449-plr9 (d881b7b3)
+- Merge pull request #2474 from griffinwork40/afk/compact-model-cross-provider (b5afc0e9)
+- drop stale personal claude-jev path from fixture comment (36a9886a)
+- Merge remote-tracking branch 'origin/main' into afk/pr2474-fix (726e9e2d)
+
+## [5.272.1] - 2026-09-29
+
+### Fixed
+- render tiny sign-flip p-value as <0.001 instead of 0.000 (5e985d2d)
+- REPL progress throttle shows every preflight milestone line (b164eb80)
+
+### Changed
+- Merge pull request #2512 from griffinwork40/afk/whatif-repl-throttle-pdisplay (b99155d1)
+
+## [5.272.0] - 2026-09-29
+
+### Added
+- measure baseline headroom with a small baseline-only sample (#2511) (15516608)
+
+### Fixed
+- baseline sample cost estimate includes its cold-cache start (92b9e8ed)
+- a refused baseline sample writes refused.json with its evidence and spend (13cebc97)
+- baseline sample gates on the full run's MDE and is not bypassed by --force (9fdd170e)
+
+### Changed
+- Merge pull request #2518 from griffinwork40/afk/whatif-baseline-sample (144d578c)
+
+## [5.271.3] - 2026-09-29
+
+### Fixed
+- show the real Anthropic credential source in `afk status` (#2458) (38046fab)
+
+## [5.271.2] - 2026-09-29
+
+### Fixed
+- record --ref on update when the checkout is already at it (#2457) (663e1f56)
+
+## [5.271.1] - 2026-09-29
+
+### Fixed
+- load plugins nested under a marketplace root plugin (#2456) (8b57cb81)
+
+## [5.271.0] - 2026-09-29
+
+### Added
+- persist doneUnverified in schedule telemetry (1eabf0ea)
+
+### Fixed
+- address review feedback — JSDoc, record assertion, baseline (1fb0a6bb)
+
+### Changed
+- Merge pull request #2322 from griffinwork40/afk/iso-agent-tool-4-foq9u1 (fbd08d2f)
+- merge main; drop scheduler.ts filesize grandfather (fits at 350 after #2320) (2348c891)
+- Merge remote-tracking branch 'origin/main' into afk/pr2322-rebase-main (b92756e7)
+- Merge remote-tracking branch 'origin/main' into afk/pr2322-fix (6eaefd5a)
+
+## [5.270.3] - 2026-09-29
+
+### Fixed
+- use real-length sk- token in redaction test (7fdc7913)
+- redact secrets in makeSessionStartSkipRecord; add test; merge main; add JSDoc notes (9383e9f5)
+- add per-task in-flight overlap guard to CronScheduler (391861a2)
+
+### Changed
+- Merge pull request #2320 from griffinwork40/afk/iso-agent-tool-7-p3r1o7 (653858b5)
+
+## [5.270.2] - 2026-09-29
+
+### Added
+- derive session facets from the message journal (27e9d8cf)
+
+### Fixed
+- address review feedback on repair-orphan-tool-calls (e49a0d8f)
+- address review feedback (d4bd47fd)
+- extract aggregateToolEvents, clean journal-adapter, unify dedup (de4f8c96)
+- strip leading newlines from append change.text; add content-ops tests (bada0594)
+- keep journal commit detection and home isolation (3a851063)
+- headroom warning also prints under --force; rates render as % (8b554574)
+- probe headroom check (#2504) (a3a8de71)
+- append operator inserts an extra blank line (2b04e7fd)
+- openai-compatible never repairs orphaned tool calls before sending history (643e9be6)
+
+### Changed
+- Merge pull request #2438 from griffinwork40/afk/issue-2417-4d60 (3b625eab)
+- Merge pull request #2496 from griffinwork40/afk/issue-2412-dok6 (16ea924b)
+- Merge pull request #2506 from griffinwork40/afk/issue-2461-q7r3 (0f7d533a)
+- Merge pull request #2505 from griffinwork40/afk/whatif-headroom-2504 (6c106678)
+- fix postinstall docs — platform split, silent-skip wording, hook duties, isGlobalInstall, marker file (#2280) (d4c11229)
+- restore #2412 regression tests dropped by prior fix commit (51eeed80)
+- remove pr-body.md (76677951)
+- remove pr-body.md (leftover) (ba4e181c)
+
 ## [5.270.1] - 2026-09-29
 
 ### Fixed

@@ -10,7 +10,8 @@
  *      context.tracePath when available.
  *   4. Upserts into the outcome store as 'provisional' (settles_after = 7 days
  *      when artifacts present) or settled immediately otherwise.
- *   5. Stores first_prompt / first_cwd for cross_session_reask lookups.
+ *   5. Stores first_prompt_tokens / first_cwd for cross_session_reask lookups.
+ *      Raw prompt text is never written to disk (issue #2449).
  *
  * Fire-and-forget: never throws into or delays teardown.
  *
@@ -24,7 +25,7 @@ import { loadOutcomeTurns } from './load-outcome-turns.js';
 import { recoverArtifacts } from './artifacts.js';
 import { runImmediateLFs, type ClosureInfo } from './lf-immediate.js';
 import { upsertVotes } from './store.js';
-import { lfReask } from './lf-reask.js';
+import { lfReask, promptFingerprint } from './lf-reask.js';
 import type { VerifiedOutcome } from './schema.js';
 
 // ---------------------------------------------------------------------------
@@ -141,6 +142,8 @@ async function _runImmediatePass(
   const sessionKind = detectSessionKind(turns);
   const firstPrompt = extractFirstPrompt(turns);
 
+  const fingerprint = firstPrompt !== undefined ? promptFingerprint(firstPrompt) : [];
+
   const base: Omit<VerifiedOutcome, 'votes' | 'history'> = {
     schema_version: 1,
     session_id: sessionId,
@@ -151,7 +154,7 @@ async function _runImmediatePass(
     session_kind: sessionKind,
     self_report: selfReport,
     artifacts,
-    ...(firstPrompt !== undefined ? { first_prompt: firstPrompt } : {}),
+    ...(fingerprint.length > 0 ? { first_prompt_tokens: fingerprint } : {}),
     ...(cwd !== undefined ? { first_cwd: cwd } : {}),
   };
 
