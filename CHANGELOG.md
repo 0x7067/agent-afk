@@ -11,6 +11,16 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.270.3] - 2026-09-29
+
+### Fixed
+- use real-length sk- token in redaction test (7fdc7913)
+- redact secrets in makeSessionStartSkipRecord; add test; merge main; add JSDoc notes (9383e9f5)
+- add per-task in-flight overlap guard to CronScheduler (391861a2)
+
+### Changed
+- Merge pull request #2320 from griffinwork40/afk/iso-agent-tool-7-p3r1o7 (653858b5)
+
 ## [5.270.2] - 2026-09-29
 
 ### Added
