@@ -101,7 +101,7 @@ function classifySessionType(firstPrompt: string, source: string): string {
  * preserves each id's first-seen position (call order). Events without a
  * toolUseId cannot be paired and are kept individually.
  */
-function dedupeToolEvents(events: ToolEventInput[]): ToolEventInput[] {
+export function dedupeToolEvents(events: ToolEventInput[]): ToolEventInput[] {
   const byId = new Map<string, ToolEventInput>();
   const noId: ToolEventInput[] = [];
   for (const ev of events) {
@@ -111,20 +111,20 @@ function dedupeToolEvents(events: ToolEventInput[]): ToolEventInput[] {
   return [...byId.values(), ...noId];
 }
 
-export function deriveSessionFacet(
-  session: StoredSessionInput,
-  options: DeriveOptions = {},
-): SessionFacet {
-  const turns = session.turns ?? [];
-  // When journal events are supplied (post-#2461), they replace the sidecar
-  // toolEvents for aggregation — they are already deduped by the adapter.
-  // The sidecar path is kept as the fallback for older sessions or when the
-  // journal is unavailable / disabled.
-  const allEvents: ToolEventInput[] = options.journalEvents !== undefined
-    ? options.journalEvents
-    : dedupeToolEvents(turns.flatMap((t) => t.toolEvents ?? []));
+interface AggregateToolEventsResult {
+  toolCounts: Record<string, number>;
+  toolErrorCategories: Record<string, number>;
+  subagents: SubagentInvocation[];
+  skills: string[];
+  evidencePaths: string[];
+  toolErrors: number;
+  filesWritten: number;
+  filesEdited: number;
+  bashCommands: number;
+  commits: number;
+}
 
-  // --- mechanical: tool + error aggregation ---
+function aggregateToolEvents(allEvents: ToolEventInput[]): AggregateToolEventsResult {
   const toolCounts: Record<string, number> = {};
   const toolErrorCategories: Record<string, number> = {};
   const subagents: SubagentInvocation[] = [];
@@ -187,6 +187,25 @@ export function deriveSessionFacet(
       subagents.push(label ? { tool: name, label } : { tool: name });
     }
   }
+
+  return { toolCounts, toolErrorCategories, subagents, skills, evidencePaths, toolErrors, filesWritten, filesEdited, bashCommands, commits };
+}
+
+export function deriveSessionFacet(
+  session: StoredSessionInput,
+  options: DeriveOptions = {},
+): SessionFacet {
+  const turns = session.turns ?? [];
+  // When journal events are supplied (post-#2461), they replace the sidecar
+  // toolEvents for aggregation — they are already deduped by the adapter.
+  // The sidecar path is kept as the fallback for older sessions or when the
+  // journal is unavailable / disabled.
+  const allEvents: ToolEventInput[] = options.journalEvents !== undefined
+    ? options.journalEvents
+    : dedupeToolEvents(turns.flatMap((t) => t.toolEvents ?? []));
+
+  // --- mechanical: tool + error aggregation ---
+  const { toolCounts, toolErrorCategories, subagents, skills, evidencePaths, toolErrors, filesWritten, filesEdited, bashCommands, commits } = aggregateToolEvents(allEvents);
 
   // --- semantic (heuristic) ---
   const firstPrompt = turns[0]?.user ?? '';

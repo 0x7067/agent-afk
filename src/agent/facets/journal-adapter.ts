@@ -22,7 +22,7 @@
  */
 
 import { extractRawToolInput } from './raw-input.js';
-import type { ToolEventInput } from './schema.js';
+import type { SubagentToolSummary, ToolEventInput } from './schema.js';
 import type { JournalBlock, JournalRecord, JournalResultPart } from '../journal/types.js';
 
 export interface JournalAdapterOptions {
@@ -34,21 +34,6 @@ export interface JournalAdapterOptions {
   resultTextCap?: number;
 }
 
-/** Subagent-level tool call totals for the optional breakdown field. */
-export interface SubagentToolSummary {
-  subagent_id: string;
-  tool_calls: number;
-  tool_errors: number;
-  tool_counts: Record<string, number>;
-}
-
-/** Full output of the journal adapter. */
-export interface JournalAdapterResult {
-  /** Parent-session tool events only (subagent calls excluded). */
-  toolEvents: ToolEventInput[];
-  /** Per-subagent breakdown, populated when subagent journals were supplied. */
-  subagentBreakdown: SubagentToolSummary[];
-}
 
 /** Concatenate text parts of a tool_result content array, capped at `cap` chars. */
 function extractResultText(parts: readonly JournalResultPart[], cap: number): string {
@@ -67,10 +52,6 @@ function extractResultText(parts: readonly JournalResultPart[], cap: number): st
   return out;
 }
 
-/**
- * Scan a flat list of JournalBlocks for all tool_use / tool_result blocks,
- * returning them in encounter order.
- */
 /**
  * In-memory command summary for bash calls so derive.ts can still detect
  * `git commit` (it reads `ev.input` when `inputRaw` has no `command`). Never

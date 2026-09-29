@@ -17,17 +17,7 @@
  */
 
 import type { ParallelDispatchStats, ToolEventInput } from './schema.js';
-
-/** Deduplicate events within one turn (last-write-wins by toolUseId). */
-function dedupeForParallel(events: ToolEventInput[]): ToolEventInput[] {
-  const byId = new Map<string, ToolEventInput>();
-  const noId: ToolEventInput[] = [];
-  for (const ev of events) {
-    if (ev.toolUseId === undefined) noId.push(ev);
-    else byId.set(ev.toolUseId, ev);
-  }
-  return [...byId.values(), ...noId];
-}
+import { dedupeToolEvents } from './derive.js';
 
 export function computeParallelDispatch(
   turns: Array<{ toolEvents?: ToolEventInput[] }>,
@@ -38,7 +28,7 @@ export function computeParallelDispatch(
   let toolTurns = 0;
 
   for (const turn of turns) {
-    const deduped = dedupeForParallel(turn.toolEvents ?? []);
+    const deduped = dedupeToolEvents(turn.toolEvents ?? []);
     const count = deduped.length;
     if (count === 0) continue;
 
