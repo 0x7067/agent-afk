@@ -11,6 +11,20 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.271.0] - 2026-09-29
+
+### Added
+- persist doneUnverified in schedule telemetry (1eabf0ea)
+
+### Fixed
+- address review feedback — JSDoc, record assertion, baseline (1fb0a6bb)
+
+### Changed
+- Merge pull request #2322 from griffinwork40/afk/iso-agent-tool-4-foq9u1 (fbd08d2f)
+- merge main; drop scheduler.ts filesize grandfather (fits at 350 after #2320) (2348c891)
+- Merge remote-tracking branch 'origin/main' into afk/pr2322-rebase-main (b92756e7)
+- Merge remote-tracking branch 'origin/main' into afk/pr2322-fix (6eaefd5a)
+
 ## [5.270.3] - 2026-09-29
 
 ### Fixed
