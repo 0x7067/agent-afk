@@ -81,9 +81,7 @@ jobs:
           fetch-depth: 0
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
+        uses: pnpm/action-setup@v6
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -170,7 +168,7 @@ jobs:
         if: steps.bump.outputs.release == 'true'
         run: |
           set -euo pipefail
-          pnpm version "${{ steps.bump.outputs.next }}" --no-git-tag-version
+          npm version "${{ steps.bump.outputs.next }}" --no-git-tag-version
           node scripts/generate-changelog.mjs "${{ steps.bump.outputs.next }}"
 
       - name: Commit, tag, and push (atomic + rebase-retry)
@@ -201,7 +199,7 @@ jobs:
             git tag -d "v${NEXT}"
             git fetch origin main
             git reset --hard origin/main
-            pnpm version "${NEXT}" --no-git-tag-version
+            npm version "${NEXT}" --no-git-tag-version
             node scripts/generate-changelog.mjs "${NEXT}"
           done
           echo "::error::Release push failed after 3 attempts — persistent contention on main. Re-run this job once main settles."
@@ -210,10 +208,11 @@ jobs:
       # Inline publish: the working tree already holds the bumped package.json +
       # fresh dist, and prepublishOnly rebuilds the tarball, so publish directly.
       # --provenance emits a signed attestation (needs id-token: write + a public
-      # repo + GitHub-hosted Actions — all true here).
+      # repo + GitHub-hosted Actions — all true here). npm CLI, not
+      # `pnpm publish`: see the Invariant on the publish step in publish.yml.
       - name: Publish to npm (with provenance)
         if: steps.bump.outputs.release == 'true'
-        run: pnpm publish --no-git-checks --provenance
+        run: npm publish --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
