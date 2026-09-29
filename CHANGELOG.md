@@ -11,6 +11,14 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.276.4] - 2026-09-29
+
+### Fixed
+- askedBeforeActing now detects prose questions after read-only tools (#2606) (adf452be)
+- wire --no-baseline-sample into the afk whatif CLI command (#2608) (607306b6)
+- preserve ask_question in whatif episodes so asking behavior is measurable (#2612) (24a94ce8)
+- keep POSIX semantics for /-rooted scan candidates on win32 (#2605) (887c0aed)
+
 ## [5.276.3] - 2026-09-29
 
 ### Fixed
