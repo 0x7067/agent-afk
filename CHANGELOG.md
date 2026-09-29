@@ -11,6 +11,14 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.274.0] - 2026-09-29
+
+### Added
+- add shared-context directive for interactive surfaces (f64ea156)
+
+### Changed
+- Merge pull request #2522 from griffinwork40/afk/shared-context-directive (225534b6)
+
 ## [5.273.0] - 2026-09-29
 
 ### Added
