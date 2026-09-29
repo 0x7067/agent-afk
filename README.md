@@ -30,7 +30,7 @@ afk chat "hello"             # first real conversation
 
 That's it. You're in.
 
-**Using pnpm?** `pnpm add -g agent-afk` works, but pnpm 10 blocks build scripts by default and silently skips `postinstall` (see [#2199](https://github.com/griffinwork40/agent-afk/issues/2199)). Run `pnpm approve-builds -g` after install to approve the hook, or use `npm install -g agent-afk` instead. If a launchd/systemd-supervised `afk daemon` is already running and pnpm skipped the hook, restart it manually with `afk service restart daemon`.
+**Using pnpm?** `pnpm add -g agent-afk` works, but pnpm 10 blocks build scripts by default and skips `postinstall` (with an easy-to-miss warning — see [#2199](https://github.com/griffinwork40/agent-afk/issues/2199)). Run `pnpm approve-builds -g` after install to approve the hook, or use `npm install -g agent-afk` instead. If an `afk daemon` is already running and pnpm skipped the hook, restart it manually with `afk service restart daemon` — on macOS the hook restarts the daemon automatically when it runs, but on Linux you must always run this command after an upgrade even when the hook ran.
 
 **Try without installing:** `npx agent-afk chat "hello"` runs a one-shot turn with zero global install.
 
@@ -83,8 +83,8 @@ AFK_MODEL=sonnet
 TELEGRAM_BOT_TOKEN=1234567890:ABC...
 AFK_TELEGRAM_ALLOWED_CHAT_IDS=12345678
 
-# Per-task safety rails
-AFK_MAX_BUDGET_USD=5.00
+# Optional per-session cost cap (unset = no limit)
+# AFK_MAX_BUDGET_USD=5.00
 ```
 
 **Project-scoped system prompt.** Drop an `AFK.md` at your project root and `afk` appends it to its built-in framework prompt whenever you run from that directory — your instructions layer on top of the base, they don't replace it. No frontmatter needed.

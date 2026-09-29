@@ -50,7 +50,7 @@ export function makeSessionStartSkipRecord(
 ): TelemetryRecord {
   return {
     taskId: task.taskId,
-    command: task.command,
+    command: redactInlineSecrets(task.command),
     trigger: 'sessionstart',
     ...(task.cronExpression !== undefined ? { cronExpression: task.cronExpression } : {}),
     triggeredAt: new Date(nowMs).toISOString(),

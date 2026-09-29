@@ -63,7 +63,14 @@ export function buildDaemonSessionFactory(
     // Ephemeral abort controller — the daemon root session has no parent
     // to propagate cancellation from.
     const abortCtrl = new AbortController();
-    const stubParent = createStubParentSession(abortCtrl.signal);
+    // Deferred journal view: the session is built after the executors, so the
+    // parent exposes its journal lazily via `bound` (bootstrap-infra pattern).
+    // Forks journal to `messageJournal.forSubagent(id)`, never the parent's file.
+    let bound: AgentSession | undefined;
+    const stubParent = {
+      ...createStubParentSession(abortCtrl.signal),
+      get messageJournal() { return bound?.messageJournal; },
+    };
 
     // Invariant: ONE root manager per session, shared by all three executors.
     // The scheduler (scheduler.ts:spawnSession) already opened a per-tick trace
@@ -97,6 +104,10 @@ export function buildDaemonSessionFactory(
       // task's working directory — the core requirement for fixing grep/glob
       // timeouts in cron tasks that pin to a repo.
       // Precedence (already resolved by session-spawn.ts): task.cwd ?? AFK_DAEMON_CWD ?? process.cwd().
+      // Note: the opts.cwd fallback branch is unreachable in production because
+      // session-spawn.ts always sets config.cwd (line 179). It is retained as a
+      // test-only escape hatch for unit tests that call buildDaemonSessionFactory
+      // directly without going through spawnDaemonSession.
       ...(config.cwd !== undefined ? { cwd: config.cwd, nestedCwd: config.cwd } : (opts.cwd !== undefined ? { cwd: opts.cwd, nestedCwd: opts.cwd } : {})),
       ...(config.traceWriter !== undefined
         ? { traceWriter: config.traceWriter, skillTraceWriter: config.traceWriter }
@@ -167,6 +178,7 @@ export function buildDaemonSessionFactory(
         ? { maxToolUseIterations: daemonMaxToolUseIterations }
         : {}),
     }))), ownedTraceWriter);
+    bound = session;
     // Subagent-success rollup: wire both the root manager and the compose
     // executor so all subagent token/cost data (including compose DAG nodes)
     // accumulates into this session's session_sealed telemetry. Late-bound

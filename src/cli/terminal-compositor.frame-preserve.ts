@@ -171,7 +171,7 @@ export function preserveRowsBeforeFrameRender(self: FrameHost, desiredTopRow: nu
   // pending case can reach here with anchorRow > 1.
   //
   // Trigger (same signal as the !hasBanner eviction, anchored at floor):
-  //   • overlayCollapsed (overlay is '' — turn has ended, frame at settled height)
+  //   • overlayCollapsed && contentHugFrameSettled (content-hug: also no open dropdown)
   //   • hasPending (some model rows never painted)
   //   • bandLen > room (= desiredTopRow - floor) — band won't all fit above frame
   //   • !commitInFlight && room > 0 (not mid-commit; room exists above frame)

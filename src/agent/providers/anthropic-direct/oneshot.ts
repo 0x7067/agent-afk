@@ -88,8 +88,11 @@ export async function oneShotCompletion(input: OneShotInput): Promise<string> {
   // without it the API answers 429 rate_limit_error for every non-haiku model,
   // which made one-shot callers silently haiku-only under OAuth.
   const prefix = buildSystemPrefix(mode);
+  // buildSystemPrefix only ever returns text blocks; cast so the SDK's
+  // system param (string | TextBlockParam[]) is satisfied without the dead
+  // flatMap filter that would silently drop future non-text blocks.
   const systemParam = prefix
-    ? [...prefix.flatMap((b) => (b.type === 'text' ? [{ type: 'text' as const, text: b.text }] : [])), { type: 'text' as const, text: system }]
+    ? ([...prefix, { type: 'text' as const, text: system }] as Anthropic.Messages.TextBlockParam[])
     : system;
 
   const response = await client.messages.create(

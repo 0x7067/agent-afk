@@ -1312,6 +1312,76 @@ describe('SessionToolDispatcher', () => {
         expect(state.peak).toBe(3);
       });
     });
+
+    // Issue #2249: per-call completedAt in parallel batches
+    it('stamps completedAt per-call so fast and slow parallel calls have distinct timestamps', async () => {
+      // Fast call resolves in ~5ms; slow call resolves in ~80ms.
+      // After executeBatch both results must have completedAt set and the
+      // fast call's completedAt must be earlier than the slow call's by a
+      // meaningful margin (>30ms) — proving each call captured its OWN
+      // settle time rather than the batch's end time.
+      const fastHandler: ToolHandler = async () => {
+        await new Promise((r) => setTimeout(r, 5));
+        return { content: 'fast' };
+      };
+      const slowHandler: ToolHandler = async () => {
+        await new Promise((r) => setTimeout(r, 80));
+        return { content: 'slow' };
+      };
+      const dispatcher = makeDispatcher({
+        handlers: new Map([['read_file', fastHandler], ['glob', slowHandler]]),
+        permissions: { allowedTools: ['read_file', 'glob'] },
+      });
+
+      const results = await dispatcher.executeBatch([
+        makeBatchCall('read_file', 'fast-id'),
+        makeBatchCall('glob', 'slow-id'),
+      ]);
+
+      const fastResult = results[0]!;
+      const slowResult = results[1]!;
+      expect(fastResult.content).toBe('fast');
+      expect(slowResult.content).toBe('slow');
+      // Both must have completedAt set.
+      expect(typeof fastResult.completedAt).toBe('number');
+      expect(typeof slowResult.completedAt).toBe('number');
+      // Fast call must have settled well before the slow call.
+      expect(slowResult.completedAt! - fastResult.completedAt!).toBeGreaterThan(30);
+    });
+
+    it('stamps completedAt on sequential batch calls', async () => {
+      // Sequential (unsafe) calls run one-after-another; each must still
+      // have its own completedAt stamp. Use bash (sequential tool) directly.
+      const firstHandler: ToolHandler = async () => {
+        await new Promise((r) => setTimeout(r, 5));
+        const result = { content: 'first' };
+        return result;
+      };
+      const secondHandler: ToolHandler = async () => {
+        await new Promise((r) => setTimeout(r, 5));
+        return { content: 'second' };
+      };
+      const dispatcher = makeDispatcher({
+        handlers: new Map([
+          ['bash', firstHandler],
+          ['write_file', secondHandler],
+        ]),
+        permissions: { allowedTools: ['bash', 'write_file'] },
+      });
+
+      // bash and write_file are both sequential (concurrency-unsafe) so they
+      // run in two separate sequential batches: [bash] then [write_file].
+      const results = await dispatcher.executeBatch([
+        makeBatchCall('bash', 'seq-1'),
+        makeBatchCall('write_file', 'seq-2'),
+      ]);
+      expect(results[0]!.content).toBe('first');
+      expect(results[1]!.content).toBe('second');
+      expect(typeof results[0]!.completedAt).toBe('number');
+      expect(typeof results[1]!.completedAt).toBe('number');
+      // Sequential: second completes after first.
+      expect(results[1]!.completedAt!).toBeGreaterThanOrEqual(results[0]!.completedAt!);
+    });
   });
 
   // ---------------------------------------------------------------------------

@@ -33,7 +33,7 @@ import { redactInlineSecrets } from '../session/prompt-dump.js';
 import { ScheduledTask, validateScheduledTask } from './triggers.js';
 import { runBuiltinTask } from './builtin-task.js';
 import { runShellTask } from './shell-task.js';
-import { checkTaskCwdAtRuntime } from './cwd-validator.js';
+import { checkTaskCwdAtRuntime, warnIfBuiltinHasCwd } from './cwd-validator.js';
 export { resolveWorktreePruneRoot } from './worktree-prune-task.js';
 export { daemonTraceLabel } from './session-spawn.js';
 import { spawnDaemonSession } from './session-spawn.js';
@@ -178,7 +178,7 @@ export class CronScheduler {
   private pullPollTimer: ReturnType<typeof setInterval> | undefined;
   private isDequeuing = false;
   private readonly queueDir: string;
-  /** Per-task in-flight guard: IDs of tasks whose runOnce promise is still pending. */
+  /** Per-task in-flight guard: IDs of tasks whose runOnce promise is still pending. Intra-process only — no cross-process coordination. */
   private readonly inFlightTaskIds = new Set<string>();
   // TODO(#337-hook): hook-driven dequeue path will share isDequeuing mutex
 
@@ -227,6 +227,7 @@ export class CronScheduler {
   /**
    * Run one tick of `taskId` immediately, bypassing the cron timer and gates.
    * Used by `--once` CLI mode and by tests. Recorded as `trigger: 'cron'`.
+   * Note: subject to the per-task in-flight overlap guard (see {@link CronScheduler.inFlightTaskIds}).
    */
   async tick(taskId: string): Promise<TelemetryRecord> {
     const entry = this.registry.get(taskId);
@@ -317,35 +318,13 @@ export class CronScheduler {
     }
     this.inFlightTaskIds.add(task.taskId);
     try {
-    // Runtime cwd guard: fail loudly when the pinned directory has vanished
-    // rather than silently falling back to $HOME (which would re-introduce the
-    // grep/glob timeout regression this feature was designed to fix).
-    if (task.cwd !== undefined) {
-      const cwdError = checkTaskCwdAtRuntime(task.cwd);
-      if (cwdError !== undefined) {
-        const triggeredAt = new Date(this.now());
-        const record: TelemetryRecord = {
-          taskId: task.taskId,
-          command: redactInlineSecrets(task.command),
-          trigger,
-          ...(task.cronExpression !== undefined ? { cronExpression: task.cronExpression } : {}),
-          triggeredAt: triggeredAt.toISOString(),
-          durationMs: 0,
-          status: 'error',
-          errorMessage: redactInlineSecrets(cwdError),
-        };
-        this.writeTelemetry(record, task);
-        return record;
-      }
-    }
-    // Dispatch by executor type -- default to 'agent' for backward compat.
-    // History: single legacy compat point for un-migrated schedules.json entries
-    // that predate executor: 'builtin'. Remove once all deployments have cycled
-    // through a migration write (target: after next major release).
+    // Resolve executor early so the cwd guard can skip builtin tasks (which
+    // ignore cwd entirely and would produce spurious errors if the dir vanishes).
     const isLegacySentinel = task.command === '__BUILTIN_WORKTREE_PRUNE__';
     const executor = task.executor
       ?? (isLegacySentinel ? 'builtin' as const : 'agent' as const);
     if (executor === 'builtin') {
+      warnIfBuiltinHasCwd(task);
       // Normalize the legacy sentinel to the canonical builtin name here --
       // the single compat point -- so runBuiltinTask only sees canonical names.
       const normalizedTask = isLegacySentinel
@@ -355,6 +334,26 @@ export class CronScheduler {
         now: this.now, telemetryPath: () => this.telemetryPath(),
         writeTelemetry: (r) => this.writeTelemetry(r, task),
       });
+    }
+    // Runtime cwd guard: fail loudly when the pinned directory has vanished
+    // rather than silently falling back to $HOME. Skipped for builtin tasks
+    // (handled above) because builtins ignore cwd entirely.
+    if (task.cwd !== undefined) {
+      const cwdError = checkTaskCwdAtRuntime(task.cwd);
+      if (cwdError !== undefined) {
+        const record: TelemetryRecord = {
+          taskId: task.taskId,
+          command: redactInlineSecrets(task.command),
+          trigger,
+          ...(task.cronExpression !== undefined ? { cronExpression: task.cronExpression } : {}),
+          triggeredAt: new Date(this.now()).toISOString(),
+          durationMs: 0,
+          status: 'error',
+          errorMessage: redactInlineSecrets(cwdError),
+        };
+        this.writeTelemetry(record, task);
+        return record;
+      }
     }
     if (executor === 'shell') {
       this.idleDetector.increment();
@@ -439,7 +438,9 @@ export class CronScheduler {
         ...baseRecord,
         durationMs: this.now() - startTimeMs,
         status: 'success',
-        responseExcerpt: responseText.slice(0, 280),
+        responseExcerpt: responseText.length > 280
+          ? `${responseText.slice(0, 280)}… [truncated]`
+          : responseText,
       };
       this.writeTelemetry(record, task, { responseText, ...(doneUnverified ? { doneUnverified: true } : {}) });
       return record;
