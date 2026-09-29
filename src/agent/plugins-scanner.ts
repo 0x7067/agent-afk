@@ -17,6 +17,7 @@
  */
 
 import type { SdkPluginConfig } from './types/sdk-types.js';
+import { findPluginDirs } from '../config/plugin-discovery.js';
 import type { SourceEnabledMap } from '../config/import-sources.js';
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'fs';
 import { join, resolve as resolvePath } from 'path';
@@ -132,7 +133,14 @@ export function scanLocalPlugins(
   const indexPath = dir === getPluginsDir() ? getPluginsIndexPath() : join(dir, '.index.json');
   const index = readIndex(indexPath);
   const plugins: SdkPluginConfig[] = [];
-  walk(dir, dir, 0, plugins, new Set<string>(), index.plugins, trustAll, sourceEnabled);
+  if (trustAll) {
+    const seen = new Set<string>();
+    for (const plugin of findPluginDirs(dir)) {
+      walk(dir, plugin.path, 0, plugins, seen, index.plugins, true, sourceEnabled);
+    }
+  } else {
+    walk(dir, dir, 0, plugins, new Set<string>(), index.plugins, false, sourceEnabled);
+  }
   scanCache.set(cacheKey, plugins);
   return [...plugins];
 }

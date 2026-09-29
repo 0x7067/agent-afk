@@ -170,6 +170,36 @@ describe('readSourceEnabledState', () => {
 });
 
 describe('detectSources', () => {
+  it('selects registered global installs instead of old caches and marketplace copies', () => {
+    const root = join(home, '.claude', 'plugins');
+    for (const version of ['1.0', '2.0']) writePlugin(join(root, 'cache', 'mp', version), 'demo');
+    writePlugin(join(root, 'marketplaces', 'mp'), 'demo');
+    writePlugin(root, 'project-only');
+    const active = join(root, 'cache', 'mp', '2.0', 'demo');
+    writeFileSync(join(root, 'installed_plugins.json'), JSON.stringify({ version: 2, plugins: {
+      'demo@mp': [{ scope: 'user', installPath: active }, { scope: 'managed', installPath: active }],
+      'project-only@mp': [{ scope: 'local', installPath: join(root, 'project-only') }],
+    } }));
+    expect(detectSources(home).find((s) => s.binary === 'claude-code')?.plugins)
+      .toEqual([{ name: 'demo', path: active }]);
+  });
+
+  it('does not load cached plugins when the installed registry is empty or malformed', () => {
+    const root = join(home, '.claude', 'plugins');
+    writePlugin(root, 'stale');
+    for (const content of ['{', JSON.stringify({ version: 2, plugins: {} })]) {
+      writeFileSync(join(root, 'installed_plugins.json'), content);
+      expect(detectSources(home).find((s) => s.binary === 'claude-code')?.plugins).toEqual([]);
+    }
+  });
+
+  it('deduplicates fallback discovery without an installed registry', () => {
+    const root = join(home, '.codex', 'plugins');
+    writePlugin(join(root, 'a'), 'demo');
+    writePlugin(join(root, 'b'), 'demo');
+    expect(detectSources(home).find((s) => s.binary === 'codex')?.plugins).toHaveLength(1);
+  });
+
   it('marks a binary not-present when nothing exists', () => {
     const sources = detectSources(home);
     const claude = sources.find((s) => s.binary === 'claude-code')!;

@@ -36,6 +36,18 @@ afterEach(() => {
 });
 
 describe('plugins-scanner', () => {
+  it('loads only the registered version for trusted imports and preserves disabled state', () => {
+    const old = join(tmpHome, 'cache', 'mp', 'test', '1.0');
+    const active = join(tmpHome, 'cache', 'mp', 'test', '2.0');
+    writePluginManifest(old);
+    writePluginManifest(active);
+    writeFileSync(join(tmpHome, 'installed_plugins.json'), JSON.stringify({ version: 2, plugins: {
+      'test@mp': [{ scope: 'user', installPath: active }],
+    } }));
+    expect(scanLocalPlugins(tmpHome, { trustAll: true })).toEqual([{ type: 'local', path: active }]);
+    expect(scanLocalPlugins(tmpHome, { trustAll: true, sourceEnabled: new Map([['test@mp', false]]) })).toEqual([]);
+  });
+
   it('returns [] when the plugins dir does not exist', () => {
     expect(scanLocalPlugins(join(tmpHome, 'missing'))).toEqual([]);
   });
