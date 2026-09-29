@@ -55,7 +55,8 @@ export function createPreexistingLedgerHook(): HookHandler {
     const sessionId = context.sessionId;
     if (!sessionId) return {};
     try {
-      runLedgerWrite(sessionId, context.cwd ?? '');
+      const texts = resolveAssistantTexts(sessionId, context.assistantTexts);
+      if (texts) runLedgerWrite(sessionId, context.cwd ?? '', texts);
     } catch (err) {
       debugLog(`${LOG_PREFIX} unhandled error during session-end hook:`, String(err));
     }
@@ -76,19 +77,31 @@ function dedupeRecords(records: LedgerRecord[]): LedgerRecord[] {
   return out;
 }
 
-function runLedgerWrite(sessionId: string, cwd: string): void {
+/**
+ * Prefer the in-memory assistant texts threaded on the SessionEnd context:
+ * one-shot `afk chat`, daemon, and web sessions never write a sidecar, so a
+ * sidecar-only read records nothing for them. Fall back to the sidecar for
+ * callers that do not thread texts (older call sites, tests).
+ */
+export function resolveAssistantTexts(
+  sessionId: string,
+  fromContext: readonly string[] | undefined,
+): readonly string[] | undefined {
+  if (fromContext && fromContext.length > 0) return fromContext;
   const session = loadStoredSession(sessionId, getSessionsDir());
   if (!session) {
-    debugLog(`${LOG_PREFIX} session not found: ${sessionId}`);
-    return;
+    debugLog(`${LOG_PREFIX} no in-memory turns and no session sidecar: ${sessionId}`);
+    return undefined;
   }
+  return session.turns.map((t) => t.assistant ?? '');
+}
+
+function runLedgerWrite(sessionId: string, cwd: string, texts: readonly string[]): void {
   const ts = new Date().toISOString();
   const repo = cwd || '';
   const records: LedgerRecord[] = [];
-  for (let i = 0; i < session.turns.length; i++) {
-    const turn = session.turns[i];
-    if (!turn) continue;
-    const assistantText = turn.assistant ?? '';
+  for (let i = 0; i < texts.length; i++) {
+    const assistantText = texts[i] ?? '';
     if (!assistantText) continue;
     const entries = detectInText(assistantText);
     for (const entry of entries) {

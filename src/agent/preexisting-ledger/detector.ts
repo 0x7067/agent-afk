@@ -257,7 +257,9 @@ export function detectInText(text: string): DetectedEntry[] {
     if (loci.length === 0) continue;
     results.push({
       signal: 'deferred-bullet',
-      category: classifyCategory(loci),
+      // Body-aware, like the sentence signal: "src/x.ts is over the size
+      // ceiling" names only a path, so loci alone would classify it 'other'.
+      category: categoryForSentence(body, loci),
       loci,
     });
   }

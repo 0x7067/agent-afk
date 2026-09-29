@@ -172,6 +172,7 @@ export class AgentSession implements IAgentSession {
       getSessionId: () => this.sessionId,
       ownedTraceWriter: this.ownedTraceWriter,
       ownsTraceSeal: this.ownsTraceSeal,
+      getAssistantTexts: () => this.conversationHistory.filter((m) => m.role === 'assistant').map((m) => m.content),
     });
 
     // Witness layer: mark the start of provider/SDK initialization so

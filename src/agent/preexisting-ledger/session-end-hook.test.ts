@@ -143,3 +143,40 @@ describe('createPreexistingLedgerHook', () => {
     expect(() => hook(endCtx())).not.toThrow();
   });
 });
+
+describe('createPreexistingLedgerHook — in-memory assistant texts (no sidecar surfaces)', () => {
+  beforeEach(() => {
+    mockLoadSession.mockReset();
+    delete process.env['AFK_PREEXISTING_LEDGER_DISABLE'];
+    delete process.env['AFK_HOME'];
+  });
+
+  it('records from context.assistantTexts without reading a sidecar', async () => {
+    const tmpHome = makeTempAfkHome();
+    process.env['AFK_HOME'] = tmpHome;
+    mockLoadSession.mockReturnValue(undefined);
+
+    const { createPreexistingLedgerHook } = await import('./session-end-hook.js');
+    const hook = createPreexistingLedgerHook();
+    hook(endCtx({
+      cwd: '/repo/oneshot',
+      assistantTexts: ['hello', 'main is already red: `scan:env:check` fails, pre-existing'],
+    }));
+
+    expect(mockLoadSession).not.toHaveBeenCalled();
+    const lines = readFileSync(join(tmpHome, 'agent-framework', 'preexisting-ledger.jsonl'), 'utf8')
+      .trim().split('\n').filter(Boolean);
+    expect(lines).toHaveLength(1);
+    const record = JSON.parse(lines[0]!) as Record<string, unknown>;
+    expect(record['turn']).toBe(1);
+    expect(record['loci']).toContain('scan:env:check');
+    expect(record['repo']).toBe('/repo/oneshot');
+  });
+
+  it('falls back to the sidecar when context texts are empty', async () => {
+    mockLoadSession.mockReturnValue(undefined);
+    const { resolveAssistantTexts } = await import('./session-end-hook.js');
+    expect(resolveAssistantTexts('sess-x', [])).toBeUndefined();
+    expect(mockLoadSession).toHaveBeenCalledTimes(1);
+  });
+});

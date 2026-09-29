@@ -135,6 +135,12 @@ describe('detectInText — Deferred bullet positives', () => {
     expect(entry).toBeDefined();
     expect(entry?.loci.some((l) => l.includes('session.ts'))).toBe(true);
   });
+
+  it('classifies a size-ceiling Deferred: bullet from its body, not just its loci', () => {
+    const text = '- Deferred: src/agent/session.ts is over the size ceiling';
+    const entry = detectInText(text).find((r) => r.signal === 'deferred-bullet');
+    expect(entry?.category).toBe('size-ceiling');
+  });
 });
 
 // ---------------------------------------------------------------------------

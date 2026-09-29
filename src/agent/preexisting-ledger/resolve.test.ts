@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveLocusPath } from './resolve.js';
+import { findLocusMatches, resolveLocusPath } from './resolve.js';
 
 const FILES = [
   'src/agent/providers/anthropic-direct.test.ts',
@@ -31,5 +31,18 @@ describe('resolveLocusPath', () => {
 
   it('returns undefined when nothing tracked matches', () => {
     expect(resolveLocusPath('gone.ts', FILES)).toBeUndefined();
+  });
+});
+
+describe('resolveLocusPath — ambiguity', () => {
+  const MULTI = ['src/browser/config.test.ts', 'src/cli/config.test.ts', 'src/index.ts'];
+
+  it('refuses a bare name that matches several tracked files', () => {
+    expect(resolveLocusPath('config.test.ts', MULTI)).toBeUndefined();
+    expect(findLocusMatches('config.test.ts', MULTI)).toHaveLength(2);
+  });
+
+  it('still resolves a disambiguating partial path', () => {
+    expect(resolveLocusPath('cli/config.test.ts', MULTI)).toBe('src/cli/config.test.ts');
   });
 });

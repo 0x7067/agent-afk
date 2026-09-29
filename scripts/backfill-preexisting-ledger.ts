@@ -22,7 +22,7 @@ import { execFileSync } from 'node:child_process';
 import { getTranscriptsDir } from '../src/paths.js';
 import { detectInText } from '../src/agent/preexisting-ledger/detector.js';
 import { getPreexistingBackfillPath } from '../src/agent/preexisting-ledger/paths.js';
-import { resolveLocusPath } from '../src/agent/preexisting-ledger/resolve.js';
+import { findLocusMatches, resolveLocusPath } from '../src/agent/preexisting-ledger/resolve.js';
 
 // ---------------------------------------------------------------------------
 // CLI flags
@@ -130,6 +130,8 @@ interface LivenessResult {
   codeLines?: number | null;
   vitestResult?: 'pass' | 'fail' | 'skip' | 'error';
   recheckCmd?: string;
+  /** Tracked files a bare/partial locus matches when it names more than one. */
+  ambiguous?: string[];
 }
 
 function countCodeLines(filePath: string): number | null {
@@ -202,6 +204,11 @@ function checkLiveness(cluster: Cluster, repoCwd: string, runVitest_: boolean): 
   const { locus, category } = cluster;
   // Gate-style locus (has colons)
   if (locus.includes(':')) return checkGateLiveness(locus);
+  // A bare or partial name that matches several tracked files cannot be
+  // checked honestly: running or measuring the first match reports the
+  // liveness of a file the agent may never have meant.
+  const matches = findLocusMatches(locus, trackedFiles(repoCwd));
+  if (matches.length > 1) return { ambiguous: matches };
   // Test file
   if (/\.(test|spec)\.[jt]sx?/.test(locus)) {
     if (runVitest_) {
@@ -243,7 +250,9 @@ function renderMarkdown(clusters: Cluster[], liveness: Map<string, LivenessResul
     const c = top[i]!;
     const lr = liveness.get(c.locus) ?? {};
     let livenessStr = '';
-    if (lr.fileExists !== undefined) {
+    if (lr.ambiguous) {
+      livenessStr = `ambiguous (${lr.ambiguous.length} files)`;
+    } else if (lr.fileExists !== undefined) {
       livenessStr = lr.fileExists
         ? `exists${lr.codeLines != null ? ` (${lr.codeLines} loc)` : ''}`
         : 'NOT FOUND';
@@ -326,7 +335,8 @@ async function main(): Promise<void> {
     const c = clusters[i]!;
     const lr = livenessMap.get(c.locus) ?? {};
     let ls = '-';
-    if (lr.fileExists !== undefined) ls = lr.fileExists ? `exists (${lr.codeLines ?? '?'} loc)` : 'NOT FOUND';
+    if (lr.ambiguous) ls = `ambiguous (${lr.ambiguous.length} files)`;
+    else if (lr.fileExists !== undefined) ls = lr.fileExists ? `exists (${lr.codeLines ?? '?'} loc)` : 'NOT FOUND';
     else if (lr.vitestResult) ls = `vitest:${lr.vitestResult}`;
     else if (lr.recheckCmd) ls = `recheck:pnpm ${c.locus}`;
     console.log(`  ${i + 1} | ${c.locus} | ${c.sessionCount} | ${c.lastSeen} | ${ls}`);

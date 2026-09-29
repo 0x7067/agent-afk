@@ -28,6 +28,16 @@ Only structured data — never transcript prose:
 Alongside `forge-telemetry.jsonl` and `routing-decisions.jsonl` — AFK-surface
 telemetry that spans sessions, not per-session state.
 
+## Where the hook reads text from
+
+The hook prefers `SessionEndContext.assistantTexts`, the assistant messages from
+the session's in-memory history, threaded by `SessionShutdown`. One-shot
+`afk chat`, daemon, and web sessions never write a session sidecar, so a
+sidecar-only read would record nothing for them. When the context carries no
+texts, the hook falls back to `loadStoredSession`. `assistantTexts` stays
+in-process: command hooks receive an explicit field allowlist
+(`buildStdinPayload`), so this text never reaches an external hook process.
+
 ## Deduplication on read
 
 The hook deduplicates within a single session end: two detections for the same
@@ -75,6 +85,13 @@ AFK_PREEXISTING_LEDGER_DISABLE=1 afk chat "..."
 Or add it to `~/.afk/config/afk.env`.
 
 ## Backfill
+
+Liveness in the backfill resolves prose loci (bare names, partial paths)
+against `git ls-files`. A name that matches more than one tracked file (for
+example `config.test.ts`, which exists under both `src/browser/` and
+`src/cli/`) is reported as `ambiguous (N files)` rather than checked, because
+testing the first match would report the wrong file's status.
+
 
 The one-time backfill script scans `~/.afk/state/transcripts/*.md`, reuses the
 same detector, clusters by normalized locus, and ranks by distinct sessions + recency.
