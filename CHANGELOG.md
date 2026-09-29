@@ -11,6 +11,17 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.274.7] - 2026-09-29
+
+### Fixed
+- address advisory findings from #2494 review (9ba5a742)
+
+### Changed
+- Merge pull request #2566 from griffinwork40/afk/pnpm-11-migration (0446aec3)
+- Merge pull request #2548 from griffinwork40/afk/iso-agent-tool-16-sw8jmm (deeea47a)
+- raise Node floor to 22.13 to match pnpm 11 (4066f2f0)
+- migrate to pnpm 11 (531c8031)
+
 ## [5.274.6] - 2026-09-29
 
 ### Fixed
