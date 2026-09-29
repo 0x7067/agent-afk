@@ -134,6 +134,7 @@ import {
 } from './query/request-body.js';
 import { FastTierSession, type FastTierOptions } from './query/fast-tier-session.js';
 import { chatGptClaudeModelError, clarifyResponsesError } from './query/chatgpt-backend-errors.js';
+import { runIterationWithOverloadPause } from './query/overload-pause-tier.js';
 
 // Re-exported from the extracted query/ submodules so existing import sites
 // (sibling tests + index.ts) keep resolving these from './query.js'.
@@ -604,7 +605,16 @@ export class OpenAICompatibleQuery implements ProviderQuery {
         return;
       }
 
-      const result = yield* this.runIteration(controller, vision, windDownReason);
+      const result = yield* runIterationWithOverloadPause(
+        () => this.runIteration(controller, vision, windDownReason),
+        {
+          surface: this.opts.config.surface,
+          traceWriter: this.traceWriter,
+          signal: controller.signal,
+          isClosed: () => this.closed,
+          sessionId: this.initSessionId,
+        },
+      );
       if (result === null) {
         // runIteration bailed: either an abort/close (no event was yielded) or
         // a real stream error (an `error` event was already yielded). Mirror
