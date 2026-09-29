@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.271.1] - 2026-09-29
+
+### Fixed
+- load plugins nested under a marketplace root plugin (#2456) (8b57cb81)
+
 ## [5.271.0] - 2026-09-29
 
 ### Added
