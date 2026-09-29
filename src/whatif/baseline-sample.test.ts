@@ -28,6 +28,7 @@ import {
   type PredictionBaselineSample,
 } from './baseline-sample.js';
 import { runWhatif, WhatifMdeError } from './run.js';
+import { getWhatifDir } from '../paths.js';
 import { headroomForPrediction, mdeForN } from './mde.js';
 import type {
   AgentRunner,
@@ -731,6 +732,18 @@ describe('runWhatif — measured baseline gate end to end (#2511)', () => {
     expect((err as Error).message).toContain('--no-baseline-sample');
     // Only the K sample episodes ran: the full run never started.
     expect((runner.run as ReturnType<typeof vi.fn>).mock.calls.length).toBe(BASELINE_SAMPLE_K);
+    // The refusal leaves evidence: refused.json with the measurements and spend.
+    const runDirs = await fsp.readdir(getWhatifDir());
+    const refused = await Promise.all(runDirs.map((d) =>
+      fsp.readFile(path.join(getWhatifDir(), d, 'refused.json'), 'utf8').catch(() => undefined)));
+    const records = refused.filter((r): r is string => r !== undefined).map((r) => JSON.parse(r) as {
+      predictionId: string; reason: string; sampleAgentCostUsd: number; baselineSample: PredictionBaselineSample[];
+    });
+    expect(records).toHaveLength(1);
+    expect(records[0]?.predictionId).toBe('p1');
+    expect(records[0]?.reason).toContain('--no-baseline-sample');
+    expect(records[0]?.sampleAgentCostUsd).toBeGreaterThan(0);
+    expect(records[0]?.baselineSample[0]?.tripped).toBe(true);
   });
 });
 

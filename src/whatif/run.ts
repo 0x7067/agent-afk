@@ -353,6 +353,7 @@ export async function runWhatif(
         await resolvedJudge.close?.();
         await crossCheckJudge?.close?.();
       },
+      runDir,
     });
 
     deps.onProgress?.({ stage: 'run', message: 'Running episodes' });

@@ -169,6 +169,8 @@ export interface BaselineSamplePhaseInput {
   signal?: AbortSignal;
   onProgress?: (p: import('./types.js').WhatifProgress) => void;
   closeJudges: () => Promise<void>;
+  /** Run directory; a refusal writes `refused.json` here so its evidence and spend survive. */
+  runDir: string;
 }
 
 /**
@@ -181,26 +183,57 @@ export async function runBaselineSamplePhase(
 ): Promise<BaselineSampleResult | undefined> {
   const {
     noBaselineSample, predictions, episodes, baseline, runner, judge,
-    episodeTimeoutMs, maxTurns, signal, onProgress, closeJudges,
+    episodeTimeoutMs, maxTurns, signal, onProgress, closeJudges, runDir,
   } = input;
   if (noBaselineSample || predictions.length === 0) return undefined;
   try {
-    return await runBaselineSample({
+    const result = await runBaselineSample({
       predictions,
       episodes,
       baseline,
       runner,
       judge,
       runnerOpts: { timeoutMs: episodeTimeoutMs, maxTurns, signal },
-      // --force deliberately does not bypass a measured no-headroom refusal
-      // (see baseline-sample.ts); --no-baseline-sample is the override.
-      warnOnly: false,
+      // Sample every prediction first (warnOnly), then refuse below, so the
+      // refusal record covers all predictions rather than only the first trip.
+      warnOnly: true,
       signal,
       onProgress,
     });
+    // --force deliberately does not bypass a measured no-headroom refusal
+    // (see baseline-sample.ts); --no-baseline-sample is the override.
+    if (result.firstTrip) {
+      await persistRefusal(runDir, result);
+      const { fullRunProbes, message, predictionId } = result.firstTrip;
+      throw new WhatifMdeError(fullRunProbes, message, { kind: 'headroom', predictionId });
+    }
+    return result;
   } catch (sampleErr) {
     await closeJudges();
     throw sampleErr;
+  }
+}
+
+/**
+ * Write `refused.json` so a refused run keeps what the gate measured and what
+ * the sample cost (otherwise the run dir is empty and the spend is invisible).
+ * Best-effort: a write failure must not mask the refusal itself.
+ */
+async function persistRefusal(runDir: string, result: BaselineSampleResult): Promise<void> {
+  const { writeFile } = await import('node:fs/promises');
+  const { join } = await import('node:path');
+  const record = {
+    refusedAt: new Date().toISOString(),
+    reason: result.firstTrip?.message,
+    predictionId: result.firstTrip?.predictionId,
+    sampleAgentCostUsd: result.agentCostUsd,
+    sampleCostNote: 'Agent episodes only; judge calls are not included.',
+    baselineSample: result.perPrediction,
+  };
+  try {
+    await writeFile(join(runDir, 'refused.json'), JSON.stringify(record, null, 2) + '\n');
+  } catch (err) {
+    console.warn(`[whatif] could not write refused.json: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 

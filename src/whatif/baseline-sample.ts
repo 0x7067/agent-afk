@@ -79,6 +79,13 @@ export interface BaselineSampleResult {
   perPrediction: PredictionBaselineSample[];
   /** True if any prediction tripped the headroom gate. */
   anyTripped: boolean;
+  /**
+   * Agent spend of the sample episodes (sum of trace costUsd). Judge calls are
+   * not included: the judge interface does not report per-call cost.
+   */
+  agentCostUsd: number;
+  /** The first prediction that tripped, with its refusal message (warnOnly runs). */
+  firstTrip?: { predictionId: string; fullRunProbes: number; message: string };
 }
 
 // ---------------------------------------------------------------------------
@@ -151,6 +158,8 @@ export async function runBaselineSample(input: {
 
   const perPrediction: PredictionBaselineSample[] = [];
   let anyTripped = false;
+  let agentCostUsd = 0;
+  let firstTrip: BaselineSampleResult['firstTrip'];
 
   for (const pred of predictions) {
     if (signal?.aborted) break;
@@ -180,6 +189,7 @@ export async function runBaselineSample(input: {
         // Non-fatal: skip this probe.
         continue;
       }
+      agentCostUsd += trace.costUsd ?? 0;
       if (trace.error) continue;
 
       // Grade the prediction's testQuestion on this trace.
@@ -230,12 +240,12 @@ export async function runBaselineSample(input: {
         `leaving at most ${headroomPp}pp of room; ${fullRunProbes} probes can only detect shifts ` +
         `≥${mdePp}pp, so this run cannot confirm it.`;
       onProgress?.({ stage: 'preflight', message: line });
+      const message =
+        `${line} More probes will not fix this; choose probes where the baseline leaves room, ` +
+        'or pass --no-baseline-sample to run anyway.';
+      firstTrip ??= { predictionId: pred.id, fullRunProbes, message };
       if (!warnOnly) {
-        throw new WhatifMdeError(
-          fullRunProbes,
-          `${line} More probes will not fix this; choose probes where the baseline leaves room, or pass --no-baseline-sample to run anyway.`,
-          { kind: 'headroom', predictionId: pred.id },
-        );
+        throw new WhatifMdeError(fullRunProbes, message, { kind: 'headroom', predictionId: pred.id });
       }
     }
 
@@ -249,5 +259,5 @@ export async function runBaselineSample(input: {
     });
   }
 
-  return { perPrediction, anyTripped };
+  return { perPrediction, anyTripped, agentCostUsd, ...(firstTrip ? { firstTrip } : {}) };
 }
