@@ -347,7 +347,6 @@ export async function runWhatif(
       judge: resolvedJudge,
       episodeTimeoutMs: options.episodeTimeoutMs,
       maxTurns: options.maxTurns,
-      force: options.force ?? false,
       signal: deps.signal,
       onProgress: deps.onProgress as ((p: WhatifProgress) => void) | undefined,
       closeJudges: async () => {

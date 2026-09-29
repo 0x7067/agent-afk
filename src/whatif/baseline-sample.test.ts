@@ -3,7 +3,7 @@
  *
  * Covers:
  * - headroom math for all four prediction directions
- * - gate trips (refuses without --force, warns+continues with --force)
+ * - gate trips (refuses; warnOnly is an inspection hook), and is not bypassed by --force
  * - --no-baseline-sample skips sampling and analyst-estimate check still works
  * - cost estimate includes the sample
  * - sample calls runner with baseline arm only
@@ -135,10 +135,10 @@ function makePrediction(
   };
 }
 
-function makeSyntheticEpisodes(predictions: Prediction[]): Episode[] {
+function makeSyntheticEpisodes(predictions: Prediction[], perPrediction = BASELINE_SAMPLE_K): Episode[] {
   const eps: Episode[] = [];
   for (const p of predictions) {
-    for (let i = 0; i < BASELINE_SAMPLE_K; i++) {
+    for (let i = 0; i < perPrediction; i++) {
       eps.push({
         id: `ep-${p.id}-${i}`,
         source: 'synthetic',
@@ -256,7 +256,7 @@ describe('runBaselineSample — headroom math', () => {
       runner: runnerCustom,
       judge: judgeFixed,
       runnerOpts: makeRunnerOpts(),
-      force: true, // don't throw; let us inspect
+      warnOnly: true, // don't throw; let us inspect
       onProgress: vi.fn(),
     });
     const s = result.perPrediction[0]!;
@@ -293,7 +293,7 @@ describe('runBaselineSample — headroom math', () => {
       runner: runnerCustom,
       judge: judgeFixed,
       runnerOpts: makeRunnerOpts(),
-      force: true,
+      warnOnly: true,
       onProgress: vi.fn(),
     });
     const s = result.perPrediction[0]!;
@@ -303,11 +303,11 @@ describe('runBaselineSample — headroom math', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Gate: trips without --force, warns+proceeds with --force
+// Gate: refuses when it trips; warnOnly (inspection hook) warns and continues
 // ---------------------------------------------------------------------------
 
 describe('runBaselineSample — gate behaviour', () => {
-  it('throws WhatifMdeError when headroom < MDE and force=false', async () => {
+  it('throws WhatifMdeError when headroom < MDE', async () => {
     // added prediction with high baseline (0.98) → headroom=0.02 < MDE ~= 0.99 at K=3
     const pred = makePrediction('p1', 'added', []);
     const eps = makeSyntheticEpisodes([pred]).slice(0, 3);
@@ -335,13 +335,50 @@ describe('runBaselineSample — gate behaviour', () => {
         runner: runnerCustom,
         judge: judgeFixed,
         runnerOpts: makeRunnerOpts(),
-        force: false,
+        warnOnly: false,
         onProgress,
       }),
     ).rejects.toBeInstanceOf(WhatifMdeError);
   });
 
-  it('prints warning but does not throw when force=true', async () => {
+  // Regression: the gate must use the FULL run's MDE (12 probes -> ~57pp),
+  // not the 3-probe sample's (clamped to 100pp), or every run would trip.
+  function fixedJudge(rate: number): Judge {
+    return {
+      name: 'claude', external: false, close: vi.fn(async () => {}),
+      async grade(input: JudgeInput) {
+        const r: Record<string, number> = {};
+        for (const q of input.questions) { r[q.id] = rate; }
+        return r;
+      },
+    };
+  }
+
+  it('does not trip with room to move when the full run has 12 probes', async () => {
+    const pred = makePrediction('p1', 'added', []);
+    const eps = makeSyntheticEpisodes([pred], 12);
+    const result = await runBaselineSample({
+      predictions: [pred], episodes: eps, baseline: makeBaselineEnv(),
+      runner: makeRunner(), judge: fixedJudge(0.1), runnerOpts: makeRunnerOpts(), warnOnly: false,
+    });
+    expect(result.anyTripped).toBe(false);
+    expect(result.perPrediction[0]?.mde).toBeCloseTo(0.57, 1);
+    expect(result.perPrediction[0]?.probeRates).toHaveLength(BASELINE_SAMPLE_K);
+  });
+
+  it('trips on a saturated baseline against the full-run MDE (pilot 2 shape)', async () => {
+    const pred = makePrediction('p1', 'strengthened', []);
+    const eps = makeSyntheticEpisodes([pred], 11);
+    const onProgress = vi.fn();
+    await expect(runBaselineSample({
+      predictions: [pred], episodes: eps, baseline: makeBaselineEnv(),
+      runner: makeRunner(), judge: fixedJudge(0.93), runnerOpts: makeRunnerOpts(), warnOnly: false, onProgress,
+    })).rejects.toBeInstanceOf(WhatifMdeError);
+    const messages = onProgress.mock.calls.map((c: [{ message: string }]) => c[0].message);
+    expect(messages.some((m) => m.includes('11 probes can only detect shifts ≥60pp'))).toBe(true);
+  });
+
+  it('prints warning but does not throw when warnOnly=true', async () => {
     const pred = makePrediction('p1', 'added', []);
     const eps = makeSyntheticEpisodes([pred]).slice(0, 3);
     const runnerCustom: AgentRunner = {
@@ -367,20 +404,20 @@ describe('runBaselineSample — gate behaviour', () => {
       runner: runnerCustom,
       judge: judgeFixed,
       runnerOpts: makeRunnerOpts(),
-      force: true,
+      warnOnly: true,
       onProgress,
     });
     expect(result.anyTripped).toBe(true);
-    // Warning line should mention 'underpowered'
+    // Warning line should say the run cannot confirm the prediction
     const messages: string[] = onProgress.mock.calls.map(
       (c: [{ message: string }]) => c[0].message,
     );
-    expect(messages.some((m) => m.includes('underpowered'))).toBe(true);
+    expect(messages.some((m) => m.includes('cannot confirm'))).toBe(true);
   });
 
   it('tripped field reflects headroom < mde correctly', async () => {
     // At K=3, mdeForN(3)≈1.0 (clamped), so any headroom < 1 trips.
-    // Use force=true so we can inspect the tripped field.
+    // Use warnOnly=true so we can inspect the tripped field.
     // added with 0.05 baseline → headroom=0.95, which is still < 1.0 → tripped=true.
     const pred = makePrediction('p1', 'added', []);
     const eps = makeSyntheticEpisodes([pred]).slice(0, 3);
@@ -406,7 +443,7 @@ describe('runBaselineSample — gate behaviour', () => {
       runner: runnerCustom,
       judge: judgeFixed,
       runnerOpts: makeRunnerOpts(),
-      force: true, // inspect without throwing
+      warnOnly: true, // inspect without throwing
       onProgress: vi.fn(),
     });
     // tripped = optimisticHeadroom < mde
@@ -442,7 +479,7 @@ describe('runBaselineSample — arm isolation', () => {
         return r;
       },
     };
-    // force=true: at K=3, mdeForN(3)≈1.0, any headroom trips the gate
+    // warnOnly=true: with 3 full-run probes, mdeForN(3)≈1.0, so any headroom trips the gate
     await runBaselineSample({
       predictions: [pred],
       episodes: eps,
@@ -450,7 +487,7 @@ describe('runBaselineSample — arm isolation', () => {
       runner,
       judge: judgeFixed,
       runnerOpts: makeRunnerOpts(),
-      force: true,
+      warnOnly: true,
       onProgress: vi.fn(),
     });
     const envLabels = runMock.mock.calls.map(
@@ -628,27 +665,72 @@ describe('runWhatif — --no-baseline-sample skips sample', () => {
     expect(vi.isMockFunction(runner.run)).toBe(true);
   });
 
-  it('with noBaselineSample=false (default), baselineSample field present in verify result', async () => {
-    const runner = makeIntegrationRunner();
-    const complete = makeIntegrationComplete();
-    const deps = makeIntegrationDeps(runner, complete);
-    const options = makeIntegrationOptions({ noBaselineSample: false });
-    let report: Awaited<ReturnType<typeof runWhatif>> | undefined;
-    try { report = await runWhatif(options, deps); } catch { /* may budget-trip; inspect partial */ }
-    if (report?.verify) {
-      // baselineSample may be present if sampling ran
-      const bs = report.verify.baselineSample;
-      if (bs !== undefined) {
-        expect(Array.isArray(bs)).toBe(true);
-        const item = bs[0] as PredictionBaselineSample;
-        expect(item).toHaveProperty('predictionId');
-        expect(item).toHaveProperty('probeRates');
-        expect(item).toHaveProperty('mean');
-        expect(item).toHaveProperty('optimisticHeadroom');
-        expect(item).toHaveProperty('mde');
-        expect(item).toHaveProperty('tripped');
-      }
+});
+
+// End-to-end: the measured gate against the FULL run's probe count (#2511).
+const TWELVE_PROBES = [
+  'Summarize what this repository does', 'List the npm scripts available here',
+  'Explain how configuration is loaded', 'Find where logging is set up',
+  'Describe the test layout of the project', 'What license does this project use?',
+  'Outline the directory structure briefly', 'Which dependencies look outdated?',
+  'How would I add a new CLI flag?', 'Where are environment variables read?',
+  'What does the build step produce?', 'Suggest one small refactor worth doing',
+];
+
+function makeTwelveProbeComplete(): CompleteFn {
+  let calls = 0;
+  return vi.fn(async () => {
+    calls++;
+    if (calls === 1) {
+      return {
+        text: JSON.stringify([{
+          id: 'p1', behavior: 'Asks before acting', direction: 'added', confidence: 'high',
+          reason: 'Candidate instructs asking', testQuestion: 'Does it ask first?', probes: TWELVE_PROBES,
+        }]),
+        costUsd: 0.001,
+      };
     }
+    return { text: '[]', costUsd: 0.001 };
+  });
+}
+
+function constJudgeDeps(runner: AgentRunner, complete: CompleteFn, rate: number): WhatifDeps {
+  const judge: Judge = {
+    name: 'claude', external: false, close: vi.fn(async () => {}),
+    async grade(input: JudgeInput) {
+      const r: Record<string, number> = {};
+      for (const q of input.questions) r[q.id] = rate;
+      return r;
+    },
+  };
+  return { ...makeIntegrationDeps(runner, complete), makeJudge: vi.fn(async () => judge) };
+}
+
+describe('runWhatif — measured baseline gate end to end (#2511)', () => {
+  it('runs and records the sample when the baseline leaves room', async () => {
+    const runner = makeIntegrationRunner();
+    const deps = constJudgeDeps(runner, makeTwelveProbeComplete(), 0.05);
+    const report = await runWhatif(makeIntegrationOptions({ noBaselineSample: false }), deps);
+    const bs = report.verify?.baselineSample;
+    expect(bs).toBeDefined();
+    const item = bs?.[0] as PredictionBaselineSample;
+    expect(item.tripped).toBe(false);
+    expect(item.probeRates).toHaveLength(BASELINE_SAMPLE_K);
+    // Full-run MDE: the default --probes 6 caps the analyst's 12 probes at 6,
+    // so the gate uses mdeForN(6) ≈ 81pp, not the 3-probe sample's clamped 100pp.
+    expect(item.mde).toBeCloseTo(mdeForN(6), 6);
+    expect(item.mde).toBeLessThan(1);
+  });
+
+  it('refuses a saturated baseline even under --force, naming the override', async () => {
+    const runner = makeIntegrationRunner();
+    const deps = constJudgeDeps(runner, makeTwelveProbeComplete(), 0.95);
+    const err = await runWhatif(makeIntegrationOptions({ noBaselineSample: false, force: true }), deps)
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(WhatifMdeError);
+    expect((err as Error).message).toContain('--no-baseline-sample');
+    // Only the K sample episodes ran: the full run never started.
+    expect((runner.run as ReturnType<typeof vi.fn>).mock.calls.length).toBe(BASELINE_SAMPLE_K);
   });
 });
 

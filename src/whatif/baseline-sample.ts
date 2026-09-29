@@ -12,7 +12,10 @@
  *   - removed/weakened:   headroom = max(P(yes))       (most room to decrease)
  *
  * The gate trips when that headroom < MDE and uses the same WhatifMdeError /
- * --force semantics as the analyst-estimate check.
+ * error type as the analyst-estimate check, but a MEASURED no-headroom result
+ * is not bypassed by --force: --force is routinely needed to pass the generic
+ * MDE gate, so honouring it here would make this check a warning nobody acts
+ * on (pilot 2 spent $9.49 under --force). Override with --no-baseline-sample.
  *
  * NOTE: sample episodes are NOT reused in the final statistics (§4 of the
  * design). Keeping the arms paired and balanced requires that the final
@@ -21,7 +24,7 @@
  * @module whatif/baseline-sample
  */
 
-import { mdeForN, headroomForPrediction, headroomPreflightLine } from './mde.js';
+import { mdeForN, headroomForPrediction } from './mde.js';
 import { renderTrace } from './trace-render.js';
 import { estimateVerifyCost } from './cost.js';
 import { WhatifMdeError } from './run.js';
@@ -113,7 +116,9 @@ export function estimateBaselineSampleCost(input: {
   });
   // Baseline-only: agent cost is ~½ (only baseline arm runs); judge cost is
   // still per output (1 baseline output per probe).
-  return fullCost.usd / 2 + (fullCost.breakdown['judge'] ?? 0) / 2;
+  // Both the agent and judge terms scale with outputs, and a baseline-only
+  // run has half the outputs, so half the symmetric estimate is the cost.
+  return fullCost.usd / 2;
 }
 
 // ---------------------------------------------------------------------------
@@ -128,8 +133,8 @@ export function estimateBaselineSampleCost(input: {
  * the per-prediction headroom. Prints one info line per prediction, and a
  * warning line when the gate trips.
  *
- * Throws WhatifMdeError when any prediction trips and force=false.
- * When force=true, prints the warning but continues.
+ * Throws WhatifMdeError when any prediction trips, unless warnOnly (an
+ * inspection hook for tests; production passes false).
  */
 export async function runBaselineSample(input: {
   predictions: Prediction[];
@@ -138,13 +143,12 @@ export async function runBaselineSample(input: {
   runner: AgentRunner;
   judge: Judge;
   runnerOpts: RunnerOptions;
-  force: boolean;
+  warnOnly: boolean;
   signal?: AbortSignal;
   onProgress?: (p: WhatifProgress) => void;
 }): Promise<BaselineSampleResult> {
-  const { predictions, episodes, baseline, runner, judge, runnerOpts, force, signal, onProgress } = input;
+  const { predictions, episodes, baseline, runner, judge, runnerOpts, warnOnly, signal, onProgress } = input;
 
-  const mde = mdeForN(BASELINE_SAMPLE_K);
   const perPrediction: PredictionBaselineSample[] = [];
   let anyTripped = false;
 
@@ -152,9 +156,13 @@ export async function runBaselineSample(input: {
     if (signal?.aborted) break;
 
     // Select up to K probe episodes targeting this prediction.
-    const probeEps = episodes
-      .filter((e) => e.targets === pred.id && e.source === 'synthetic')
-      .slice(0, BASELINE_SAMPLE_K);
+    const targeted = episodes.filter((e) => e.targets === pred.id && e.source === 'synthetic');
+    const probeEps = targeted.slice(0, BASELINE_SAMPLE_K);
+    // Invariant: the gate compares headroom against the MDE of the FULL run
+    // (all of this prediction's probes), not of the K-probe sample. The sample
+    // only estimates the baseline rate; the full run is what must detect a shift.
+    const fullRunProbes = targeted.length;
+    const mde = mdeForN(fullRunProbes);
 
     if (probeEps.length === 0) {
       // No targeted probes — skip this prediction silently.
@@ -217,18 +225,15 @@ export async function runBaselineSample(input: {
       anyTripped = true;
       const headroomPp = Math.round(optimisticHeadroom * 100);
       const mdePp = Math.round(mde * 100);
-      onProgress?.({
-        stage: 'preflight',
-        message:
-          `Prediction ${pred.id} (${pred.direction}): measured baseline mean ${meanPct}%, ` +
-          `optimistic headroom ${headroomPp}pp < MDE ${mdePp}pp — underpowered.`,
-      });
-      if (!force) {
-        const narrowed = { ...pred, baselineEstimate: optimisticBaselineRate };
-        const line = headroomPreflightLine(narrowed, BASELINE_SAMPLE_K);
+      const line =
+        `Prediction ${pred.id} (${pred.direction}): measured baseline mean ${meanPct}%, ` +
+        `leaving at most ${headroomPp}pp of room; ${fullRunProbes} probes can only detect shifts ` +
+        `≥${mdePp}pp, so this run cannot confirm it.`;
+      onProgress?.({ stage: 'preflight', message: line });
+      if (!warnOnly) {
         throw new WhatifMdeError(
-          BASELINE_SAMPLE_K,
-          `${line} More probes will not fix this; choose probes where the baseline leaves room, or use --force.`,
+          fullRunProbes,
+          `${line} More probes will not fix this; choose probes where the baseline leaves room, or pass --no-baseline-sample to run anyway.`,
           { kind: 'headroom', predictionId: pred.id },
         );
       }

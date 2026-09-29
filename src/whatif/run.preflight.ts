@@ -43,6 +43,12 @@ export interface PreflightInput {
   maxUsd: number;
   /** Additional cost from the baseline-sample preflight (#2511). */
   baselineSampleCostUsd: number;
+  /**
+   * When true, a measured baseline sample runs next and supersedes the
+   * analyst's baselineEstimate, so the estimate-based headroom gate is skipped
+   * (an unreliable guess must not refuse a run the measurement would allow).
+   */
+  measuredHeadroomPending?: boolean;
   onProgress: ((p: { stage: 'preflight'; message: string }) => void) | undefined;
 }
 
@@ -67,7 +73,7 @@ export function runPreflightChecks(input: PreflightInput): void {
   const {
     episodesPerArm, minProbesPerPrediction, force, samples, agentModel, analystModel,
     systemTokens, judgeExternal, analystCostUsd, maxUsd, onProgress,
-    predictionCount, syntheticPerArm, predictions, baselineSampleCostUsd,
+    predictionCount, syntheticPerArm, predictions, baselineSampleCostUsd, measuredHeadroomPending,
   } = input;
 
   onProgress?.({ stage: 'preflight', message: mdePreflightLine(minProbesPerPrediction) });
@@ -80,7 +86,7 @@ export function runPreflightChecks(input: PreflightInput): void {
   // Uses the same gate (WhatifMdeError) so --force bypasses it identically.
   // The warning always prints (pilot runs use --force and must still see it);
   // only the refusal is bypassed by --force.
-  for (const pred of predictions) {
+  for (const pred of measuredHeadroomPending ? [] : predictions) {
     if (!isHeadroomUnderpowered(pred, minProbesPerPrediction)) continue;
     // Contract: isHeadroomUnderpowered returns true only when baselineEstimate
     // is defined, so the narrowed type assertion is safe here.
@@ -160,7 +166,6 @@ export interface BaselineSamplePhaseInput {
   judge: import('./types.js').Judge;
   episodeTimeoutMs: number;
   maxTurns: number;
-  force: boolean;
   signal?: AbortSignal;
   onProgress?: (p: import('./types.js').WhatifProgress) => void;
   closeJudges: () => Promise<void>;
@@ -176,7 +181,7 @@ export async function runBaselineSamplePhase(
 ): Promise<BaselineSampleResult | undefined> {
   const {
     noBaselineSample, predictions, episodes, baseline, runner, judge,
-    episodeTimeoutMs, maxTurns, force, signal, onProgress, closeJudges,
+    episodeTimeoutMs, maxTurns, signal, onProgress, closeJudges,
   } = input;
   if (noBaselineSample || predictions.length === 0) return undefined;
   try {
@@ -187,7 +192,9 @@ export async function runBaselineSamplePhase(
       runner,
       judge,
       runnerOpts: { timeoutMs: episodeTimeoutMs, maxTurns, signal },
-      force,
+      // --force deliberately does not bypass a measured no-headroom refusal
+      // (see baseline-sample.ts); --no-baseline-sample is the override.
+      warnOnly: false,
       signal,
       onProgress,
     });
@@ -261,6 +268,7 @@ export async function runVerifyPreflight(input: VerifyPreflightInput): Promise<{
       analystCostUsd,
       maxUsd,
       baselineSampleCostUsd,
+      measuredHeadroomPending: !noBaselineSample && predictions.length > 0,
       onProgress,
     });
   } catch (err) {
