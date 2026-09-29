@@ -11,6 +11,23 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.276.1] - 2026-09-29
+
+### Added
+- local, prose-free record of deferred "pre-existing" defects (89cd5eb3)
+
+### Fixed
+- address Codex review (sidecar-less surfaces, ambiguous loci, deferred size category) (c610875e)
+- stop path-escape advisory firing on /dev/null and /tmp (509d7e57)
+- shut down lazily-launched browser after afk chat completes (89539544)
+- address console-bridge advisory findings from #2517 review (34ecda0f)
+
+### Changed
+- Merge pull request #2589 from griffinwork40/afk/preexisting-ledger (b68b6e53)
+- Merge pull request #2588 from griffinwork40/afk/bash-scan-sink-exempt (17797dfc)
+- Merge pull request #2587 from griffinwork40/afk/iso-agent-tool-4-u026vb (e2546a82)
+- Merge pull request #2570 from griffinwork40/afk/iso-agent-tool-5-hdypjv (2f095fd4)
+
 ## [5.276.0] - 2026-09-29
 
 ### Added
