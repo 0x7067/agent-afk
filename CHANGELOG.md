@@ -11,6 +11,17 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.270.1] - 2026-09-29
+
+### Fixed
+- keep turn budgets across retry-tier replays; report hard-timeout partials (#2507) (32513ed5)
+- add crash notification handlers to standalone telegram bot (#2311) (e3f01b70)
+- hidden-lines gutter follows the active glyph set (8bc30f47)
+- keep tree spine intact on "N earlier lines hidden" row (9c7d3c97)
+
+### Changed
+- Merge pull request #2497 from griffinwork40/afk/fix-hidden-lines-spine (90843dcf)
+
 ## [5.270.0] - 2026-09-28
 
 ### Added
