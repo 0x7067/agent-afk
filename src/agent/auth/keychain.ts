@@ -19,6 +19,24 @@ const REFRESH_MARGIN_MS = 5 * 60 * 1000;
 // fast-fail (`undefined`) path instead of blocking startup.
 const OAUTH_REFRESH_TIMEOUT_MS = 10_000;
 
+// Short-lived read cache for `loadClaudeCodeOauthToken`. The keychain now
+// outranks the boot-time cache in credential-resolver, so every Anthropic
+// credential read (including from forked subagents) calls `execFileSync
+// security` on macOS. A 5-second window amortises that cost across the
+// hot re-resolve path (tool calls within one session) while staying well
+// inside any real-world token-rotation window (tokens expire in hours, not
+// seconds). The cache is intentionally per-process: subagents are separate
+// processes and must read the live store directly.
+const READ_CACHE_TTL_MS = 5_000;
+let _readCacheValue: string | undefined;
+let _readCacheExpiresAt = 0;
+
+/** @internal Exposed for tests that need hermetic control over the cache. */
+export function _resetKeychainReadCache(): void {
+  _readCacheValue = undefined;
+  _readCacheExpiresAt = 0;
+}
+
 /**
  * Read the Claude Code OAuth access token from its native credential store.
  *
@@ -32,17 +50,32 @@ const OAUTH_REFRESH_TIMEOUT_MS = 10_000;
  * use {@link refreshClaudeCodeOauthToken} for async refresh on 401.
  */
 export function loadClaudeCodeOauthToken(): string | undefined {
+  const now = Date.now();
+  if (now < _readCacheExpiresAt) return _readCacheValue;
+
+  // Reset cache before each live read so that failures never populate it.
+  // Only a successful token read sets _readCacheExpiresAt; failure paths
+  // leave it at 0 so the next call always re-reads the store (preventing
+  // the stale "no credential" window that occurred when `claude login` ran
+  // while a bot or daemon process was live).
+  _readCacheValue = undefined;
+  _readCacheExpiresAt = 0;
+
   const blob = readCredentialsBlob();
   if (blob === undefined) return undefined;
+
   const parsed = parseCredentials(blob);
   if (parsed === undefined) return undefined;
-  if (parsed.expiresAt !== undefined && parsed.expiresAt <= Date.now()) {
+
+  if (parsed.expiresAt !== undefined && parsed.expiresAt <= now) {
     process.stderr.write(
       'agent-afk: Claude Code OAuth token in keychain is expired. Run `claude login` to refresh.\n',
     );
     return undefined;
   }
-  return parsed.accessToken;
+  _readCacheValue = parsed.accessToken;
+  _readCacheExpiresAt = now + READ_CACHE_TTL_MS;
+  return _readCacheValue;
 }
 
 /**
@@ -242,6 +275,11 @@ export function parseAccountIdentifier(token: string): string {
 }
 
 function writeCredentialsBlob(blob: string): void {
+  // Invalidate the read cache so that the very next loadClaudeCodeOauthToken
+  // call reads the freshly-written store rather than returning a stale value
+  // (guards the `claude login` race where writes occurred while a bot or
+  // daemon process was live inside the 5-second cache window).
+  _resetKeychainReadCache();
   if (process.platform === 'darwin') {
     execFileSync(
       'security',

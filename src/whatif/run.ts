@@ -28,6 +28,7 @@ import { keepContextHooksInEpisode } from '../agent/whatif-episode-gate.js';
 import { trackRecordSummary } from './ledger.js';
 import { predictChanges, resolveMaxPredictions, DEFAULT_PROBES } from './predict.js';
 import { buildAndPersistVerifiedReport } from './run.report.js';
+import { cleanupOrRecord } from './kept-sandboxes.js';
 import { buildRepoManifest, pathExistsInCwd } from './repo-manifest.js';
 import { groundProbes, makeSetChecker } from './probe-grounding.js';
 import {
@@ -36,16 +37,18 @@ import {
   loadSuiteEpisodes,
   type CorpusExclusions,
 } from './episodes.js';
-import { estimateVerifyCost } from './cost.js';
 import { buildHeadline, standardLimits } from './report.js';
-import { isUnderpowered, mdeGateRefusedMessage, mdePreflightLine, isHeadroomUnderpowered, headroomPreflightLine } from './mde.js';
+import { mdeGateRefusedMessage } from './mde.js';
 import { persistRun } from './run.persist.js';
 import { verifyRun } from './run.verify.js';
+
+import { runVerifyPreflight, runBaselineSamplePhase } from './run.preflight.js';
 import type {
   EpisodeTrace,
   RunnerOptions,
   WhatifDeps,
   WhatifOptions,
+  WhatifProgress,
   WhatifReport,
 } from './types.js';
 
@@ -216,124 +219,7 @@ function dateStamp(now: Date): string {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Preflight helper (MDE gate + budget gate)
-// ---------------------------------------------------------------------------
-
-interface PreflightInput {
-  /** Total episodes per arm (for budget estimation). */
-  episodesPerArm: number;
-  /** Minimum probe count per prediction (drives per-prediction MDE gate). */
-  minProbesPerPrediction: number;
-  /** Number of prediction episodes (synthetic probes) per arm. */
-  syntheticPerArm: number;
-  /** Number of predictions retained (for breakdown display). */
-  predictionCount: number;
-  /** Predictions — used for the headroom check (#2504). */
-  predictions: import('./types.js').Prediction[];
-  force: boolean;
-  samples: number;
-  agentModel: string;
-  analystModel: string;
-  systemTokens: { baseline: number; candidate: number };
-  judgeExternal: boolean;
-  analystCostUsd: number;
-  maxUsd: number;
-  onProgress: ((p: { stage: 'preflight'; message: string }) => void) | undefined;
-}
-
-/**
- * Emit MDE preflight info, check the MDE gate, and check the budget gate.
- * Throws `WhatifMdeError` or `WhatifBudgetError` on gate violations.
- *
- * The MDE gate uses `minProbesPerPrediction` — the minimum number of synthetic
- * probe episodes assigned to any single prediction — because each prediction
- * is scored only on its own probes (issue #2403).  Total episode count is used
- * only for the cost estimate.
- *
- * The headroom check (#2504) fires when a prediction's `baselineEstimate`
- * leaves less room than the achieved MDE.  It uses the same `WhatifMdeError`
- * and is bypassed by `--force`.
- */
-function runPreflightChecks(input: PreflightInput): void {
-  const {
-    episodesPerArm, minProbesPerPrediction, force, samples, agentModel, analystModel,
-    systemTokens, judgeExternal, analystCostUsd, maxUsd, onProgress,
-    predictionCount, syntheticPerArm, predictions,
-  } = input;
-
-  onProgress?.({ stage: 'preflight', message: mdePreflightLine(minProbesPerPrediction) });
-
-  if (isUnderpowered(minProbesPerPrediction) && !force) {
-    throw new WhatifMdeError(minProbesPerPrediction, undefined, { kind: 'mde' });
-  }
-
-  // Headroom check (#2504): per-prediction baseline headroom vs. achieved MDE.
-  // Uses the same gate (WhatifMdeError) so --force bypasses it identically.
-  // The warning always prints (pilot runs use --force and must still see it);
-  // only the refusal is bypassed by --force.
-  for (const pred of predictions) {
-    if (!isHeadroomUnderpowered(pred, minProbesPerPrediction)) continue;
-    // Contract: isHeadroomUnderpowered returns true only when baselineEstimate
-    // is defined, so the narrowed type assertion is safe here.
-    const narrowed = pred as typeof pred & { baselineEstimate: number };
-    const line = headroomPreflightLine(narrowed, minProbesPerPrediction);
-    onProgress?.({ stage: 'preflight', message: line });
-    if (!force) {
-      throw new WhatifMdeError(
-        minProbesPerPrediction,
-        `${line} More probes will not fix this; choose probes where the baseline leaves room, or use --force.`,
-        { kind: 'headroom', predictionId: pred.id },
-      );
-    }
-  }
-
-  const estimate = estimateVerifyCost({
-    episodes: episodesPerArm,
-    samples,
-    agentModel,
-    analystModel,
-    systemTokens,
-    judgeExternal,
-  });
-
-  const totalEstimate = estimate.usd + analystCostUsd;
-  // Emit estimated spend + breakdown before the budget gate.
-  onProgress?.({
-    stage: 'preflight',
-    message:
-      `estimated spend $${totalEstimate.toFixed(4)} ` +
-      `(${syntheticPerArm} probe episodes for ${predictionCount} predictions` +
-      ` + ${episodesPerArm - syntheticPerArm} replay/suite episodes, × ${samples} samples × 2 arms;` +
-      ` analyst $${analystCostUsd.toFixed(4)})`,
-  });
-
-  if (totalEstimate > maxUsd) {
-    throw new WhatifBudgetError(totalEstimate, maxUsd);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Per-prediction probe count helper
-// ---------------------------------------------------------------------------
-
-/**
- * Return the minimum number of synthetic probe episodes targeting any single
- * prediction across all predictions.
- *
- * Each prediction is scored only on its own probes (`episode.targets ===
- * prediction.id`); real-turn replays do not count.  The minimum is used as
- * the per-prediction n for the MDE gate because the least-powered prediction
- * determines the run's worst-case detectability.
- */
-function resolveMinProbesPerPrediction(
-  predictions: import('./types.js').Prediction[],
-  episodes: import('./types.js').Episode[],
-): number {
-  if (predictions.length === 0) return 0;
-  const counts = predictions.map((p) => episodes.filter((e) => e.targets === p.id).length);
-  return Math.min(...counts);
-}
+// Preflight helper and probe-count helper extracted to run.preflight.ts (#2511).
 
 // ---------------------------------------------------------------------------
 // runWhatif
@@ -396,6 +282,7 @@ export async function runWhatif(
     signal: deps.signal,
   };
 
+  let pendingReport: WhatifReport | undefined;
   try {
     // ── c+d) Snapshots + Predictions ─────────────────────────────────────
 
@@ -421,10 +308,10 @@ export async function runWhatif(
         ...(droppedProbes.length > 0 ? { droppedProbes } : {}),
       };
       const headline = buildHeadline(partialReport);
-      const report: WhatifReport = { ...partialReport, headline };
+      pendingReport = { ...partialReport, headline };
 
-      await persistRun(runDir, report, []);
-      return report;
+      await persistRun(runDir, pendingReport, []);
+      return pendingReport;
     }
 
     // ── f) Verify phase ───────────────────────────────────────────────────
@@ -440,34 +327,36 @@ export async function runWhatif(
       return undefined;
     });
 
-    // Preflight: MDE info + MDE gate + budget gate
-    const episodesPerArm = episodes.length;
-    const minProbesPerPrediction = resolveMinProbesPerPrediction(predictions, episodes);
-    try {
-      runPreflightChecks({
-        episodesPerArm,
-        minProbesPerPrediction,
-        syntheticPerArm: predictions.reduce((s, p) => s + episodes.filter((e) => e.targets === p.id).length, 0),
-        predictionCount: predictions.length,
-        predictions,
-        force: options.force ?? false,
-        samples: options.samples,
-        agentModel: options.agentModel,
-        analystModel: options.analystModel,
-        systemTokens: {
-          baseline: structural.tokens.baseline,
-          candidate: structural.tokens.candidate,
-        },
-        judgeExternal: resolvedJudge.external,
-        analystCostUsd,
-        maxUsd: options.maxUsd,
-        onProgress: deps.onProgress as ((p: { stage: 'preflight'; message: string }) => void) | undefined,
-      });
-    } catch (preflightErr) {
-      await resolvedJudge.close?.();
-      await crossCheckJudge?.close?.();
-      throw preflightErr;
-    }
+    // Preflight: MDE gate + headroom gate + budget gate (includes sample cost #2511).
+    const { noBaselineSample } = await runVerifyPreflight({
+      episodes, predictions, structural, force: options.force ?? false,
+      samples: options.samples, agentModel: options.agentModel,
+      analystModel: options.analystModel, judgeExternal: resolvedJudge.external,
+      analystCostUsd, maxUsd: options.maxUsd,
+      noBaselineSample: options.noBaselineSample ?? false,
+      onProgress: deps.onProgress as ((p: { stage: 'preflight'; message: string }) => void) | undefined,
+      closeJudges: async () => { await resolvedJudge.close?.(); await crossCheckJudge?.close?.(); },
+    });
+
+    // Baseline-sample preflight (#2511). Extracted to runBaselineSamplePhase.
+    // NOTE: sample traces are NOT reused in the final verifyRun (keeps arms paired).
+    const baselineSampleResult = await runBaselineSamplePhase({
+      noBaselineSample,
+      predictions,
+      episodes,
+      baseline,
+      runner: deps.runner,
+      judge: resolvedJudge,
+      episodeTimeoutMs: options.episodeTimeoutMs,
+      maxTurns: options.maxTurns,
+      signal: deps.signal,
+      onProgress: deps.onProgress as ((p: WhatifProgress) => void) | undefined,
+      closeJudges: async () => {
+        await resolvedJudge.close?.();
+        await crossCheckJudge?.close?.();
+      },
+      runDir,
+    });
 
     deps.onProgress?.({ stage: 'run', message: 'Running episodes' });
 
@@ -509,18 +398,20 @@ export async function runWhatif(
 
     analystCostUsd += verifyCost;
 
-    return buildAndPersistVerifiedReport({
-      spec, structural, predictions, verifyResult: verifyResult!, droppedProbes,
+    if (!verifyResult) throw new Error('verifyRun did not return a verifyResult');
+    if (!verifyJudgeResults) throw new Error('verifyRun did not return judgeResults');
+
+    pendingReport = await buildAndPersistVerifiedReport({
+      spec, structural, predictions, verifyResult, droppedProbes,
       corpusExclusions, verifyTraces, analystCostUsd, runDir,
       resolvedJudge, autoKeepContextHooks,
-      judgeResults: verifyJudgeResults!,
+      judgeResults: verifyJudgeResults,
+      ...(baselineSampleResult ? { baselineSamplePerPrediction: baselineSampleResult.perPrediction } : {}),
     });
+    return pendingReport;
   } finally {
-    // Tear down sandboxes unless keepSandboxes
-    if (!options.keepSandboxes) {
-      await sandboxes.cleanup().catch(() => {
-        // Best-effort; do not mask the primary error
-      });
-    }
+    // Cleanup sandboxes or record their roots when keepSandboxes is set.
+    const kept = await cleanupOrRecord(runDir, sandboxes.roots, sandboxes.cleanup, options.keepSandboxes ?? false);
+    if (kept && pendingReport) pendingReport.keptSandboxes = kept;
   }
 }

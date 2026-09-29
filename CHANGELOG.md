@@ -11,6 +11,217 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.275.4] - 2026-09-29
+
+### Fixed
+- bound tool-lane preview formatting so huge tool results cannot starve the REPL (#2578) (247a06f6)
+- make query.ts mutable fields private with live getters (81261a07)
+- fd leak, tie-break parity, typeof guard (9a51b6aa)
+- async non-blocking tool-result lookup for web route (b94fad6e)
+
+### Changed
+- Merge pull request #2572 from griffinwork40/afk/iso-agent-tool-2-86ybes (9441ccc7)
+- Merge pull request #2575 from griffinwork40/afk/iso-agent-tool-3-qdnucb (706c42af)
+- decompose openai-compatible/query.ts under the 350-line ceiling (e1589a52)
+
+## [5.275.3] - 2026-09-29
+
+### Fixed
+- advisory findings from 2026-09-29 pr-triage review (fa3647e1)
+
+### Changed
+- Merge pull request #2573 from griffinwork40/afk/iso-agent-tool-2-xnqdzl (4fb3854c)
+
+## [5.275.2] - 2026-09-29
+
+### Fixed
+- unref deferred exit timers and use fake timers in crash-handler tests (95d325db)
+- record kept sandbox roots in <runDir>/sandboxes.json (cb19fa3a)
+- defer crash-notification exit and guard against duplicate handler registration (def2b0ad)
+- address advisory findings from #2518 and #2512 (whatif) (adbd876b)
+
+### Changed
+- Merge pull request #2544 from griffinwork40/afk/iso-agent-tool-15-x0ud5c (7d8775f1)
+- Merge pull request #2537 from griffinwork40/afk/iso-agent-tool-6-2xmiio (6542bb2b)
+- Merge pull request #2547 from griffinwork40/afk/whatif-2478-consolidate (35f55f43)
+- merge remote afk/iso-agent-tool-6-2xmiio (already-resolved conflict) (e139b662)
+- resolve conflict with origin/main in src/whatif/run.ts (188bd348)
+- merge origin/main into afk/iso-agent-tool-6-2xmiio (54974335)
+- Merge remote-tracking branch 'origin/main' into afk/fix-2547-conflict (d9346ac9)
+- Merge branch 'main' into afk/iso-agent-tool-15-x0ud5c (1d6b44a8)
+- Merge branch 'main' into afk/iso-agent-tool-6-2xmiio (1fac705f)
+- Merge branch 'main' into afk/whatif-2478-consolidate (eba47b60)
+
+## [5.275.1] - 2026-09-29
+
+### Fixed
+- log stale-source overwrites in bg-injection; defer push body formatting (efffc209)
+- address advisory findings from overlap guard review (08d50bc1)
+
+### Changed
+- Merge pull request #2545 from griffinwork40/afk/iso-agent-tool-13-6nh80t (a4acbbb7)
+- Merge pull request #2538 from griffinwork40/afk/iso-agent-tool-7-aol66x (3ac45ad5)
+- Merge branch 'main' into afk/iso-agent-tool-13-6nh80t (fb3ea471)
+- Merge branch 'main' into afk/iso-agent-tool-7-aol66x (f6f77b22)
+
+## [5.275.0] - 2026-09-29
+
+### Added
+- yield-to-user contract; wait_for ends early when the user types (174bedd4)
+
+### Fixed
+- image-bearing queued messages also wake a yielding tool (aa516af0)
+- advance turn index only after a turn passes its gate, add ordinal-list and anaphora test coverage, scope corpusExclusions JSDoc (850d9a32)
+
+### Changed
+- Merge pull request #2540 from griffinwork40/afk/iso-agent-tool-12-oia21r (fb0fc39f)
+- Merge pull request #2541 from griffinwork40/afk/tool-user-yield (a9bc7668)
+- Merge branch 'main' into afk/tool-user-yield (4837051e)
+- Merge branch 'main' into afk/iso-agent-tool-12-oia21r (a98bc831)
+
+## [5.274.8] - 2026-09-29
+
+### Fixed
+- address advisory findings from PR #2385 review (#2539) (6d476bf2)
+- document regex matcher alias asymmetry in hook config docs (#2533) (80694d78)
+- replace non-null assertions with explicit guards, drop redundant cast, move test hooks inside describe (#2534) (9a73762d)
+- add --probes/--max-predictions to flags, Set-based dedupe, Map-based syntheticPerArm (#2536) (01fd7342)
+- advisory findings from journal provenance adapters review (61008718)
+
+### Changed
+- Merge pull request #2546 from griffinwork40/afk/iso-agent-tool-11-sd0rtt (85a9dcd4)
+- Merge branch 'main' into afk/iso-agent-tool-11-sd0rtt (9d92842c)
+
+## [5.274.7] - 2026-09-29
+
+### Fixed
+- address advisory findings from #2494 review (9ba5a742)
+
+### Changed
+- Merge pull request #2566 from griffinwork40/afk/pnpm-11-migration (0446aec3)
+- Merge pull request #2548 from griffinwork40/afk/iso-agent-tool-16-sw8jmm (deeea47a)
+- raise Node floor to 22.13 to match pnpm 11 (4066f2f0)
+- migrate to pnpm 11 (531c8031)
+
+## [5.274.6] - 2026-09-29
+
+### Fixed
+- improve thinking-chunk exclusion test coverage (fccdf961)
+
+### Changed
+- Merge pull request #2549 from griffinwork40/afk/iso-agent-tool-20-qclu1t (966ca8a7)
+
+## [5.274.5] - 2026-09-29
+
+### Fixed
+- address advisory findings from /pr-triage 2026-09-27 (693ced57)
+- advisory findings from #2507 — turn budgets across retry-tier replays (7f7360b5)
+- document above/below contract, defensive rail sets, and add missing tests (42bac34e)
+- advisory findings from #2476 (MDE preflight and gate) (7e2372d9)
+- betaSample degenerate guard + ICC clamp comment (9d607d24)
+
+### Changed
+- Merge pull request #2550 from griffinwork40/afk/iso-agent-tool-17-7rv2wh (8dcf3b67)
+- Merge pull request #2555 from griffinwork40/afk/iso-agent-tool-24-p6atnz (9a7d8d23)
+- Merge pull request #2552 from griffinwork40/afk/iso-agent-tool-18-jtnfy4 (e1babded)
+- Merge pull request #2558 from griffinwork40/afk/iso-agent-tool-25-ya41kq (32e8a39c)
+- Merge pull request #2564 from griffinwork40/afk/iso-agent-tool-27-nx7lh8 (77a0057d)
+
+## [5.274.4] - 2026-09-29
+
+### Fixed
+- address advisory review findings from #2469 reauth fix (19a0346f)
+- advisory findings from #2370 — preview budget, type narrowing, Telegram spoofing guard (5450732e)
+- advisory findings from #2438 — tool_calls cast removal, interleaved repair order, fast path, type tightening (4cb2a525)
+- plan-text-tracker advisory findings — comments, zero-width strip, test (f00e617c)
+- use CROSS_CHECK_MIN_* constants, drop redundant guard, strengthen test (64119b14)
+
+### Changed
+- Merge pull request #2556 from griffinwork40/afk/iso-agent-tool-21-b7yd2v (165718b3)
+- Merge pull request #2559 from griffinwork40/afk/iso-agent-tool-26-3jc9h1 (08257bc5)
+- Merge pull request #2553 from griffinwork40/afk/iso-agent-tool-22-0mzqmg (94ffb408)
+- Merge pull request #2551 from griffinwork40/afk/iso-agent-tool-19-3gz36h (b78b5625)
+- Merge pull request #2557 from griffinwork40/afk/iso-agent-tool-23-7kkz12 (85a9d461)
+
+## [5.274.3] - 2026-09-29
+
+### Fixed
+- address review feedback on outcome journal fallback (f7703b47)
+- fall back to the session journal when the sidecar is absent (05929cf6)
+
+### Changed
+- Merge pull request #2510 from griffinwork40/afk/outcome-journal-fallback (ea54deff)
+- Merge remote-tracking branch 'origin/main' into afk/pr-2510-rebaseline (f50f078e)
+- Merge remote-tracking branch 'origin/main' into afk/pr2510-push (8c711f8f)
+
+## [5.274.2] - 2026-09-29
+
+### Fixed
+- extract compact summarize wiring to restore the filesize ratchet (b5aba032)
+
+### Changed
+- Merge pull request #2554 from griffinwork40/afk/fix-query-filesize-ratchet (84be5439)
+
+## [5.274.1] - 2026-09-29
+
+### Fixed
+- raise undici floor to ^7.27.1; add Node 26 CI leg (issue #2525) (#2535) (edb8ed42)
+- move JEV_DISREGARD_NOTE to leading grading-instructions preamble (#2531) (9f56ada4)
+- correct postinstall docs — Linux Telegram notice, bot.pid wording, bold emphasis (#2527) (ed8218c8)
+- pin geometryStale+anchorRow invariant; add suspended to makeHost defaults (#2530) (aaa8c90a)
+
+### Changed
+- Merge pull request #2529 from griffinwork40/afk/iso-agent-tool-2-fzg8lh (19a7b263)
+
+## [5.274.0] - 2026-09-29
+
+### Added
+- add shared-context directive for interactive surfaces (f64ea156)
+
+### Changed
+- Merge pull request #2522 from griffinwork40/afk/shared-context-directive (225534b6)
+
+## [5.273.0] - 2026-09-29
+
+### Added
+- AFK_COMPACT_MODEL works across providers (7aaf663a)
+
+### Fixed
+- route console.warn/error through the compositor while armed (5575382e)
+- reject still-expired xAI OAuth token in compaction (89531f3e)
+- address review feedback (c8ba85a5)
+- scope privacy warns per-instance, fix DOMException abort, normalize xai-oauth family (617b34f0)
+- stop persisting raw first prompts in the outcome store (d6bc5738)
+
+### Changed
+- Merge pull request #2517 from griffinwork40/afk/diagnose-error-wrapping (a1ebe921)
+- Merge pull request #2451 from griffinwork40/afk/issue-2449-plr9 (d881b7b3)
+- Merge pull request #2474 from griffinwork40/afk/compact-model-cross-provider (b5afc0e9)
+- drop stale personal claude-jev path from fixture comment (36a9886a)
+- Merge remote-tracking branch 'origin/main' into afk/pr2474-fix (726e9e2d)
+
+## [5.272.1] - 2026-09-29
+
+### Fixed
+- render tiny sign-flip p-value as <0.001 instead of 0.000 (5e985d2d)
+- REPL progress throttle shows every preflight milestone line (b164eb80)
+
+### Changed
+- Merge pull request #2512 from griffinwork40/afk/whatif-repl-throttle-pdisplay (b99155d1)
+
+## [5.272.0] - 2026-09-29
+
+### Added
+- measure baseline headroom with a small baseline-only sample (#2511) (15516608)
+
+### Fixed
+- baseline sample cost estimate includes its cold-cache start (92b9e8ed)
+- a refused baseline sample writes refused.json with its evidence and spend (13cebc97)
+- baseline sample gates on the full run's MDE and is not bypassed by --force (9fdd170e)
+
+### Changed
+- Merge pull request #2518 from griffinwork40/afk/whatif-baseline-sample (144d578c)
+
 ## [5.271.3] - 2026-09-29
 
 ### Fixed
