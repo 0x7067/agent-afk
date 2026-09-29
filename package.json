@@ -23,7 +23,7 @@
     "assets/demo-placeholder.png"
   ],
   "scripts": {
-    "postinstall": "node dist/postinstall.mjs || node scripts/postinstall.mjs || true",
+    "postinstall": "node scripts/postinstall.mjs || true",
     "build": "tsc && node scripts/build-web-ui.mjs && node scripts/copy-prompts.js",
     "dev": "tsx src/cli/index.ts",
     "start": "node dist/cli/index.js",
@@ -116,12 +116,6 @@
   },
   "engines": {
     "node": ">=22.0.0"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "better-sqlite3",
-      "node-pty"
-    ]
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.74.0",
