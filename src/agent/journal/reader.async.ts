@@ -60,7 +60,7 @@ async function scanFileAsync(
       for (let j = content.length - 1; j >= 0; j--) {
         const b = content[j]!;
         if (b.type === 'tool_result' && b.toolUseId === toolUseId) {
-          if (!best || rec.ts > best.ts) {
+          if (!best || rec.ts >= best.ts) {
             best = { block: b as ToolResultBlock, ts: rec.ts };
           }
           break; // only need the last match in this record's content array
@@ -71,13 +71,14 @@ async function scanFileAsync(
     // Unreadable / truncated file — return whatever was found so far.
   } finally {
     rl.close();
+    stream.destroy();
   }
   return best;
 }
 
 /** Async list of subagent ids with a journal under `sessionId`. */
 async function listSubagentJournalsAsync(sessionId: string): Promise<string[]> {
-  if (!isSafeLedgerSessionId(sessionId)) return [];
+  if (typeof sessionId !== 'string' || !isSafeLedgerSessionId(sessionId)) return [];
   let names: string[];
   try {
     names = await fs.promises.readdir(getSubagentJournalsDir(sessionId));
