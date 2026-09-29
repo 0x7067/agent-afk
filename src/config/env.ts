@@ -51,6 +51,7 @@ import { DISPLAY_ENV_REGISTRY } from './env.display.js';
 import { MCP_ENV_REGISTRY } from './env.mcp.js';
 import { PATHS_ENV_REGISTRY } from './env.paths.js';
 import { WHATIF_ENV_REGISTRY } from './env.whatif.js';
+import { SESSION_STORAGE_ENV_REGISTRY } from './env.session-storage.js';
 
 export type EnvVarType = 'string' | 'number' | 'boolean' | 'json';
 
@@ -226,11 +227,10 @@ export const ENV_REGISTRY = [
   },
   {
     name: 'AFK_MAX_BUDGET_USD',
-    description: 'Cumulative USD budget ceiling for the session. Aborts the turn when the running cost crosses this.',
+    description: 'Opt-in cumulative USD budget ceiling for the session. Aborts the turn when the running cost crosses this. Unset by default (no cap applied).',
     type: 'number',
     required: false,
-    default: '5.00',
-    example: '10.00',
+    example: '5.00',
     category: 'model',
   },
   {
@@ -1518,17 +1518,8 @@ export const ENV_REGISTRY = [
     example: '1',
     category: 'misc',
   },
-  {
-    name: 'AFK_SESSION_LEDGER_DISABLED',
-    description:
-      'Disable the per-session durable event ledger (state/sessions/<id>/events.jsonl). ' +
-      'Set to 1 to skip ledger writes; live cross-surface watching (e.g. the Telegram ' +
-      '/watch command) will report no activity for sessions started while disabled.',
-    type: 'boolean',
-    required: false,
-    example: '1',
-    category: 'debug',
-  },
+  // Entries live in env.session-storage.ts (extracted for the 350-line ceiling).
+  ...SESSION_STORAGE_ENV_REGISTRY,
   {
     name: 'AFK_RUN_RECEIPT_DISABLED',
     description:
