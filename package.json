@@ -1,6 +1,6 @@
 {
   "name": "agent-afk",
-  "version": "5.274.8",
+  "version": "5.275.4",
   "description": "Open-source coding-agent harness you can actually change — own the loop (prompts, gates, routing, skills, terminal states), use any model, run long tasks while you're away.",
   "main": "dist/index.mjs",
   "types": "dist/index.d.ts",
@@ -23,7 +23,7 @@
     "assets/demo-placeholder.png"
   ],
   "scripts": {
-    "postinstall": "node dist/postinstall.mjs || node scripts/postinstall.mjs || true",
+    "postinstall": "node scripts/postinstall.mjs || true",
     "build": "tsc && node scripts/build-web-ui.mjs && node scripts/copy-prompts.js",
     "dev": "tsx src/cli/index.ts",
     "start": "node dist/cli/index.js",

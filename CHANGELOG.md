@@ -11,6 +11,74 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.275.4] - 2026-09-29
+
+### Fixed
+- bound tool-lane preview formatting so huge tool results cannot starve the REPL (#2578) (247a06f6)
+- make query.ts mutable fields private with live getters (81261a07)
+- fd leak, tie-break parity, typeof guard (9a51b6aa)
+- async non-blocking tool-result lookup for web route (b94fad6e)
+
+### Changed
+- Merge pull request #2572 from griffinwork40/afk/iso-agent-tool-2-86ybes (9441ccc7)
+- Merge pull request #2575 from griffinwork40/afk/iso-agent-tool-3-qdnucb (706c42af)
+- decompose openai-compatible/query.ts under the 350-line ceiling (e1589a52)
+
+## [5.275.3] - 2026-09-29
+
+### Fixed
+- advisory findings from 2026-09-29 pr-triage review (fa3647e1)
+
+### Changed
+- Merge pull request #2573 from griffinwork40/afk/iso-agent-tool-2-xnqdzl (4fb3854c)
+
+## [5.275.2] - 2026-09-29
+
+### Fixed
+- unref deferred exit timers and use fake timers in crash-handler tests (95d325db)
+- record kept sandbox roots in <runDir>/sandboxes.json (cb19fa3a)
+- defer crash-notification exit and guard against duplicate handler registration (def2b0ad)
+- address advisory findings from #2518 and #2512 (whatif) (adbd876b)
+
+### Changed
+- Merge pull request #2544 from griffinwork40/afk/iso-agent-tool-15-x0ud5c (7d8775f1)
+- Merge pull request #2537 from griffinwork40/afk/iso-agent-tool-6-2xmiio (6542bb2b)
+- Merge pull request #2547 from griffinwork40/afk/whatif-2478-consolidate (35f55f43)
+- merge remote afk/iso-agent-tool-6-2xmiio (already-resolved conflict) (e139b662)
+- resolve conflict with origin/main in src/whatif/run.ts (188bd348)
+- merge origin/main into afk/iso-agent-tool-6-2xmiio (54974335)
+- Merge remote-tracking branch 'origin/main' into afk/fix-2547-conflict (d9346ac9)
+- Merge branch 'main' into afk/iso-agent-tool-15-x0ud5c (1d6b44a8)
+- Merge branch 'main' into afk/iso-agent-tool-6-2xmiio (1fac705f)
+- Merge branch 'main' into afk/whatif-2478-consolidate (eba47b60)
+
+## [5.275.1] - 2026-09-29
+
+### Fixed
+- log stale-source overwrites in bg-injection; defer push body formatting (efffc209)
+- address advisory findings from overlap guard review (08d50bc1)
+
+### Changed
+- Merge pull request #2545 from griffinwork40/afk/iso-agent-tool-13-6nh80t (a4acbbb7)
+- Merge pull request #2538 from griffinwork40/afk/iso-agent-tool-7-aol66x (3ac45ad5)
+- Merge branch 'main' into afk/iso-agent-tool-13-6nh80t (fb3ea471)
+- Merge branch 'main' into afk/iso-agent-tool-7-aol66x (f6f77b22)
+
+## [5.275.0] - 2026-09-29
+
+### Added
+- yield-to-user contract; wait_for ends early when the user types (174bedd4)
+
+### Fixed
+- image-bearing queued messages also wake a yielding tool (aa516af0)
+- advance turn index only after a turn passes its gate, add ordinal-list and anaphora test coverage, scope corpusExclusions JSDoc (850d9a32)
+
+### Changed
+- Merge pull request #2540 from griffinwork40/afk/iso-agent-tool-12-oia21r (fb0fc39f)
+- Merge pull request #2541 from griffinwork40/afk/tool-user-yield (a9bc7668)
+- Merge branch 'main' into afk/tool-user-yield (4837051e)
+- Merge branch 'main' into afk/iso-agent-tool-12-oia21r (a98bc831)
+
 ## [5.274.8] - 2026-09-29
 
 ### Fixed

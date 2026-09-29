@@ -4,15 +4,18 @@
  * Mirrors the anthropic-direct counterpart
  * (`anthropic-direct/query/overload-pause-tier.test.ts`) but uses the
  * openai-compatible signal shape: an `{ type:'error' }` event with status 529
- * or 503 (exhausted stream retries on this wire) rather than an
- * `OVERLOAD_EXHAUSTED` sentinel on `turn.completed`.
+ * or 503 (exhausted stream retries on this wire).
  *
  * Invariants under test:
  *  - Interactive surfaces (cli/repl/telegram/web) pause and re-probe.
- *  - Daemon/cron fail fast (ceilingMs === 0).
- *  - Abort always wins over a pause.
- *  - Close during a pause forwards the error event so the turn seals.
- *  - Ceiling exhaustion forwards the error (no silent hang).
+ *  - Daemon/cron fail fast (ceilingMs === 0): error event forwarded.
+ *  - Abort always wins over a pause; returns null without error event.
+ *  - Close during a pause returns null WITHOUT forwarding the error event
+ *    (driveStream's close contract).
+ *  - Ceiling exhaustion ends with a clean commit path: emits an
+ *    `assistant.message` notice and returns a synthetic IterationResult
+ *    carrying finishReason: OVERLOAD_EXHAUSTED (no tool dispatch) so
+ *    turn-driver.ts calls finishTurn → turn.completed carries the sentinel.
  *  - `stream.retry` is emitted before each replay to clear stale paint.
  *  - `overload_pause` / `overload_resume` trace phases match the
  *    anthropic-direct tier's contract.
@@ -23,8 +26,10 @@ import type { ProviderEvent } from '../../../provider.js';
 import {
   runIterationWithOverloadPause,
   isOverloadErrorEvent,
+  OPENAI_COMPAT_OVERLOAD_EXHAUSTED_NOTICE,
   type OverloadPauseTierContext,
 } from './overload-pause-tier.js';
+import { OVERLOAD_EXHAUSTED } from '../../shared/overload-sentinel.js';
 import type { IterationResult } from './stream-drive.js';
 
 // ---------------------------------------------------------------------------
@@ -151,7 +156,7 @@ describe('overload pause tier — fail-fast surfaces', () => {
 
     expect(callCount()).toBe(1);
     expect(result).toBeNull();
-    // The error event must be forwarded (not swallowed) so the turn seals.
+    // Daemon fail-fast: error event must be forwarded so the turn seals.
     expect(events).toHaveLength(1);
     expect(events[0]?.type).toBe('error');
     const e = events[0];
@@ -229,7 +234,7 @@ describe('overload pause tier — interactive pause + replay', () => {
       { events: [], result: cleanResult },
     );
     const promise = drain(runIterationWithOverloadPause(makeIteration, makeCtx('cli')));
-    // Advance past the probe interval (60–120s).
+    // Advance past the probe interval (60-120s).
     await vi.advanceTimersByTimeAsync(130_000);
     const { events, result } = await promise;
 
@@ -267,7 +272,7 @@ describe('overload pause tier — interactive pause + replay', () => {
     { label: 'shortest probe draws (60s)', random: 0, expectedCalls: 4 },
     { label: 'longest probe draws (~120s)', random: 0.999999, expectedCalls: 3 },
   ])(
-    'surfaces the error at the wall-clock ceiling instead of parking forever ($label)',
+    'ends with OVERLOAD_EXHAUSTED sentinel at the wall-clock ceiling ($label)',
     async ({ random, expectedCalls }) => {
       vi.spyOn(Math, 'random').mockReturnValue(random);
       process.env['AFK_OVERLOAD_PAUSE_MS'] = '150000'; // 2.5 min
@@ -275,14 +280,44 @@ describe('overload pause tier — interactive pause + replay', () => {
       const { makeIteration, callCount } = scriptIterations({ events: [err529], result: null });
       const promise = drain(runIterationWithOverloadPause(makeIteration, makeCtx('cli')));
       await vi.advanceTimersByTimeAsync(600_000);
-      const { events } = await promise;
+      const { events, result } = await promise;
 
       expect(callCount()).toBe(expectedCalls);
-      // The forwarded error is the last event and there is exactly one.
-      const errs = events.filter((e) => e.type === 'error');
-      expect(errs).toHaveLength(1);
+      // No raw error event forwarded -- the tier commits through the normal path.
+      expect(events.filter((e) => e.type === 'error')).toHaveLength(0);
+      // The tier emits an assistant.message notice before returning.
+      const notices = events.filter((e) => e.type === 'assistant.message');
+      expect(notices).toHaveLength(1);
+      const notice = notices[0];
+      if (notice?.type === 'assistant.message') {
+        expect(notice.text).toBe(OPENAI_COMPAT_OVERLOAD_EXHAUSTED_NOTICE);
+      }
+      // The return value is a synthetic IterationResult with OVERLOAD_EXHAUSTED.
+      expect(result).not.toBeNull();
+      expect(result?.needsToolDispatch).toBe(false);
+      expect(result?.state.finishReason).toBe(OVERLOAD_EXHAUSTED);
     },
   );
+
+  it('terminal event on ceiling exhaustion: finishReason is OVERLOAD_EXHAUSTED', async () => {
+    // This is the blocking spec-compliance test. On ceiling exhaustion the tier
+    // must return an IterationResult carrying OVERLOAD_EXHAUSTED so that
+    // turn-driver.ts's call to finishTurn stamps the sentinel on turn.completed --
+    // making the turn commit and keeping afk --resume functional.
+    process.env['AFK_OVERLOAD_PAUSE_MS'] = '1'; // instant ceiling
+    const { makeIteration } = scriptIterations({ events: [err529], result: null });
+    const promise = drain(runIterationWithOverloadPause(makeIteration, makeCtx('cli')));
+    await vi.advanceTimersByTimeAsync(1_000);
+    const { result, events } = await promise;
+
+    expect(result).not.toBeNull();
+    expect(result?.state.finishReason).toBe(OVERLOAD_EXHAUSTED);
+    expect(result?.needsToolDispatch).toBe(false);
+    // No raw error event -- the turn commits through the normal path.
+    expect(events.filter((e) => e.type === 'error')).toHaveLength(0);
+    // The operator-facing notice is emitted.
+    expect(events.some((e) => e.type === 'assistant.message')).toBe(true);
+  });
 
   it('lets an abort during the pause win immediately (no replay)', async () => {
     const { makeIteration, callCount } = scriptIterations({ events: [err529], result: null });
@@ -296,12 +331,15 @@ describe('overload pause tier — interactive pause + replay', () => {
 
     expect(callCount()).toBe(1);
     expect(result).toBeNull();
-    // Matches anthropic-direct tier: an abort during the sleep exits without
-    // forwarding the error event (query.ts synthesizes an interrupted terminal).
+    // Abort during the sleep exits without forwarding the error event.
+    // turn-driver.ts synthesizes an interrupted terminal via finishTurn.
     expect(events.filter((e) => e.type === 'error')).toHaveLength(0);
   });
 
-  it('forwards the error when the session closes during the pause', async () => {
+  it('returns null without forwarding error when the session closes during the pause', async () => {
+    // Close matches driveStream's close contract: return null, no error event.
+    // The turn-driver synthesizes the terminal (finishTurn) when it sees null
+    // with signal.aborted||ctx.closed, so the session seals correctly.
     let closed = false;
     const ctx: OverloadPauseTierContext = {
       surface: 'cli',
@@ -316,11 +354,12 @@ describe('overload pause tier — interactive pause + replay', () => {
     await vi.advanceTimersByTimeAsync(100);
     closed = true;
     await vi.advanceTimersByTimeAsync(200_000);
-    const { events } = await promise;
+    const { events, result } = await promise;
 
     expect(callCount()).toBe(1);
-    // Close must forward the error so the turn seals correctly (not silently).
-    expect(events.filter((e) => e.type === 'error')).toHaveLength(1);
+    expect(result).toBeNull();
+    // No error forwarded on close -- matches driveStream's close contract.
+    expect(events.filter((e) => e.type === 'error')).toHaveLength(0);
   });
 });
 
@@ -328,7 +367,7 @@ describe('overload pause tier — interactive pause + replay', () => {
 // Trace fidelity and replay hygiene
 // ---------------------------------------------------------------------------
 
-describe('overload pause tier — trace fidelity and replay hygiene', () => {
+describe('overload pause tier -- trace fidelity and replay hygiene', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     delete process.env['AFK_OVERLOAD_PAUSE_MS'];
@@ -414,16 +453,17 @@ describe('overload pause tier — trace fidelity and replay hygiene', () => {
   });
 
   it('clamps the probe sleep to the remaining ceiling (1ms ceiling)', async () => {
-    process.env['AFK_OVERLOAD_PAUSE_MS'] = '1'; // 1ms — far below one probe interval
+    process.env['AFK_OVERLOAD_PAUSE_MS'] = '1'; // 1ms -- far below one probe interval
     const { makeIteration } = scriptIterations({ events: [err529], result: null });
     const promise = drain(runIterationWithOverloadPause(makeIteration, makeCtx('cli')));
     // If unclamped, the probe sleep would park for 60+ seconds. The 1ms ceiling
     // ensures the sleep is clamped to 1ms, so the tier settles well within 1s.
     await vi.advanceTimersByTimeAsync(1_000);
-    const { events } = await promise;
+    const { events, result } = await promise;
 
-    // The error is forwarded after the ceiling is exhausted (no infinite park).
-    expect(events.filter((e) => e.type === 'error')).toHaveLength(1);
+    // Ceiling exhausted -- tier returns OVERLOAD_EXHAUSTED sentinel, no raw error.
+    expect(events.filter((e) => e.type === 'error')).toHaveLength(0);
+    expect(result?.state.finishReason).toBe(OVERLOAD_EXHAUSTED);
   });
 
   it('does not emit a spurious pause when there is no overload (clean run)', async () => {

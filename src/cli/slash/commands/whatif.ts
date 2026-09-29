@@ -74,7 +74,7 @@ export function makeProgressThrottle(ctx: SlashContext): (stage: string, message
     }
     if (stage === 'episodes' || stage === 'run') {
       episodeCount++;
-      if (done !== undefined && episodeCount % 10 === 0) {
+      if (episodeCount % 10 === 0) {
         ctx.out.info(`[whatif] ${stage}: ${message}`);
       }
     }
@@ -222,6 +222,11 @@ async function handleWhatif(ctx: SlashContext, args: string): Promise<void> {
   for (const line of lines) ctx.out.line(line);
   ctx.out.line('');
   ctx.out.info(`Full report: ${report.runDir}/report.md`);
+  if (report.keptSandboxes) {
+    ctx.out.info(`Sandboxes kept — baseline: ${report.keptSandboxes.baseline}`);
+    ctx.out.info(`              candidate: ${report.keptSandboxes.candidate}`);
+    ctx.out.info(`(mapping written to ${report.runDir}/sandboxes.json)`);
+  }
 }
 
 // ---------------------------------------------------------------------------
