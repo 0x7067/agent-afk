@@ -4,7 +4,7 @@ Internal reference for working on `agent-afk` itself — building, testing, rele
 
 ## Prerequisites
 
-- **Node.js ≥ 22.0.0** (enforced by `package.json#engines`). Node 20 is EOL and `better-sqlite3` ≥ 12.10 ships no prebuilt binaries for it — installs on Node 20 fall back to a node-gyp source build, which fails on machines without Python/build tools.
+- **Node.js ≥ 22.13.0** (enforced by `package.json#engines`; pnpm 11 itself requires ≥ 22.13, so `pnpm install` cannot start on earlier 22.x). Node 20 is EOL and `better-sqlite3` ≥ 12.10 ships no prebuilt binaries for it — installs on Node 20 fall back to a node-gyp source build, which fails on machines without Python/build tools.
 - **pnpm 11** — pinned by `package.json#packageManager`; the lockfile is pnpm-specific, so `npm install` will desync it.
   - Fast path: `corepack enable` (bundled with Node ≥ 16.9), then use `pnpm` directly; corepack runs the pinned version.
   - An existing global pnpm ≥ 10 also works: it switches to the pinned version automatically (`manage-package-manager-versions`).
