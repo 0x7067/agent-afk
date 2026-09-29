@@ -137,8 +137,6 @@ how the agent's behavior will change. Return a JSON array of Prediction objects.
 - probes: exactly ${probesPerPrediction} realistic user requests that would exercise the predicted behavior.
   Probes MUST be genuinely DIVERSE: different files, different tasks, different phrasings.
   Do NOT write rewordings or near-duplicates of the same request.
-  When a ## Repo context section is present below, probes MUST reference only paths
-  listed there, or no specific file paths at all. Never invent file names.
   CRITICAL — pick probes on which the CURRENT (baseline) agent leaves room to move:
     • For 'added' or 'strengthened' predictions: choose requests where the current
       agent usually does NOT show the behavior yet. The baseline P(yes) on these
