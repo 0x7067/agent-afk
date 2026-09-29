@@ -16,11 +16,13 @@ import type { VerifiedPrediction } from './types.js';
 
 /**
  * Format a p-value for display. Two decimal places for p ≥ 0.01; three for
- * smaller values. Always shown as a decimal (not scientific notation).
+ * p ≥ 0.001; `<0.001` for values that would render as `0.000`.
+ * Always shown as a decimal (not scientific notation).
  */
 export function fmtP(p: number): string {
   if (p >= 0.01) return p.toFixed(2);
-  return p.toFixed(3);
+  if (p >= 0.001) return p.toFixed(3);
+  return '<0.001';
 }
 
 // ---------------------------------------------------------------------------

@@ -10,6 +10,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { computeProbeSignFlip, ZERO_TOLERANCE } from './probe-signflip.js';
+import { fmtP } from './report.signflip.js';
 import type { ArmSamples } from './probe-signflip.js';
 import pilotFixture from './__test-utils__/pilot-fixture.json' with { type: 'json' };
 
@@ -227,5 +228,34 @@ describe('minimum achievable p', () => {
     const r = computeProbeSignFlip(map, ['ep1', 'ep2', 'ep3', 'ep4', 'ep5', 'ep6']);
     expect(r.minAchievableP).toBeCloseTo(2 / 64, 9);
     expect(r.underpoweredForSig).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// fmtP — sign-flip p-value formatter
+// ---------------------------------------------------------------------------
+
+describe('fmtP', () => {
+  it('renders p ≥ 0.01 to two decimal places', () => {
+    expect(fmtP(0.05)).toBe('0.05');
+    expect(fmtP(0.12)).toBe('0.12');
+    expect(fmtP(1.0)).toBe('1.00');
+    expect(fmtP(0.01)).toBe('0.01');
+  });
+
+  it('renders 0.001 ≤ p < 0.01 to three decimal places', () => {
+    expect(fmtP(0.009)).toBe('0.009');
+    expect(fmtP(0.001)).toBe('0.001');
+  });
+
+  it('renders tiny p (pilot 3: exact p = 2/4096 ≈ 0.000488) as <0.001', () => {
+    // 2/4096 is the exact p from a 12-probe exact sign-flip test (all positive).
+    expect(fmtP(2 / 4096)).toBe('<0.001');
+    expect(fmtP(0.0009)).toBe('<0.001');
+    expect(fmtP(0)).toBe('<0.001');
+  });
+
+  it('renders values just above 0.001 as three decimals, not <0.001', () => {
+    expect(fmtP(0.0011)).toBe('0.001');
   });
 });
