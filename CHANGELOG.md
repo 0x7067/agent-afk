@@ -11,6 +11,57 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.274.6] - 2026-09-29
+
+### Fixed
+- improve thinking-chunk exclusion test coverage (fccdf961)
+
+### Changed
+- Merge pull request #2549 from griffinwork40/afk/iso-agent-tool-20-qclu1t (966ca8a7)
+
+## [5.274.5] - 2026-09-29
+
+### Fixed
+- address advisory findings from /pr-triage 2026-09-27 (693ced57)
+- advisory findings from #2507 — turn budgets across retry-tier replays (7f7360b5)
+- document above/below contract, defensive rail sets, and add missing tests (42bac34e)
+- advisory findings from #2476 (MDE preflight and gate) (7e2372d9)
+- betaSample degenerate guard + ICC clamp comment (9d607d24)
+
+### Changed
+- Merge pull request #2550 from griffinwork40/afk/iso-agent-tool-17-7rv2wh (8dcf3b67)
+- Merge pull request #2555 from griffinwork40/afk/iso-agent-tool-24-p6atnz (9a7d8d23)
+- Merge pull request #2552 from griffinwork40/afk/iso-agent-tool-18-jtnfy4 (e1babded)
+- Merge pull request #2558 from griffinwork40/afk/iso-agent-tool-25-ya41kq (32e8a39c)
+- Merge pull request #2564 from griffinwork40/afk/iso-agent-tool-27-nx7lh8 (77a0057d)
+
+## [5.274.4] - 2026-09-29
+
+### Fixed
+- address advisory review findings from #2469 reauth fix (19a0346f)
+- advisory findings from #2370 — preview budget, type narrowing, Telegram spoofing guard (5450732e)
+- advisory findings from #2438 — tool_calls cast removal, interleaved repair order, fast path, type tightening (4cb2a525)
+- plan-text-tracker advisory findings — comments, zero-width strip, test (f00e617c)
+- use CROSS_CHECK_MIN_* constants, drop redundant guard, strengthen test (64119b14)
+
+### Changed
+- Merge pull request #2556 from griffinwork40/afk/iso-agent-tool-21-b7yd2v (165718b3)
+- Merge pull request #2559 from griffinwork40/afk/iso-agent-tool-26-3jc9h1 (08257bc5)
+- Merge pull request #2553 from griffinwork40/afk/iso-agent-tool-22-0mzqmg (94ffb408)
+- Merge pull request #2551 from griffinwork40/afk/iso-agent-tool-19-3gz36h (b78b5625)
+- Merge pull request #2557 from griffinwork40/afk/iso-agent-tool-23-7kkz12 (85a9d461)
+
+## [5.274.3] - 2026-09-29
+
+### Fixed
+- address review feedback on outcome journal fallback (f7703b47)
+- fall back to the session journal when the sidecar is absent (05929cf6)
+
+### Changed
+- Merge pull request #2510 from griffinwork40/afk/outcome-journal-fallback (ea54deff)
+- Merge remote-tracking branch 'origin/main' into afk/pr-2510-rebaseline (f50f078e)
+- Merge remote-tracking branch 'origin/main' into afk/pr2510-push (8c711f8f)
+
 ## [5.274.2] - 2026-09-29
 
 ### Fixed
