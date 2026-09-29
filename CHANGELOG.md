@@ -11,6 +11,12 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.276.3] - 2026-09-29
+
+### Fixed
+- session.init reports session cwd instead of process.cwd() (#2611) (d1d68320)
+- include prediction text in refused.json (#2607) (6b6329dd)
+
 ## [5.276.2] - 2026-09-29
 
 ### Fixed
