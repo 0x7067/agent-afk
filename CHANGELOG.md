@@ -11,6 +11,21 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.276.2] - 2026-09-29
+
+### Fixed
+- forward --force from the /whatif REPL slash command (6df2ecf3)
+- extract describeIgnoredRefusal helper; add ignored meta fields to teardown (a5dc7415)
+- drop unfounded ._build/ pattern; pass ignored detail to isolation debug log (5f213188)
+- classify SwiftPM .build/ as rebuildable and name the real path in ignored-local-state lock reasons (218a8e0f)
+- probe grounding buffer cap, async git, warning on unexpected failure, grounding clause hygiene, all-dropped test (9fdf32bc)
+
+### Changed
+- Merge pull request #2603 from griffinwork40/afk/whatif-slash-force (cf640033)
+- Merge pull request #2483 from griffinwork40/afk/issue-2402-b545 (6aad35f4)
+- Merge pull request #2532 from griffinwork40/afk/iso-agent-tool-3-fgt9ns (11983933)
+- Merge branch 'main' into afk/issue-2402-b545 (a8543b48)
+
 ## [5.276.1] - 2026-09-29
 
 ### Added
