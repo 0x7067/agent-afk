@@ -33,6 +33,8 @@
  * @module whatif/mde
  */
 
+import type { Prediction, PredictionDirection } from './types.js';
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -90,6 +92,11 @@ export function nForMde(mde: number): number {
 
 function pp(proportion: number): string {
   return `${Math.round(proportion * 100)}pp`;
+}
+
+/** A rate (not a difference), e.g. a baseline P(yes): rendered as a percent. */
+function pct(proportion: number): string {
+  return `${Math.round(proportion * 100)}%`;
 }
 
 /**
@@ -163,5 +170,110 @@ export function mdeGateRefusedMessage(minProbesPerPrediction: number): string {
     `≥${achieved} shifts (threshold: ${pp(MDE_GATE_THRESHOLD)}, 80% power). ` +
     `The limiting factor is probe count per prediction (currently capped; see issue #2477). ` +
     `To proceed, use --force or collect at least ${needed} probes/prediction.`
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Headroom helpers (#2504)
+// ---------------------------------------------------------------------------
+
+
+/**
+ * Compute the headroom in the predicted direction for a prediction.
+ *
+ * - For `added`/`strengthened`: headroom = 1 - baselineEstimate
+ *   (room to increase from the baseline).
+ * - For `removed`/`weakened`: headroom = baselineEstimate
+ *   (room to decrease from the baseline).
+ *
+ * Returns `undefined` when `baselineEstimate` is not set (no check applied).
+ */
+export function headroomForPrediction(
+  baselineEstimate: number | undefined,
+  direction: PredictionDirection,
+): number | undefined {
+  if (baselineEstimate === undefined) return undefined;
+  if (direction === 'added' || direction === 'strengthened') {
+    return 1 - baselineEstimate;
+  }
+  return baselineEstimate;
+}
+
+/**
+ * True when the prediction's baseline headroom is below the run's achieved
+ * MDE, making it undetectable at the current probe count.
+ *
+ * @param prediction           The prediction to check.
+ * @param probesPerPrediction  Number of synthetic probe episodes per prediction
+ *                             per arm.
+ */
+export function isHeadroomUnderpowered(
+  prediction: Prediction,
+  probesPerPrediction: number,
+): boolean {
+  const headroom = headroomForPrediction(prediction.baselineEstimate, prediction.direction);
+  if (headroom === undefined) return false;
+  return headroom < mdeForN(probesPerPrediction);
+}
+
+/**
+ * Preflight line describing a headroom violation for a single prediction.
+ *
+ * The parameter type is narrowed to require `baselineEstimate` because this
+ * function is only meaningful when the estimate is present.  Callers must
+ * check `isHeadroomUnderpowered` (which returns false when the estimate is
+ * absent) before calling this function.
+ *
+ * @param prediction           The prediction whose headroom is insufficient;
+ *                             must have a numeric `baselineEstimate`.
+ * @param probesPerPrediction  Number of probes per prediction per arm.
+ */
+export function headroomPreflightLine(
+  prediction: Prediction & { baselineEstimate: number },
+  probesPerPrediction: number,
+): string {
+  const estimate = prediction.baselineEstimate;
+  // Contract: headroomForPrediction returns undefined only when estimate is
+  // undefined, which cannot happen given the narrowed parameter type.
+  const headroom = headroomForPrediction(estimate, prediction.direction) ?? 0;
+  const mde = mdeForN(probesPerPrediction);
+  const dirLabel = prediction.direction === 'added' || prediction.direction === 'strengthened'
+    ? 'increase'
+    : 'decrease';
+  return (
+    `Prediction ${prediction.id} (${prediction.direction}): ` +
+    `baseline estimate ${pct(estimate)}, leaving ${pp(headroom)} of headroom for an ${dirLabel}; ` +
+    `this run can only detect shifts ≥${pp(mde)} — prediction is underpowered before the first episode runs.`
+  );
+}
+
+/**
+ * Post-hoc limit line for a prediction where the OBSERVED baseline rate left
+ * less headroom in the predicted direction than the run's achieved MDE.
+ *
+ * Returns `undefined` when there is sufficient headroom or the MDE is small.
+ *
+ * @param observedBaseline     The measured baseline P(yes) for this prediction.
+ * @param direction            The prediction's direction.
+ * @param n                    Episodes per arm (min of baseline/candidate).
+ * @param label                Short label, e.g. "p1".
+ */
+export function headroomLimitLine(
+  observedBaseline: number,
+  direction: PredictionDirection,
+  n: number,
+  label: string,
+): string | undefined {
+  // Contract: observedBaseline is typed number so headroomForPrediction always
+  // returns a number here (it only returns undefined when the first arg is
+  // undefined).  The nullish fallback is a defensive no-op.
+  const headroom = headroomForPrediction(observedBaseline, direction) ?? 0;
+  const mde = mdeForN(n);
+  if (headroom >= mde) return undefined;
+  const dirLabel = direction === 'added' || direction === 'strengthened' ? 'increase' : 'decrease';
+  const baselinePct = pct(observedBaseline);
+  return (
+    `Prediction ${label}: baseline was ${baselinePct}, leaving ${pp(headroom)} of room for an ${dirLabel}; ` +
+    `this run can only detect shifts ≥${pp(mde)}, so it could not confirm this prediction.`
   );
 }

@@ -19,6 +19,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   MDE_GATE_THRESHOLD,
+  headroomLimitLine,
+  headroomPreflightLine,
   isUnderpowered,
   mdeForN,
   mdeGateRefusedMessage,
@@ -28,6 +30,7 @@ import {
   Z_ALPHA,
   Z_POWER,
 } from './mde.js';
+import type { Prediction } from './types.js';
 
 // ---------------------------------------------------------------------------
 // mdeForN
@@ -255,5 +258,66 @@ describe('mdeGateRefusedMessage', () => {
   it('mentions 80% power', () => {
     const msg = mdeGateRefusedMessage(2);
     expect(msg).toContain('80% power');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// headroomPreflightLine — Item 3: narrowed parameter type; missing estimate
+// ---------------------------------------------------------------------------
+
+function makePred(
+  direction: Prediction['direction'],
+  baselineEstimate: number,
+): Prediction & { baselineEstimate: number } {
+  return {
+    id: 'p1',
+    behavior: 'test behavior',
+    direction,
+    confidence: 'medium',
+    reason: 'test reason',
+    testQuestion: 'Does the response do the thing?',
+    probes: ['probe 1'],
+    baselineEstimate,
+  };
+}
+
+describe('headroomPreflightLine', () => {
+  it('returns a string for a prediction with baselineEstimate present', () => {
+    const pred = makePred('added', 0.93);
+    const line = headroomPreflightLine(pred, 11);
+    expect(typeof line).toBe('string');
+    expect(line).toContain('p1');
+    expect(line).toContain('93%');
+    expect(line).toContain('underpowered');
+  });
+
+  it('type-safe: the function signature requires baselineEstimate (compile-time contract)', () => {
+    // This test documents that the function CANNOT be called with a bare
+    // Prediction lacking baselineEstimate — narrowing is enforced by the type.
+    // Runtime guard: passing a value satisfies the narrowed type.
+    const pred = makePred('strengthened', 0.5);
+    expect(() => headroomPreflightLine(pred, 11)).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// headroomLimitLine — Item 6: boundary tests
+// ---------------------------------------------------------------------------
+
+describe('headroomLimitLine — boundary cases', () => {
+  it('observedBaseline=1.0, direction=added: headroom=0 → always warns', () => {
+    // headroom = 1 - 1.0 = 0, which is always < mdeForN(n) for any n
+    const line = headroomLimitLine(1.0, 'added', 11, 'p1');
+    expect(line).toBeDefined();
+    expect(line).toContain('p1');
+    expect(line).toContain('increase');
+  });
+
+  it('observedBaseline=0.0, direction=removed: headroom=0 → always warns', () => {
+    // headroom for removed = baselineEstimate = 0.0 < mdeForN(n) for any n
+    const line = headroomLimitLine(0.0, 'removed', 11, 'p2');
+    expect(line).toBeDefined();
+    expect(line).toContain('p2');
+    expect(line).toContain('decrease');
   });
 });

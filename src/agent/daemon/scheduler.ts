@@ -40,7 +40,6 @@ import { spawnDaemonSession } from './session-spawn.js';
 import {
   DEFAULT_SESSIONSTART_COOLDOWN_MS,
   evaluateSessionStartGates,
-  type GateDecision,
   type SessionStartSkipReason,
 } from './gates.js';
 import {
@@ -51,6 +50,7 @@ import {
   type FireOnTaskCompleteOptions,
 } from './scheduler.pull-tick.js';
 import { errorMessage } from '../../utils/errors.js';
+import { makeOverlapSkipRecord, makeSessionStartSkipRecord } from './scheduler.overlap-guard.js';
 
 
 export interface SchedulerOptions {
@@ -187,6 +187,8 @@ export class CronScheduler {
   private pullPollTimer: ReturnType<typeof setInterval> | undefined;
   private isDequeuing = false;
   private readonly queueDir: string;
+  /** Per-task in-flight guard: IDs of tasks whose runOnce promise is still pending. Intra-process only — no cross-process coordination. */
+  private readonly inFlightTaskIds = new Set<string>();
   // TODO(#337-hook): hook-driven dequeue path will share isDequeuing mutex
 
   constructor(options: SchedulerOptions = {}) {
@@ -234,6 +236,7 @@ export class CronScheduler {
   /**
    * Run one tick of `taskId` immediately, bypassing the cron timer and gates.
    * Used by `--once` CLI mode and by tests. Recorded as `trigger: 'cron'`.
+   * Note: subject to the per-task in-flight overlap guard (see {@link CronScheduler.inFlightTaskIds}).
    */
   async tick(taskId: string): Promise<TelemetryRecord> {
     const entry = this.registry.get(taskId);
@@ -264,7 +267,9 @@ export class CronScheduler {
       if (decision.fire) {
         records.push(await this.runOnce(task, 'sessionstart'));
       } else {
-        records.push(this.recordSkip(task, decision));
+        const skipRecord = makeSessionStartSkipRecord(task, decision, this.now());
+        this.writeTelemetry(skipRecord, task);
+        records.push(skipRecord);
       }
     }
     return records;
@@ -310,6 +315,18 @@ export class CronScheduler {
   }
 
   private async runOnce(task: ScheduledTask, trigger: TelemetryTrigger): Promise<TelemetryRecord> {
+    // Overlap guard: skip and record telemetry when this task's previous run is
+    // still in progress. Prevents stacked concurrent sessions on slow ticks
+    // (the in-flight set is released in the agent-path finally block below).
+    // The guard is intentionally checked BEFORE the cwd and executor branches
+    // so it applies uniformly to all executor types.
+    if (this.inFlightTaskIds.has(task.taskId)) {
+      const record = makeOverlapSkipRecord(task, trigger, this.now());
+      this.writeTelemetry(record, task);
+      return record;
+    }
+    this.inFlightTaskIds.add(task.taskId);
+    try {
     // Resolve executor early so the cwd guard can skip builtin tasks (which
     // ignore cwd entirely and would produce spurious errors if the dir vanishes).
     const isLegacySentinel = task.command === '__BUILTIN_WORKTREE_PRUNE__';
@@ -468,22 +485,9 @@ export class CronScheduler {
       memoryStore?.close();
       stateStore?.close();
     }
-  }
-
-  private recordSkip(task: ScheduledTask, decision: GateDecision): TelemetryRecord {
-    const triggeredAt = new Date(this.now());
-    const record: TelemetryRecord = {
-      taskId: task.taskId,
-      command: task.command,
-      trigger: 'sessionstart',
-      ...(task.cronExpression !== undefined ? { cronExpression: task.cronExpression } : {}),
-      triggeredAt: triggeredAt.toISOString(),
-      durationMs: 0,
-      status: 'skipped',
-      ...(decision.skipReason !== undefined ? { skipReason: decision.skipReason } : {}),
-    };
-    this.writeTelemetry(record, task);
-    return record;
+    } finally {
+      this.inFlightTaskIds.delete(task.taskId);
+    }
   }
 
   private async spawnSession(task: ScheduledTask, trigger: TelemetryTrigger = 'cron'): ReturnType<typeof spawnDaemonSession> {
