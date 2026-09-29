@@ -11,6 +11,15 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.272.1] - 2026-09-29
+
+### Fixed
+- render tiny sign-flip p-value as <0.001 instead of 0.000 (5e985d2d)
+- REPL progress throttle shows every preflight milestone line (b164eb80)
+
+### Changed
+- Merge pull request #2512 from griffinwork40/afk/whatif-repl-throttle-pdisplay (b99155d1)
+
 ## [5.272.0] - 2026-09-29
 
 ### Added
