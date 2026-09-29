@@ -11,6 +11,20 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.275.6] - 2026-09-29
+
+### Fixed
+- elide data: URI payloads in web_scrape extracted markdown (ba6e5d07)
+- retire AFK_CAPTURE_SUBAGENT_OUTPUT and AFK_CAPTURE_SUBAGENT_PROMPTS (8a0bbac2)
+
+### Changed
+- Merge pull request #2584 from griffinwork40/afk/iso-agent-tool-3-ez4uwm (55b1611e)
+- Merge pull request #2583 from griffinwork40/afk/drop-dist-postinstall (b6969ee5)
+- Merge pull request #2582 from griffinwork40/afk/glob-rg-2543 (bcb9d260)
+- Merge pull request #2581 from griffinwork40/afk/iso-agent-tool-3-k7xlsp (387dca76)
+- stop copying postinstall into dist/ (0201388b)
+- stop per-entry sync stat probes in the read-denylist check (#2543) (e4183e66)
+
 ## [5.275.5] - 2026-09-29
 
 ### Added
