@@ -1803,6 +1803,18 @@ export const ENV_REGISTRY = [
     example: '600000',
     category: 'misc',
   },
+  {
+    name: 'AFK_PREEXISTING_LEDGER_DISABLE',
+    description:
+      'Set to 1 to disable the pre-existing-defect SessionEnd hook. ' +
+      'When set, the hook will not scan session turns or append records to ' +
+      '~/.afk/agent-framework/preexisting-ledger.jsonl. ' +
+      'Useful in test environments or when the ledger is not desired.',
+    type: 'boolean',
+    required: false,
+    example: '1',
+    category: 'debug',
+  },
 ] as const satisfies readonly EnvVarMeta[];
 
 /**
