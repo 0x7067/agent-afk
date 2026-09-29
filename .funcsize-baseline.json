@@ -21,7 +21,7 @@
     "src/agent/tools/handlers/grep.ts::createGrepHandler": { "loc": 226, "reason": "legacy: predates the function-size gate; pending helper extraction" },
     "src/agent/tools/handlers/image-generate.ts::createImageGenerateHandler": { "loc": 225, "reason": "legacy: predates the function-size gate; pending helper extraction" },
     "src/agent/tools/handlers/patch-apply-engine.ts::applyPatch": { "loc": 208, "reason": "legacy: predates the function-size gate; pending helper extraction" },
-    "src/agent/tools/handlers/worktree.ts::createWorktreeHandler": { "loc": 208, "reason": "legacy: predates the function-size gate; pending helper extraction" },
+    "src/agent/tools/handlers/worktree.ts::createWorktreeHandler": { "loc": 207, "reason": "legacy: predates the function-size gate; pending helper extraction" },
     "src/agent/tools/skill-executor/fork-child-config.ts::buildForkedChildConfig": { "loc": 206, "reason": "legacy: predates the function-size gate; pending helper extraction" },
     "src/agent/tools/subagent-executor.ts::SubagentExecutor.executeOnce": { "loc": 478, "reason": "legacy: predates the function-size gate; pending helper extraction" },
     "src/agent/tools/subagent/child-config.ts::buildChildConfig": { "loc": 357, "reason": "legacy: predates the function-size gate; pending helper extraction" },
