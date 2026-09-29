@@ -115,14 +115,9 @@
     "url": "https://github.com/griffinwork40/agent-afk/issues"
   },
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=22.13.0"
   },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "better-sqlite3",
-      "node-pty"
-    ]
-  },
+  "packageManager": "pnpm@11.28.2",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.74.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
