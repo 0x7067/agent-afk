@@ -11,6 +11,25 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.273.0] - 2026-09-29
+
+### Added
+- AFK_COMPACT_MODEL works across providers (7aaf663a)
+
+### Fixed
+- route console.warn/error through the compositor while armed (5575382e)
+- reject still-expired xAI OAuth token in compaction (89531f3e)
+- address review feedback (c8ba85a5)
+- scope privacy warns per-instance, fix DOMException abort, normalize xai-oauth family (617b34f0)
+- stop persisting raw first prompts in the outcome store (d6bc5738)
+
+### Changed
+- Merge pull request #2517 from griffinwork40/afk/diagnose-error-wrapping (a1ebe921)
+- Merge pull request #2451 from griffinwork40/afk/issue-2449-plr9 (d881b7b3)
+- Merge pull request #2474 from griffinwork40/afk/compact-model-cross-provider (b5afc0e9)
+- drop stale personal claude-jev path from fixture comment (36a9886a)
+- Merge remote-tracking branch 'origin/main' into afk/pr2474-fix (726e9e2d)
+
 ## [5.272.1] - 2026-09-29
 
 ### Fixed
