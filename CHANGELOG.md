@@ -11,6 +11,22 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.274.4] - 2026-09-29
+
+### Fixed
+- address advisory review findings from #2469 reauth fix (19a0346f)
+- advisory findings from #2370 — preview budget, type narrowing, Telegram spoofing guard (5450732e)
+- advisory findings from #2438 — tool_calls cast removal, interleaved repair order, fast path, type tightening (4cb2a525)
+- plan-text-tracker advisory findings — comments, zero-width strip, test (f00e617c)
+- use CROSS_CHECK_MIN_* constants, drop redundant guard, strengthen test (64119b14)
+
+### Changed
+- Merge pull request #2556 from griffinwork40/afk/iso-agent-tool-21-b7yd2v (165718b3)
+- Merge pull request #2559 from griffinwork40/afk/iso-agent-tool-26-3jc9h1 (08257bc5)
+- Merge pull request #2553 from griffinwork40/afk/iso-agent-tool-22-0mzqmg (94ffb408)
+- Merge pull request #2551 from griffinwork40/afk/iso-agent-tool-19-3gz36h (b78b5625)
+- Merge pull request #2557 from griffinwork40/afk/iso-agent-tool-23-7kkz12 (85a9d461)
+
 ## [5.274.3] - 2026-09-29
 
 ### Fixed
