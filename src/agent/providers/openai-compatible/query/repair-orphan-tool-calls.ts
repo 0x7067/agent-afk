@@ -42,31 +42,31 @@
  * @module agent/providers/openai-compatible/query/repair-orphan-tool-calls
  */
 
-import type { OpenAIMessage } from '../messages.js';
+import type { OpenAIMessage, OpenAIToolCall } from '../messages.js';
 
 /** Interrupted-call placeholder — mirrors the anthropic-direct wording exactly. */
 const INTERRUPTED_CONTENT =
   'Tool call interrupted before completing — no result recorded.';
 
 /**
- * Extract the `tool_calls` id list from a message, or return `null` when the
- * message is not an assistant message with tool_calls.
+ * Extract the `tool_calls` id list from a message, deduplicated, or return
+ * `null` when the message is not an assistant message with tool_calls.
  *
- * We read the field structurally — `OpenAIMessage` doesn't declare
- * `tool_calls` on its interface (the base interface only covers non-tool-call
- * assistant turns), so we access it via an intersection/index approach rather
- * than casting the full message to `OpenAIAssistantToolCallMessage` here.
+ * Deduplication: when a provider (or replay path) produces duplicate ids in
+ * one assistant turn, only the first occurrence is kept so that the result
+ * set remains minimal and each synthetic response is inserted exactly once.
  */
 function getToolCallIds(msg: OpenAIMessage): string[] | null {
   if (msg.role !== 'assistant') return null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const tc = (msg as any).tool_calls as
-    | Array<{ id: string; type: string; function: unknown }>
-    | undefined;
+  const tc: OpenAIToolCall[] | undefined = msg.tool_calls;
   if (!Array.isArray(tc) || tc.length === 0) return null;
+  const seen = new Set<string>();
   const ids: string[] = [];
   for (const c of tc) {
-    if (typeof c.id === 'string') ids.push(c.id);
+    if (typeof c.id === 'string' && !seen.has(c.id)) {
+      seen.add(c.id);
+      ids.push(c.id);
+    }
   }
   return ids.length > 0 ? ids : null;
 }
@@ -108,10 +108,17 @@ export function repairOrphanToolCalls(messages: OpenAIMessage[]): OpenAIMessage[
     const callIds = getToolCallIds(msg);
 
     if (callIds === null) {
-      // Not an assistant+tool_calls message.  Drop stray tool messages that
-      // appear outside of a tool-call run (no owning assistant message).
+      // Not an assistant+tool_calls message. Drop stray tool messages that
+      // appear outside of a tool-call run (no owning assistant message) —
+      // UNLESS tool_call_id is undefined, which is the Ollama shim shape
+      // for tool results with no correlation id. Preserve those conservatively
+      // rather than silently discarding valid model output.
       if (msg.role === 'tool') {
-        // Stray: skip it.
+        if (msg.tool_call_id === undefined) {
+          // Ollama-style: no id to match, preserve as-is.
+          out.push(msg);
+        }
+        // else: stray with an id but no owning assistant — drop.
         i++;
         continue;
       }
@@ -139,14 +146,18 @@ export function repairOrphanToolCalls(messages: OpenAIMessage[]): OpenAIMessage[
     }
 
     // Keep only tool messages whose tool_call_id matches one of this
-    // assistant's call ids (drops strays / mismatched ids).
+    // assistant's call ids (drops strays / mismatched ids). Tool messages with
+    // undefined tool_call_id (Ollama shim shape) are preserved conservatively.
     const ownedIds = new Set(callIds);
     for (const tm of toolMsgs) {
       const tcid = tm.tool_call_id;
-      if (typeof tcid === 'string' && ownedIds.has(tcid)) {
+      if (tcid === undefined) {
+        // Ollama-style tool result with no correlation id — preserve.
+        out.push(tm);
+      } else if (typeof tcid === 'string' && ownedIds.has(tcid)) {
         out.push(tm);
       }
-      // else: drop — stray or mismatched id
+      // else: stray with an id that doesn't match — drop.
     }
 
     // Insert synthetic results for each orphaned id, in tool_calls order.

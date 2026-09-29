@@ -22,7 +22,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import type OpenAI from 'openai';
 import type { ProviderEvent, ProviderUserTurn } from '../../../provider.js';
 import type { AgentConfig } from '../../../types/config-types.js';
-import type { OpenAIMessage } from '../messages.js';
+import type { OpenAIMessage, OpenAIToolCall } from '../messages.js';
 import { repairOrphanToolCalls } from './repair-orphan-tool-calls.js';
 import {
   OpenAICompatibleQuery,
@@ -37,12 +37,16 @@ const INTERRUPTED = 'Tool call interrupted before completing — no result recor
 
 /** Build a minimal assistant message with tool_calls. */
 function assistantWithCalls(...ids: string[]): OpenAIMessage {
+  const calls: OpenAIToolCall[] = ids.map((id) => ({
+    id,
+    type: 'function',
+    function: { name: 'fn', arguments: '{}' },
+  }));
   return {
     role: 'assistant',
     content: null as unknown as string, // tool-only turns have null content
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    tool_calls: ids.map((id) => ({ id, type: 'function', function: { name: 'fn', arguments: '{}' } })),
-  } as unknown as OpenAIMessage;
+    tool_calls: calls,
+  };
 }
 
 /** Build a `role:'tool'` message. */
@@ -256,6 +260,87 @@ describe('repairOrphanToolCalls — multiple rounds', () => {
     expect(out[3]).toEqual(userMsg('q2'));
     expect(out[4]).toEqual(msgs[3]); // assistantWithCalls('d1')
     expect(out[5]).toMatchObject({ role: 'tool', tool_call_id: 'd1', content: INTERRUPTED });
+  });
+});
+
+// ─── Dedup: duplicate tool_call ids in one assistant message ─────────────────
+
+describe('repairOrphanToolCalls — duplicate tool_call_id deduplication (#2438)', () => {
+  it('collapses duplicate ids to one synthetic result when no tool results exist', () => {
+    // An assistant message with the same id twice: only one synthetic is inserted.
+    const msgs = [userMsg(), assistantWithCalls('c1', 'c1')];
+    const out = repairOrphanToolCalls(msgs);
+
+    // 1 user + 1 assistant + 1 synthetic (not 2)
+    expect(out).toHaveLength(3);
+    expect(out[2]).toMatchObject({ role: 'tool', tool_call_id: 'c1', content: INTERRUPTED });
+  });
+
+  it('collapses duplicate ids and preserves the real tool result when one exists', () => {
+    const msgs = [
+      userMsg(),
+      assistantWithCalls('c1', 'c1'), // id duplicated
+      toolResult('c1', 'real'),
+    ];
+    const out = repairOrphanToolCalls(msgs);
+
+    // c1 is covered once; dedup means no orphan → no synthetic injected.
+    expect(out).toHaveLength(3);
+    expect(out[2]).toMatchObject({ role: 'tool', tool_call_id: 'c1', content: 'real' });
+  });
+
+  it('deduplicates mixed: two distinct ids where first is duplicated', () => {
+    // tool_calls: ['c1', 'c1', 'c2'] → deduplicated to ['c1', 'c2']
+    // No tool results → synthetics for c1 and c2 (not three entries).
+    const msgs = [userMsg(), assistantWithCalls('c1', 'c1', 'c2')];
+    const out = repairOrphanToolCalls(msgs);
+
+    expect(out).toHaveLength(4); // user + assistant + 2 synthetics
+    expect(out[2]).toMatchObject({ role: 'tool', tool_call_id: 'c1', content: INTERRUPTED });
+    expect(out[3]).toMatchObject({ role: 'tool', tool_call_id: 'c2', content: INTERRUPTED });
+  });
+});
+
+// ─── Preserve: tool messages with undefined tool_call_id (Ollama shim) ───────
+
+describe('repairOrphanToolCalls — undefined tool_call_id preservation (#2438)', () => {
+  it('preserves a tool message with undefined tool_call_id that appears outside a tool-call run', () => {
+    // Ollama shim emits role:'tool' messages with no tool_call_id.
+    // These should NOT be silently dropped — they carry real model output.
+    const ollamaTool: OpenAIMessage = { role: 'tool', content: 'result from ollama' };
+    const msgs = [userMsg(), ollamaTool, assistantText('done')];
+    const out = repairOrphanToolCalls(msgs);
+
+    expect(out).toHaveLength(3);
+    expect(out[1]).toEqual(ollamaTool);
+    expect(out[2]).toEqual(assistantText('done'));
+  });
+
+  it('preserves undefined-id tool messages that follow an assistant tool_calls turn', () => {
+    const ollamaTool: OpenAIMessage = { role: 'tool', content: 'result, no id' };
+    const msgs = [
+      userMsg(),
+      assistantWithCalls('c1'),
+      ollamaTool, // undefined tool_call_id — preserved, not dropped
+      // c1 has no matching result → synthetic appended
+    ];
+    const out = repairOrphanToolCalls(msgs);
+
+    // user + assistant(tool_calls) + ollamaTool (preserved) + synthetic(c1)
+    expect(out).toHaveLength(4);
+    expect(out[2]).toEqual(ollamaTool);
+    expect(out[3]).toMatchObject({ role: 'tool', tool_call_id: 'c1', content: INTERRUPTED });
+  });
+
+  it('does NOT preserve a tool message with a defined but stray tool_call_id', () => {
+    // A message with a real id that doesn't match the preceding assistant — still dropped.
+    const stray: OpenAIMessage = { role: 'tool', content: 'stray', tool_call_id: 'bad' };
+    const msgs = [userMsg(), assistantWithCalls('c1'), stray];
+    const out = repairOrphanToolCalls(msgs);
+
+    // stray dropped; synthetic for c1 inserted
+    expect(out).toHaveLength(3);
+    expect(out[2]).toMatchObject({ role: 'tool', tool_call_id: 'c1', content: INTERRUPTED });
   });
 });
 

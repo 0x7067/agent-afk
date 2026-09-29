@@ -53,7 +53,26 @@ export interface OpenAIMessage {
    * the serialization seam in `query.ts:defaultClientFactory`.
    */
   reasoning_content?: string;
-  // Future: tool_calls array on assistant messages. Slice 3 territory.
+  /**
+   * Tool calls issued by the assistant. Present on assistant turns that
+   * invoke one or more tools; absent on plain-text assistant turns.
+   * Matches the OpenAI Chat Completions wire shape for `tool_calls`.
+   */
+  tool_calls?: OpenAIToolCall[];
+}
+
+/**
+ * A single tool call entry on an assistant message. Mirrors the OpenAI
+ * Chat Completions `ChatCompletionMessageToolCall` shape structurally so
+ * this module stays SDK-import-free.
+ */
+export interface OpenAIToolCall {
+  id: string;
+  type: 'function' | string;
+  function: {
+    name: string;
+    arguments: string;
+  };
 }
 
 /**
