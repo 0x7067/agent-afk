@@ -136,6 +136,18 @@ describe('/whatif slash command', () => {
     expect(lines.some((l) => l.includes('USAGE') || l.includes('afk whatif'))).toBe(true);
   });
 
+  it('forwards --force to runWhatif so the MDE gate can be bypassed', async () => {
+    const { ctx } = makeCtx();
+    await whatifCmd.handler(ctx, '--append "Always ask." --verify --yes --force');
+    expect(vi.mocked(runWhatif).mock.calls[0]?.[0]).toMatchObject({ force: true });
+  });
+
+  it('passes force: false when --force is absent', async () => {
+    const { ctx } = makeCtx();
+    await whatifCmd.handler(ctx, '--append "Always ask." --verify --yes');
+    expect(vi.mocked(runWhatif).mock.calls[0]?.[0]).toMatchObject({ force: false });
+  });
+
   it('runs whatif for a flag-based change with --yes', async () => {
     const { ctx, lines } = makeCtx();
     await whatifCmd.handler(ctx, '--append "Always ask." --yes');

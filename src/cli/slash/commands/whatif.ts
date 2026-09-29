@@ -186,6 +186,10 @@ async function handleWhatif(ctx: SlashContext, args: string): Promise<void> {
         maxTurns: parsed.options.maxTurns,
         episodeTimeoutMs: parsed.options.episodeTimeoutMs,
         keepSandboxes: parsed.options.keepSandboxes,
+        // --force bypasses the MDE underpowered gate; the CLI path forwards it
+        // too (src/cli/commands/whatif.ts). Omitting it here made the gate
+        // unbypassable from the REPL.
+        force: parsed.force,
         ...(parsed.options.probes !== undefined ? { probes: parsed.options.probes } : {}),
         ...(parsed.options.maxPredictions !== undefined ? { maxPredictions: parsed.options.maxPredictions } : {}),
         ...(parsed.options.noBaselineSample ? { noBaselineSample: true } : {}),
@@ -268,7 +272,9 @@ export const whatifCmd: SlashCommand = {
     '--keep-sandboxes',
     '--probes',
     '--max-predictions',
+    '--no-baseline-sample',
     '--yes',
+    '--force',
     '--json',
   ],
   async handler(ctx: SlashContext, args: string): Promise<'continue'> {
