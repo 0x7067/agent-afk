@@ -1070,3 +1070,157 @@ describe('CronScheduler — per-task cwd', () => {
     expect(sessionSpawned).toBe(false);
   });
 });
+
+// ── overlap guard (#2299) ─────────────────────────────────────────────────────
+
+describe('CronScheduler — overlap guard (#2299)', () => {
+  let dir: string;
+  let telemetryPath: string;
+
+  beforeEach(() => {
+    dir = makeTmpDir();
+    telemetryPath = join(dir, 'telemetry.jsonl');
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('a second tick while the first is in flight yields status:skipped, skipReason:overlap', async () => {
+    // Gate: the first sendMessage never resolves until we release it.
+    let releaseFirstRun!: () => void;
+    const firstRunGate = new Promise<void>((resolve) => { releaseFirstRun = resolve; });
+
+    let sessionCallCount = 0;
+    const scheduler = new CronScheduler({
+      telemetryPath,
+      sessionFactory: () => {
+        sessionCallCount += 1;
+        return {
+          sendMessage: () => firstRunGate.then(() => ({ content: 'ok' })),
+          close: () => Promise.resolve(),
+        } as unknown as AgentSession;
+      },
+    });
+
+    scheduler.register({
+      taskId: 'overlap-test',
+      command: 'slow-run',
+      trigger: 'cron',
+      cronExpression: '* * * * *',
+    });
+
+    // Start first tick (does not await — it is blocked on firstRunGate).
+    const firstTickPromise = scheduler.tick('overlap-test');
+
+    // Yield to the microtask queue so the first tick's `inFlightTaskIds.add`
+    // runs before the second tick checks the guard.
+    await Promise.resolve();
+
+    // Second tick fires while first is still in flight.
+    const secondRecord = await scheduler.tick('overlap-test');
+
+    // Verify the skip record.
+    expect(secondRecord.status).toBe('skipped');
+    expect(secondRecord.skipReason).toBe('overlap');
+    expect(secondRecord.taskId).toBe('overlap-test');
+
+    // Only one real session should have been constructed.
+    expect(sessionCallCount).toBe(1);
+
+    // Let the first tick finish and confirm it succeeds.
+    releaseFirstRun();
+    const firstRecord = await firstTickPromise;
+    expect(firstRecord.status).toBe('success');
+
+    await scheduler.stop();
+  });
+
+  it('the guard releases after a successful run so the next tick proceeds normally', async () => {
+    const scheduler = new CronScheduler({
+      telemetryPath,
+      sessionFactory: () => makeSession({ response: 'done' }),
+    });
+    scheduler.register({
+      taskId: 'guard-release-test',
+      command: 'fast-run',
+      trigger: 'cron',
+      cronExpression: '* * * * *',
+    });
+
+    // First tick: completes normally.
+    const r1 = await scheduler.tick('guard-release-test');
+    expect(r1.status).toBe('success');
+
+    // Second tick: guard must be released so this also completes normally.
+    const r2 = await scheduler.tick('guard-release-test');
+    expect(r2.status).toBe('success');
+
+    await scheduler.stop();
+  });
+
+  it('the guard releases after a failed run so the next tick proceeds normally', async () => {
+    let calls = 0;
+    const scheduler = new CronScheduler({
+      telemetryPath,
+      sessionFactory: () => {
+        calls += 1;
+        // First call throws; subsequent calls succeed.
+        if (calls === 1) return makeSession({ throws: new Error('boom') });
+        return makeSession({ response: 'ok' });
+      },
+    });
+    scheduler.register({
+      taskId: 'guard-error-release',
+      command: 'flaky-run',
+      trigger: 'cron',
+      cronExpression: '* * * * *',
+    });
+
+    const r1 = await scheduler.tick('guard-error-release');
+    expect(r1.status).toBe('error');
+
+    // Guard must be released even on error.
+    const r2 = await scheduler.tick('guard-error-release');
+    expect(r2.status).toBe('success');
+
+    await scheduler.stop();
+  });
+
+  it('overlap telemetry record is written to the JSONL sink', async () => {
+    let releaseFirstRun!: () => void;
+    const firstRunGate = new Promise<void>((resolve) => { releaseFirstRun = resolve; });
+
+    const scheduler = new CronScheduler({
+      telemetryPath,
+      sessionFactory: () => ({
+        sendMessage: () => firstRunGate.then(() => ({ content: 'ok' })),
+        close: () => Promise.resolve(),
+      }) as unknown as AgentSession,
+    });
+    scheduler.register({
+      taskId: 'overlap-telemetry',
+      command: 'work',
+      trigger: 'cron',
+      cronExpression: '* * * * *',
+    });
+
+    const firstTickPromise = scheduler.tick('overlap-telemetry');
+    await Promise.resolve();
+
+    const skipped = await scheduler.tick('overlap-telemetry');
+    expect(skipped.status).toBe('skipped');
+
+    releaseFirstRun();
+    await firstTickPromise;
+
+    // Both records should appear in the telemetry file.
+    const lines = readFileSync(telemetryPath, 'utf-8').trim().split('\n');
+    const records = lines.map((l) => JSON.parse(l) as { status: string; skipReason?: string });
+    const skippedRecords = records.filter((r) => r.status === 'skipped');
+    expect(skippedRecords).toHaveLength(1);
+    expect(skippedRecords[0]!.skipReason).toBe('overlap');
+
+    await scheduler.stop();
+  });
+});
