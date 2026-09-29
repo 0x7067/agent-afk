@@ -20,7 +20,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import type { HookHandler } from '../hooks.js';
 import { isSubagentContext } from '../hooks/hook-utils.js';
-import { loadStoredSession } from '../facets/store.js';
+import { loadOutcomeTurns } from './load-outcome-turns.js';
 import { recoverArtifacts } from './artifacts.js';
 import { runImmediateLFs, type ClosureInfo } from './lf-immediate.js';
 import { upsertVotes } from './store.js';
@@ -116,9 +116,9 @@ async function _runImmediatePass(
   tracePath: string | undefined,
   cwd: string | undefined,
 ): Promise<void> {
-  // Load session turns — may be missing if sidecar was swept or corrupted
-  const session = loadStoredSession(sessionId);
-  const turns = session?.turns ?? [];
+  // Load session turns — sidecar first, journal fallback for scheduled/daemon
+  // sessions that never write a sidecar (see load-outcome-turns.ts).
+  const { turns } = loadOutcomeTurns(sessionId);
 
   // Recover artifacts and run LFs
   const artifacts = recoverArtifacts(turns);
