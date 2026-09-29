@@ -529,7 +529,7 @@ jobs:
       - name: Assert bundle entry points exist and are executable
         run: |
           set -e
-          for entry in cli.mjs telegram.mjs index.mjs index.d.ts postinstall.mjs; do
+          for entry in cli.mjs telegram.mjs index.mjs index.d.ts; do
             if [ ! -f "dist/$entry" ]; then
               echo "::error::dist/$entry missing after build:dist" >&2
               exit 1
@@ -543,6 +543,19 @@ jobs:
             fi
           done
           echo "All bundle entry points present and executable."
+
+      - name: Assert postinstall script ships in the npm tarball
+        # package.json#scripts.postinstall runs scripts/postinstall.mjs directly
+        # (#2523). .npmignore excludes scripts/, so the file ships ONLY because
+        # package.json#files whitelists it. Dropping that entry would silently
+        # turn the hook into a no-op (`|| true` swallows the missing module).
+        run: |
+          set -e
+          if ! npm pack --dry-run --ignore-scripts --json | grep -q '"path": "scripts/postinstall.mjs"'; then
+            echo "::error::scripts/postinstall.mjs is not in the npm tarball; the postinstall hook would be a silent no-op" >&2
+            exit 1
+          fi
+          echo "scripts/postinstall.mjs ships in the tarball."
 
       - name: Assert bundled-plugins shipped in the publish bundle
         # Guards the exact regression this job exists to catch: build:dist

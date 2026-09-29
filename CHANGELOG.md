@@ -11,6 +11,18 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.275.5] - 2026-09-29
+
+### Added
+- add redundancy preflight check to /whatif (c45dfd4e)
+
+### Fixed
+- fix over-stemming, heading false-match, progress excerpt, and weak tests (cc91d375)
+
+### Changed
+- Merge pull request #2571 from griffinwork40/afk/iso-agent-tool-5-hvsx44 (42ea0bc3)
+- Merge pull request #2523 from 0x7067/fix/pnpm-11-install (5422b42d)
+
 ## [5.275.4] - 2026-09-29
 
 ### Fixed
