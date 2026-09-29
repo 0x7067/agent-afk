@@ -1,0 +1,18 @@
+src/agent/tools/handlers/send-telegram.test.ts
+  h_29be57c0addd47 69-83
+src/agent/tools/handlers/send-telegram.ts
+  h_29be57c0addd47 5,12,26
+src/agent/tools/schemas.web-tools.ts
+  h_29be57c0addd47 27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a42f88cea36777e556f3fc29eb62aa7b84a5f4ac",
+  "prompts": {},
+  "humans": {
+    "h_29be57c0addd47": {
+      "author": "Pedro Guimarães <21346846+0x7067@users.noreply.github.com>"
+    }
+  }
+}
