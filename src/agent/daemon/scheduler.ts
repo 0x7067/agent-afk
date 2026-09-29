@@ -157,7 +157,7 @@ export interface TaskCompletionDetails {
    * on any parse failure (fail-open). The push formatter downgrades the
    * completion message to "⚠️ Done (unverified)" only when this is `true` AND
    * `daemon.verifyDone` is enabled — see `formatTaskCompletion` in
-   * `src/cli/commands/daemon.ts`. Never persisted to telemetry.
+   * `src/cli/commands/daemon.ts`. Persisted to telemetry as `TelemetryRecord.doneUnverified` (only when `true`) as of #2307.
    */
   doneUnverified?: boolean;
   /**
