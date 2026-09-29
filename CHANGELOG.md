@@ -11,6 +11,32 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.270.2] - 2026-09-29
+
+### Added
+- derive session facets from the message journal (27e9d8cf)
+
+### Fixed
+- address review feedback on repair-orphan-tool-calls (e49a0d8f)
+- address review feedback (d4bd47fd)
+- extract aggregateToolEvents, clean journal-adapter, unify dedup (de4f8c96)
+- strip leading newlines from append change.text; add content-ops tests (bada0594)
+- keep journal commit detection and home isolation (3a851063)
+- headroom warning also prints under --force; rates render as % (8b554574)
+- probe headroom check (#2504) (a3a8de71)
+- append operator inserts an extra blank line (2b04e7fd)
+- openai-compatible never repairs orphaned tool calls before sending history (643e9be6)
+
+### Changed
+- Merge pull request #2438 from griffinwork40/afk/issue-2417-4d60 (3b625eab)
+- Merge pull request #2496 from griffinwork40/afk/issue-2412-dok6 (16ea924b)
+- Merge pull request #2506 from griffinwork40/afk/issue-2461-q7r3 (0f7d533a)
+- Merge pull request #2505 from griffinwork40/afk/whatif-headroom-2504 (6c106678)
+- fix postinstall docs — platform split, silent-skip wording, hook duties, isGlobalInstall, marker file (#2280) (d4c11229)
+- restore #2412 regression tests dropped by prior fix commit (51eeed80)
+- remove pr-body.md (76677951)
+- remove pr-body.md (leftover) (ba4e181c)
+
 ## [5.270.1] - 2026-09-29
 
 ### Fixed
