@@ -11,6 +11,33 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.274.2] - 2026-09-29
+
+### Fixed
+- extract compact summarize wiring to restore the filesize ratchet (b5aba032)
+
+### Changed
+- Merge pull request #2554 from griffinwork40/afk/fix-query-filesize-ratchet (84be5439)
+
+## [5.274.1] - 2026-09-29
+
+### Fixed
+- raise undici floor to ^7.27.1; add Node 26 CI leg (issue #2525) (#2535) (edb8ed42)
+- move JEV_DISREGARD_NOTE to leading grading-instructions preamble (#2531) (9f56ada4)
+- correct postinstall docs — Linux Telegram notice, bot.pid wording, bold emphasis (#2527) (ed8218c8)
+- pin geometryStale+anchorRow invariant; add suspended to makeHost defaults (#2530) (aaa8c90a)
+
+### Changed
+- Merge pull request #2529 from griffinwork40/afk/iso-agent-tool-2-fzg8lh (19a7b263)
+
+## [5.274.0] - 2026-09-29
+
+### Added
+- add shared-context directive for interactive surfaces (f64ea156)
+
+### Changed
+- Merge pull request #2522 from griffinwork40/afk/shared-context-directive (225534b6)
+
 ## [5.273.0] - 2026-09-29
 
 ### Added
