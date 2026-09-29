@@ -105,6 +105,7 @@ import {
   oneShotResponses,
 } from './oneshot.js';
 import { getErrorStatus } from './query/retry.js';
+import { resolveCrossProviderSummarize } from '../shared/compact-summarizer.js';
 import { PLAN_MODE_ADDENDUM_TEXT } from '../shared/plan-mode-addendum.js';
 import { AFK_MODE_ADDENDUM_TEXT } from '../shared/afk-mode-addendum.js';
 import { EXIT_PLAN_MODE_TOOL_NAME } from '../../tools/handlers/exit-plan-mode.js';
@@ -1027,11 +1028,13 @@ export class OpenAICompatibleQuery implements ProviderQuery {
    * credentials, and headers as the conversation — a custom-baseURL or local
    * shim session compacts against its own server, never a re-resolved one.
    *
-   * The compaction model is `AFK_COMPACT_MODEL` when set (it must be an id this
-   * session's endpoint can serve), otherwise the live session model. Cross-
-   * provider summarization (e.g. a Claude model summarizing an OpenAI session)
-   * is intentionally NOT wired here: a mismatched id simply fails the summarize
-   * call, which the core treats as a safe no-op, leaving history untouched.
+   * The compaction model is `AFK_COMPACT_MODEL` when set, otherwise the live
+   * session model. Cross-provider summarization is now supported via
+   * `resolveCrossProviderSummarize` (shared/compact-summarizer.ts): when
+   * AFK_COMPACT_MODEL resolves to a foreign family (e.g. a Claude id on an
+   * OpenAI session), a foreign one-shot closure is used instead of the session
+   * client — with a one-time privacy warning that the transcript crosses
+   * providers. On same-family or unset, the session client is used unchanged.
    *
    * Both wires are supported. Chat Completions sessions summarize through
    * `oneShotChatCompletion`; responses-mode sessions (ChatGPT-OAuth, or the
@@ -1094,21 +1097,36 @@ export class OpenAICompatibleQuery implements ProviderQuery {
       contextWindowTokensUsed(this.lastUsage ?? {}),
       autoCompactLimitFor(this.currentModel),
     );
+
+    // Session summarize closure: reuses this session's client so the call
+    // inherits the same endpoint, credentials, and wire as the conversation.
+    const sessionSummarize = (transcript: string, signal?: AbortSignal) =>
+      this.wireMode === 'responses'
+        ? this.summarizeViaResponses(transcript, signal ?? new AbortController().signal, compactModel)
+        : oneShotChatCompletion({
+            client: this.client,
+            model: compactModel,
+            system: COMPACT_SYSTEM_PROMPT,
+            user: wrapTranscriptForSummary(transcript),
+            maxTokens: 1024,
+            signal,
+          });
+
+    // Cross-provider resolution: if AFK_COMPACT_MODEL names a foreign-family
+    // model, replace sessionSummarize with a foreign one-shot closure.
+    // On same family (or unset), returns sessionSummarize unchanged.
+    const summarize = resolveCrossProviderSummarize(
+      'openai-compatible',
+      sessionSummarize,
+      env.AFK_COMPACT_MODEL,
+      this,
+    );
+
     const compactResult = await compactOpenAIHistory({
       priorTurns: this.priorTurns,
       usedFraction,
       shrinkAtFraction: readShrinkFraction(),
-      summarize: (transcript, signal) =>
-        this.wireMode === 'responses'
-          ? this.summarizeViaResponses(transcript, signal, compactModel)
-          : oneShotChatCompletion({
-              client: this.client,
-              model: compactModel,
-              system: COMPACT_SYSTEM_PROMPT,
-              user: wrapTranscriptForSummary(transcript),
-              maxTokens: 1024,
-              signal,
-            }),
+      summarize,
       isClosed: this.closed,
       isIdle: this.abort.isIdle(),
       // Invariant: compaction opens a real abort scope through the same
