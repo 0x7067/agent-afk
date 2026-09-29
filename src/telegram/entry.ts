@@ -88,11 +88,11 @@ export function installCrashHandlers(): void {
   };
   process.on('uncaughtException', (err) => {
     notifyCrash('uncaughtException', err);
-    setTimeout(() => process.exit(1), CRASH_EXIT_DELAY_MS);
+    setTimeout(() => process.exit(1), CRASH_EXIT_DELAY_MS).unref();
   });
   process.on('unhandledRejection', (err) => {
     notifyCrash('unhandledRejection', err);
-    setTimeout(() => process.exit(1), CRASH_EXIT_DELAY_MS);
+    setTimeout(() => process.exit(1), CRASH_EXIT_DELAY_MS).unref();
   });
 }
 

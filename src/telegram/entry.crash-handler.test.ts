@@ -89,6 +89,11 @@ describe('installCrashHandlers (#2303, #2513)', () => {
   });
 
   afterEach(() => {
+    // Clear any pending timers (e.g. the deferred process.exit setTimeout) before
+    // restoring real timers — prevents leaked 200 ms real timers from firing after
+    // the spy is restored and triggering "process.exit unexpectedly called" errors
+    // in the vitest runner between tests.
+    vi.clearAllTimers();
     exitSpy.mockRestore();
     vi.useRealTimers();
     vi.resetModules();
@@ -115,6 +120,9 @@ describe('installCrashHandlers (#2303, #2513)', () => {
   });
 
   it('uncaughtException handler calls pushIfConfigured with "telegram" prefix and error text', async () => {
+    // Use fake timers so the deferred process.exit(1) setTimeout never becomes
+    // a real pending timer that could leak across test boundaries.
+    vi.useFakeTimers();
     const { captured, restore } = captureProcessOn();
     try {
       installCrashHandlers();
@@ -134,6 +142,9 @@ describe('installCrashHandlers (#2303, #2513)', () => {
   });
 
   it('unhandledRejection handler calls pushIfConfigured with "telegram" prefix', async () => {
+    // Use fake timers so the deferred process.exit(1) setTimeout never becomes
+    // a real pending timer that could leak across test boundaries.
+    vi.useFakeTimers();
     const { captured, restore } = captureProcessOn();
     try {
       installCrashHandlers();
@@ -152,6 +163,9 @@ describe('installCrashHandlers (#2303, #2513)', () => {
   });
 
   it('rate-limits crash pushes: second call within 60 s is suppressed', async () => {
+    // Use fake timers so the deferred process.exit(1) setTimeout never becomes
+    // a real pending timer that could leak across test boundaries.
+    vi.useFakeTimers();
     const { captured, restore } = captureProcessOn();
     try {
       installCrashHandlers();

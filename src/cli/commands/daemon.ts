@@ -134,14 +134,24 @@ const isDoneUnverified = ({ responseText, successfulToolNames }: { responseText:
   return v !== null && v.kind === 'done' && !successfulToolNames.some((n) => DONE_EVIDENCE_TOOLS.has(n));
 };
 
+/** Guards against duplicate listener registration if called more than once. */
+let daemonCrashHandlersInstalled = false;
+
 /**
  * Register uncaughtException / unhandledRejection process handlers that push a
  * best-effort Telegram crash notice before exiting. Rate-limited to one push
  * per 60 s to avoid crash-loop self-DOS. Exit is deferred by 200 ms so the
  * fire-and-forget HTTP request has a chance to flush before the process
  * terminates.
+ *
+ * Re-entry safe: a module-scoped flag prevents duplicate listener registration
+ * if this function is called more than once, mirroring entry.ts's
+ * crashHandlersInstalled pattern.
  */
 function registerDaemonCrashHandlers(): void {
+  if (daemonCrashHandlersInstalled) return;
+  daemonCrashHandlersInstalled = true;
+
   let lastCrashPushAt = 0;
   const CRASH_PUSH_GUARD_MS = 60_000;
   const CRASH_EXIT_DELAY_MS = 200;
@@ -158,11 +168,11 @@ function registerDaemonCrashHandlers(): void {
   };
   process.on('uncaughtException', (err) => {
     notifyCrash('uncaughtException', err);
-    setTimeout(() => process.exit(1), CRASH_EXIT_DELAY_MS);
+    setTimeout(() => process.exit(1), CRASH_EXIT_DELAY_MS).unref();
   });
   process.on('unhandledRejection', (err) => {
     notifyCrash('unhandledRejection', err);
-    setTimeout(() => process.exit(1), CRASH_EXIT_DELAY_MS);
+    setTimeout(() => process.exit(1), CRASH_EXIT_DELAY_MS).unref();
   });
 }
 
