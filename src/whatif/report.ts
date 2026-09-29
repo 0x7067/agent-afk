@@ -21,7 +21,7 @@ import { fmtP, renderProbeSignFlipSection } from './report.signflip.js';
 import { scoredOn, renderVerifiedPredictionTable } from './report.predictions.js';
 import { describeChange } from './operators/index.js';
 import { verdictEmoji, verdictLabel } from './report-verdict.js';
-import { mdeLimitLine } from './mde.js';
+import { mdeLimitLine, headroomLimitLine } from './mde.js';
 export { buildHeadline } from './report.headline.js';
 
 // ---------------------------------------------------------------------------
@@ -344,6 +344,15 @@ export function standardLimits(opts: {
       const n = Math.min(vp.rates.n.baseline, vp.rates.n.candidate);
       const line = mdeLimitLine(n, vp.prediction.id);
       if (line) limits.push(line);
+      // Headroom limit (#2504): shown when observed baseline leaves less room
+      // in the predicted direction than the achieved MDE.
+      const headroomLine = headroomLimitLine(
+        vp.rates.baseline,
+        vp.prediction.direction,
+        n,
+        vp.prediction.id,
+      );
+      if (headroomLine) limits.push(headroomLine);
     }
   }
 

@@ -38,7 +38,7 @@ import {
 } from './episodes.js';
 import { estimateVerifyCost } from './cost.js';
 import { buildHeadline, standardLimits } from './report.js';
-import { isUnderpowered, mdeGateRefusedMessage, mdePreflightLine } from './mde.js';
+import { isUnderpowered, mdeGateRefusedMessage, mdePreflightLine, isHeadroomUnderpowered, headroomPreflightLine } from './mde.js';
 import { persistRun } from './run.persist.js';
 import { verifyRun } from './run.verify.js';
 import type {
@@ -221,6 +221,8 @@ interface PreflightInput {
   syntheticPerArm: number;
   /** Number of predictions retained (for breakdown display). */
   predictionCount: number;
+  /** Predictions — used for the headroom check (#2504). */
+  predictions: import('./types.js').Prediction[];
   force: boolean;
   samples: number;
   agentModel: string;
@@ -240,18 +242,34 @@ interface PreflightInput {
  * probe episodes assigned to any single prediction — because each prediction
  * is scored only on its own probes (issue #2403).  Total episode count is used
  * only for the cost estimate.
+ *
+ * The headroom check (#2504) fires when a prediction's `baselineEstimate`
+ * leaves less room than the achieved MDE.  It uses the same `WhatifMdeError`
+ * and is bypassed by `--force`.
  */
 function runPreflightChecks(input: PreflightInput): void {
   const {
     episodesPerArm, minProbesPerPrediction, force, samples, agentModel, analystModel,
     systemTokens, judgeExternal, analystCostUsd, maxUsd, onProgress,
-    predictionCount, syntheticPerArm,
+    predictionCount, syntheticPerArm, predictions,
   } = input;
 
   onProgress?.({ stage: 'preflight', message: mdePreflightLine(minProbesPerPrediction) });
 
   if (isUnderpowered(minProbesPerPrediction) && !force) {
     throw new WhatifMdeError(minProbesPerPrediction);
+  }
+
+  // Headroom check (#2504): per-prediction baseline headroom vs. achieved MDE.
+  // Uses the same gate (WhatifMdeError) so --force bypasses it identically.
+  if (!force) {
+    for (const pred of predictions) {
+      if (isHeadroomUnderpowered(pred, minProbesPerPrediction)) {
+        const line = headroomPreflightLine(pred, minProbesPerPrediction);
+        onProgress?.({ stage: 'preflight', message: line });
+        throw new WhatifMdeError(minProbesPerPrediction);
+      }
+    }
   }
 
   const estimate = estimateVerifyCost({
@@ -415,6 +433,7 @@ export async function runWhatif(
         minProbesPerPrediction,
         syntheticPerArm: predictions.reduce((s, p) => s + episodes.filter((e) => e.targets === p.id).length, 0),
         predictionCount: predictions.length,
+        predictions,
         force: options.force ?? false,
         samples: options.samples,
         agentModel: options.agentModel,
