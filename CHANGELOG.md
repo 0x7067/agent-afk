@@ -11,6 +11,21 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.275.0] - 2026-09-29
+
+### Added
+- yield-to-user contract; wait_for ends early when the user types (174bedd4)
+
+### Fixed
+- image-bearing queued messages also wake a yielding tool (aa516af0)
+- advance turn index only after a turn passes its gate, add ordinal-list and anaphora test coverage, scope corpusExclusions JSDoc (850d9a32)
+
+### Changed
+- Merge pull request #2540 from griffinwork40/afk/iso-agent-tool-12-oia21r (fb0fc39f)
+- Merge pull request #2541 from griffinwork40/afk/tool-user-yield (a9bc7668)
+- Merge branch 'main' into afk/tool-user-yield (4837051e)
+- Merge branch 'main' into afk/iso-agent-tool-12-oia21r (a98bc831)
+
 ## [5.274.8] - 2026-09-29
 
 ### Fixed
