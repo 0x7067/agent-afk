@@ -41,6 +41,7 @@ import {
   type IterationContext,
   type FinishTurnContext,
 } from './turn-iteration.js';
+import { runIterationWithOverloadPause } from './overload-pause-tier.js';
 import type { ToolResult } from '../../anthropic-direct/types.js';
 import type { AbortCoordinator } from '../../shared/abort-coordinator.js';
 import { dispatchAndAppendToolCalls } from './dispatch-append.js';
@@ -159,7 +160,16 @@ export async function* runTurnInner(
       return;
     }
 
-    const result = yield* runIteration(ctx, controller, vision, windDownReason);
+    const result = yield* runIterationWithOverloadPause(
+      () => runIteration(ctx, controller, vision, windDownReason),
+      {
+        surface: ctx.opts.config.surface,
+        traceWriter: ctx.traceWriter,
+        signal: controller.signal,
+        isClosed: () => ctx.closed,
+        sessionId: ctx.initSessionId,
+      },
+    );
     if (result === null) {
       ctx.abort.clear(controller);
       if (controller.signal.aborted || ctx.closed) {
