@@ -38,15 +38,22 @@ export interface OutcomeTurnsResult {
  * journal is the only source.
  */
 export function loadOutcomeTurns(sessionId: string): OutcomeTurnsResult {
+  // 1. Try the sidecar first. An independent try/catch ensures that a corrupt
+  //    or throwing sidecar does not skip the journal fallback — both branches
+  //    are independently guarded.
   try {
-    // 1. Try the sidecar first.
     const session = loadStoredSession(sessionId);
     if (session !== undefined && session.turns.length > 0) {
       // Sidecar turns already carry the Turn / ToolEvent shape; pass through.
       return { turns: session.turns, source: 'sidecar' };
     }
+  } catch {
+    // Sidecar read failed (corrupt file, permission, parse error). Fall through
+    // to the journal path rather than surfacing 'none' prematurely.
+  }
 
-    // 2. Fall back to the journal.
+  // 2. Fall back to the journal.
+  try {
     const messages = sessionHistoryMessages(readJournalRecords(sessionId));
     if (messages.length === 0) {
       return { turns: [], source: 'none' };
@@ -72,17 +79,35 @@ export function loadOutcomeTurns(sessionId: string): OutcomeTurnsResult {
  * The sidecar keeps every turn for the same reason, and facets'
  * journalRecordsToToolEvents scans all appends too. So we take every
  * `append` in record order and skip verbatim re-appends (resync / compaction
- * replay the same message), which would otherwise duplicate turns and tool
- * events.
+ * replay the same message at the same index), which would otherwise duplicate
+ * turns and tool events.
+ *
+ * Dedup is fingerprint-based per slot: for each journal index we track a
+ * short fingerprint (role + serialized type/id of the first content block,
+ * capped at 120 chars). An append at the same index with the same fingerprint
+ * is a verbatim resync replay and is skipped. An append at the same index
+ * with a different fingerprint is a distinct historical event (e.g. a
+ * compaction summary replacing the prior turn) and is included. This avoids
+ * the unbounded-key problem of full `JSON.stringify(rec.message)` while
+ * correctly including legitimately repeated messages (same text, different
+ * index) and distinct messages at the same slot.
  */
 export function sessionHistoryMessages(records: readonly JournalRecord[]): JournalMessage[] {
-  const seen = new Set<string>();
+  // Per-slot fingerprint of the last message written at that index.
+  const slotFp = new Map<number, string>();
   const out: JournalMessage[] = [];
   for (const rec of records) {
     if (rec.kind !== 'append') continue;
-    const key = JSON.stringify(rec.message);
-    if (seen.has(key)) continue;
-    seen.add(key);
+    // Fingerprint: role + compact representation of the first content block.
+    // We only need enough to distinguish tool_use/tool_result (which carry
+    // unique IDs) from text blocks. Cap at 120 chars to bound allocation.
+    const firstBlock = rec.message.content[0];
+    const blockKey = firstBlock
+      ? JSON.stringify(firstBlock).slice(0, 120)
+      : '';
+    const fp = `${rec.message.role}|${blockKey}`;
+    if (slotFp.get(rec.index) === fp) continue; // verbatim replay — skip
+    slotFp.set(rec.index, fp);
     out.push(rec.message);
   }
   return out;

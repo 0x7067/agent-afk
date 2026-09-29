@@ -118,6 +118,26 @@ describe('loadOutcomeTurns — source selection', () => {
     expect(result.source).toBe('sidecar');
     expect(result.turns[0]?.user).toBe('hello from sidecar');
   });
+
+  it('falls back to journal when sidecar is corrupt (invalid JSON)', async () => {
+    const sessionId = 'sess-corrupt-sidecar';
+    // Write a corrupt sidecar (invalid JSON)
+    const sessionsDir = join(tmpDir, 'state', 'sessions');
+    mkdirSync(sessionsDir, { recursive: true });
+    writeFileSync(join(sessionsDir, `${sessionId}.json`), '{ "turns": [CORRUPT', 'utf8');
+
+    // Write a valid journal that the fallback should use
+    writeJournal(tmpDir, sessionId, [
+      { role: 'user', content: [{ type: 'text', text: 'from journal fallback' }] },
+      { role: 'assistant', content: [{ type: 'text', text: 'ok' }] },
+    ]);
+
+    const { loadOutcomeTurns } = await import('./load-outcome-turns.js');
+    const result = loadOutcomeTurns(sessionId);
+    // Corrupt sidecar must not suppress the journal fallback
+    expect(result.source).toBe('journal');
+    expect(result.turns.length).toBeGreaterThan(0);
+  });
 });
 
 // ─── error_tail fires from journal ───────────────────────────────────────────
