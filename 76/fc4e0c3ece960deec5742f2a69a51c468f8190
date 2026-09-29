@@ -1,0 +1,37 @@
+docs/env-registry.json
+  s_b4aa746b515b2b::t_c8df7390585f28 1455-1461
+docs/env-registry.md
+  s_b4aa746b515b2b::t_f080d4349cf995 5,109
+src/agent/plugins-scanner.test.ts
+  s_b4aa746b515b2b::t_26671f363c352b 51-58
+src/agent/plugins-scanner.ts
+  s_b4aa746b515b2b::t_3c2ed7a532c1f3 20,171,235
+src/agent/plugins/plugin-manifest.ts
+  s_b4aa746b515b2b::t_08728ec2a28ad8 18,32
+src/config/codex-discovery.ts
+  s_b4aa746b515b2b::t_32da07ba570748 1-33
+src/config/env.paths.ts
+  s_b4aa746b515b2b::t_c9cf838f1219ae 20-26
+src/config/import-sources.test.ts
+  s_b4aa746b515b2b::t_beb3726fa82410 7,38,44,166,169,204-230
+src/config/import-sources.ts
+  s_b4aa746b515b2b::t_82a4147d045707 6-7,92-94,96,336
+src/config/plugin-discovery.ts
+  s_b4aa746b515b2b::t_139179f0a3afe6 41-45,48,85,96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "76fc4e0c3ece960deec5742f2a69a51c468f8190",
+  "prompts": {},
+  "sessions": {
+    "s_b4aa746b515b2b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f479b117-f243-49ed-a4cd-dc1d6f2dcb75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Pedro Guimarães <21346846+0x7067@users.noreply.github.com>"
+    }
+  }
+}
