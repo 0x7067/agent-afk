@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.271.2] - 2026-09-29
+
+### Fixed
+- record --ref on update when the checkout is already at it (#2457) (663e1f56)
+
 ## [5.271.1] - 2026-09-29
 
 ### Fixed
