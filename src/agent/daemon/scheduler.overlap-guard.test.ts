@@ -24,8 +24,10 @@ describe('makeSessionStartSkipRecord — secret redaction', () => {
     skipReason: 'cooldown',
   };
 
-  it('redacts a secret-like token from the command field', () => {
-    const rawSecret = 'sk-proj-abc123';
+  it('redacts an OpenAI-style secret token from the command field', () => {
+    // The sk- pattern requires ≥20 chars after "sk-" (see prompt-dump.ts INLINE_SECRET_PATTERNS).
+    // "sk-proj-" + 20 alphanum chars satisfies the minimum; a realistic token is longer.
+    const rawSecret = 'sk-proj-ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef';
     const task: ScheduledTask = { ...baseTask, command: `deploy --token ${rawSecret}` };
 
     const record = makeSessionStartSkipRecord(task, decision, nowMs);
