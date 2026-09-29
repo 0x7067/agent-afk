@@ -11,6 +11,19 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.275.4] - 2026-09-29
+
+### Fixed
+- bound tool-lane preview formatting so huge tool results cannot starve the REPL (#2578) (247a06f6)
+- make query.ts mutable fields private with live getters (81261a07)
+- fd leak, tie-break parity, typeof guard (9a51b6aa)
+- async non-blocking tool-result lookup for web route (b94fad6e)
+
+### Changed
+- Merge pull request #2572 from griffinwork40/afk/iso-agent-tool-2-86ybes (9441ccc7)
+- Merge pull request #2575 from griffinwork40/afk/iso-agent-tool-3-qdnucb (706c42af)
+- decompose openai-compatible/query.ts under the 350-line ceiling (e1589a52)
+
 ## [5.275.3] - 2026-09-29
 
 ### Fixed
