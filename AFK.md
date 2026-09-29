@@ -2,7 +2,7 @@
 
 ## What This Is
 
-Standalone TypeScript CLI + daemon + Telegram bot built on `@anthropic-ai/sdk`. Runs **outside** Claude Code as its own process. Binary: `afk`. Node ≥22, pnpm-only (lockfile is pnpm-specific).
+Standalone TypeScript CLI + daemon + Telegram bot built on `@anthropic-ai/sdk`. Runs **outside** Claude Code as its own process. Binary: `afk`. Node ≥22.13 (pnpm 11 minimum), pnpm 11 only (pinned via `package.json#packageManager`; lockfile is pnpm-specific; dependency build scripts must be allowlisted under `allowBuilds` in `pnpm-workspace.yaml`, and `dashboard/` has its own copy). CI publishes with `npm publish`/`npm version`, not the pnpm equivalents; see the Invariant in `.github/workflows/publish.yml`.
 
 ## Commands
 
@@ -10,7 +10,7 @@ Standalone TypeScript CLI + daemon + Telegram bot built on `@anthropic-ai/sdk`. 
 pnpm install                                       # pnpm exclusively
 pnpm build                                         # tsc + copy *.md prompts → dist/
 pnpm test                                          # vitest run (all)
-pnpm test src/agent/session.test.ts                # single file (NO --; pnpm 10 drops args after -- and runs ALL files)
+pnpm test src/agent/session.test.ts                # single file (NO --; pnpm 10+ drops args after -- and runs ALL files)
 pnpm test src/agent/session.test.ts -t "sends a message"   # single test by name (scope to a file, then filter by -t)
 pnpm test:file src/agent/session.test.ts           # --proof alias for a scoped run (script: vitest run)
 pnpm test:watch                                    # vitest watch
