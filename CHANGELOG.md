@@ -11,6 +11,17 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.274.3] - 2026-09-29
+
+### Fixed
+- address review feedback on outcome journal fallback (f7703b47)
+- fall back to the session journal when the sidecar is absent (05929cf6)
+
+### Changed
+- Merge pull request #2510 from griffinwork40/afk/outcome-journal-fallback (ea54deff)
+- Merge remote-tracking branch 'origin/main' into afk/pr-2510-rebaseline (f50f078e)
+- Merge remote-tracking branch 'origin/main' into afk/pr2510-push (8c711f8f)
+
 ## [5.274.2] - 2026-09-29
 
 ### Fixed
