@@ -153,7 +153,7 @@ async function runPredictPhase(
     return result;
   };
 
-  const repoManifest = buildRepoManifest(options.realCwd);
+  const repoManifest = await buildRepoManifest(options.realCwd);
 
   const probesPerPrediction = options.probes ?? DEFAULT_PROBES;
   const maxPredictions = resolveMaxPredictions(probesPerPrediction, options.maxPredictions);
