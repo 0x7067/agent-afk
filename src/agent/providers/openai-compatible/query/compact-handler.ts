@@ -63,8 +63,14 @@ export interface CompactHandlerContext {
   readonly closed: boolean;
   /** Mutable — updated by finishTurn and mid-round live refresh. */
   lastUsage: ProviderUsage | null;
-  /** Mutable — latched when a Responses-wire summarize proves the backend refuses it. */
-  responsesCompactionUnavailable: boolean;
+  /** Read-only latch — `true` when the Responses-wire backend provably refuses compaction. */
+  readonly responsesCompactionUnavailable: boolean;
+  /**
+   * Latch the responses-compaction-unavailable flag. The ONLY legitimate writer;
+   * replaces direct field assignment so the backing field can stay private on the
+   * owning class. Called at most once per session.
+   */
+  markResponsesCompactionUnavailable(): void;
 }
 
 /**
@@ -89,7 +95,7 @@ export async function runSummarizeViaResponses(
     });
   } catch (err) {
     if (!signal.aborted && provesResponsesCompactionUnsupported(err)) {
-      ctx.responsesCompactionUnavailable = true;
+      ctx.markResponsesCompactionUnavailable();
       const status = getErrorStatus(err);
       void emitSessionPhase(ctx.traceWriter, {
         phase: 'compaction_disabled',
@@ -149,7 +155,7 @@ export async function runCompactHistory(
     usedFraction,
     shrinkAtFraction: readShrinkFraction(),
     summarize,
-    isClosed: ctx.closed,
+    isClosed: ctx.closed, // boolean snapshot — inherited from pre-split behaviour; compactOpenAIHistory accepts boolean, not a function
     isIdle: ctx.abort.isIdle(),
     beginAbort: () => ctx.abort.begin(),
     clearAbort: (controller) => ctx.abort.clear(controller),

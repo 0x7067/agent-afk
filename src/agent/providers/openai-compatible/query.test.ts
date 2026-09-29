@@ -3663,3 +3663,69 @@ describe('OpenAICompatibleQuery — extracted turn-driver sees live mutations (i
     q.close();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Regression: setPermissionMode() mid-session is seen by next iteration
+//
+// Companion regression to the setModel test above. The permission-mode getter
+// must be live (backed by `_currentPermissionMode`) so the plan-mode addendum
+// injected in turn-iteration.ts:runIteration is computed from the CURRENT
+// mode, not a construction-time snapshot.
+// ---------------------------------------------------------------------------
+describe('OpenAICompatibleQuery — setPermissionMode mid-session seen by next turn', () => {
+  beforeEach(() => {
+    createCalls = [];
+    pendingChunks = [];
+    pendingError = null;
+    installMockClient();
+    __setRetryBaseDelay(0);
+  });
+  afterEach(() => {
+    resetSlotBindings();
+  });
+
+  it('currentPermissionMode reflects setPermissionMode() call before next turn', async () => {
+    const controlled = makeControlledPromptStream();
+    // Provide a systemPrompt so buildMessages always emits a system message — required for
+    // the plan-mode addendum injection in turn-iteration.ts:runIteration.
+    const q = buildQueryFromConfig(
+      baseConfig({ model: 'gpt-4o-mini', systemPrompt: 'you are helpful' }),
+      controlled.stream,
+    );
+    const iter = q[Symbol.asyncIterator]();
+    await iter.next(); // session.init
+
+    // Turn 1 in default mode.
+    pendingChunks = [
+      { choices: [{ delta: { content: 'ok' } }] },
+      { choices: [{ delta: {}, finish_reason: 'stop' }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } },
+    ];
+    controlled.send('set me up');
+    let ev: IteratorResult<ProviderEvent>;
+    do { ev = await iter.next(); } while (!ev.done && ev.value.type !== 'turn.completed');
+
+    // Sanity: mode starts as 'default'.
+    expect(q.currentPermissionMode).toBe('default');
+
+    // Switch to plan mode mid-session.
+    await q.setPermissionMode('plan');
+    expect(q.currentPermissionMode).toBe('plan');
+
+    // Turn 2: the iteration must read the live value, not the snapshot.
+    pendingChunks = [
+      { choices: [{ delta: { content: 'planning...' } }] },
+      { choices: [{ delta: {}, finish_reason: 'stop' }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } },
+    ];
+    controlled.send('make a plan');
+    do { ev = await iter.next(); } while (!ev.done && ev.value.type !== 'turn.completed');
+
+    // The turn-2 request body must contain the plan-mode addendum somewhere in
+    // the messages array — this proves runIteration read currentPermissionMode
+    // live rather than from a construction-time snapshot.
+    const turn2Args = createCalls[1]?.args as { messages?: Array<{ role: string; content: string }> } | undefined;
+    const allContent = (turn2Args?.messages ?? []).map((m) => m.content).join('\n');
+    expect(allContent).toContain(PLAN_MODE_ADDENDUM_TEXT);
+
+    q.close();
+  });
+});

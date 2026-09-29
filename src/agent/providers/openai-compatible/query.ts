@@ -147,15 +147,41 @@ export class OpenAICompatibleQuery implements ProviderQuery, TurnDriverContext, 
   /** Message-journal commit points + resume seeding (query/journal-wiring.ts). */
   readonly journal: OpenAIJournalWiring;
 
-  currentModel: string;
-  currentPermissionMode: string;
+  /**
+   * Private backing for `currentModel`. Changed only through `setModel()`.
+   * Public via `get currentModel()` — interfaces see the getter, not the field.
+   */
+  private _currentModel: string;
+  /**
+   * Private backing for `currentPermissionMode`. Changed only through
+   * `setPermissionMode()`, which also calls `toolDispatcher.setAllowAll`.
+   * Public via `get currentPermissionMode()`.
+   */
+  private _currentPermissionMode: string;
+
+  /** Current model — live getter; interfaces (TurnDriverContext, IterationContext) are satisfied here. */
+  get currentModel(): string { return this._currentModel; }
+  /** Current permission mode — live getter. */
+  get currentPermissionMode(): string { return this._currentPermissionMode; }
 
   /**
    * Latched `true` when a Responses-wire summarize (history compaction) fails in
    * a way that PROVES the backend refuses the request. Per-session; never reset.
-   * Mutable — must be visible to turn-iteration helpers via `this`.
+   *
+   * Contract: the ONLY writer is `markResponsesCompactionUnavailable()` (called by
+   * compact-handler.ts). All other reads are through the context interfaces (which
+   * expose it as `readonly`). The field itself is private to prevent direct external writes.
    */
-  responsesCompactionUnavailable = false;
+  private _responsesCompactionUnavailable = false;
+
+  /** Read accessor for the responses-compaction-unavailable latch. */
+  get responsesCompactionUnavailable(): boolean { return this._responsesCompactionUnavailable; }
+  /**
+   * Latch the responses-compaction-unavailable flag. Called exactly once by
+   * `runSummarizeViaResponses` in compact-handler.ts when the Responses-wire
+   * backend provably refuses compaction. Never reset during the session.
+   */
+  markResponsesCompactionUnavailable(): void { this._responsesCompactionUnavailable = true; }
 
   /**
    * Per-session abort coordination — see {@link AbortCoordinator}.
@@ -163,15 +189,18 @@ export class OpenAICompatibleQuery implements ProviderQuery, TurnDriverContext, 
   readonly abort = new AbortCoordinator();
 
   /**
-   * Stays here rather than in the coordinator: sub-generators read it on
-   * every loop iteration, and `close()` updates the flag and the promise
-   * together. Mutable — must be visible to turn-iteration helpers via `this`.
+   * Private backing for `closed`. Set by `close()`, which also unblocks the
+   * prompt-stream race via `abort.markClosed()`.
+   * Public via `get closed()` — sub-generators read it live on every iteration.
    */
-  closed = false;
+  private _closed = false;
+
+  /** Whether the session has been closed — live getter. */
+  get closed(): boolean { return this._closed; }
 
   /**
    * Last completed turn's accumulated usage — drives `getContextUsage()`.
-   * Mutable — updated by finishTurn and mid-round live refresh.
+   * Mutable — updated by finishTurn (via FinishTurnContext) and mid-round live refresh.
    */
   lastUsage: ProviderUsage | null = null;
 
@@ -184,8 +213,8 @@ export class OpenAICompatibleQuery implements ProviderQuery, TurnDriverContext, 
   constructor(opts: OpenAICompatibleQueryOptions) {
     this.opts = opts;
     this.initSessionId = opts.synthesizedSessionId;
-    this.currentModel = opts.model;
-    this.currentPermissionMode = normalizePermissionMode(opts.config.permissionMode);
+    this._currentModel = opts.model;
+    this._currentPermissionMode = normalizePermissionMode(opts.config.permissionMode);
     this.toolDispatcher = opts.toolDispatcher;
     this.onPermissionMode = opts.onPermissionMode;
     this.onCwdChange = opts.onCwdChange;
@@ -330,24 +359,12 @@ export class OpenAICompatibleQuery implements ProviderQuery, TurnDriverContext, 
     const trace = new TurnTrace(controller.signal, this.traceWriter, 'openai-compatible');
     this.fastTier.beginTurn(this.currentModel);
     try {
-      yield* this._runTurnInner(content, controller, turnStartTime, taskId);
+      // Pass `this` — which implements TurnDriverContext — so every mutable
+      // field read inside runTurnInner is always live (no stale snapshot).
+      yield* runTurnInner(this, content, controller, turnStartTime, taskId);
     } finally {
       trace.finish(Date.now() - turnStartTime);
     }
-  }
-
-  /**
-   * Thin delegate to the extracted `runTurnInner` function.
-   * Passing `this` (which implements TurnDriverContext) means every
-   * mutable field read is always live — no stale snapshot.
-   */
-  private async *_runTurnInner(
-    content: ProviderUserTurn['content'],
-    controller: AbortController,
-    turnStartTime: number,
-    taskId: string,
-  ): AsyncGenerator<ProviderEvent> {
-    yield* runTurnInner(this, content, controller, turnStartTime, taskId);
   }
 
   // ---- ProviderQuery surface ------------------------------------------------
@@ -373,14 +390,14 @@ export class OpenAICompatibleQuery implements ProviderQuery, TurnDriverContext, 
   }
 
   async setModel(model?: string): Promise<void> {
-    if (model !== undefined) this.currentModel = resolveModelId(model) ?? model;
+    if (model !== undefined) this._currentModel = resolveModelId(model) ?? model;
   }
 
   async setPermissionMode(mode: string): Promise<void> {
-    this.currentPermissionMode = normalizePermissionMode(mode);
-    const allowAll = pathContainmentBypassed(this.currentPermissionMode);
+    this._currentPermissionMode = normalizePermissionMode(mode);
+    const allowAll = pathContainmentBypassed(this._currentPermissionMode);
     this.toolDispatcher?.setAllowAll?.(allowAll);
-    this.onPermissionMode?.(this.currentPermissionMode);
+    this.onPermissionMode?.(this._currentPermissionMode);
   }
 
   setCwd(cwd: string): void {
@@ -446,7 +463,7 @@ export class OpenAICompatibleQuery implements ProviderQuery, TurnDriverContext, 
   journalSnapshot(): ReturnType<OpenAIJournalWiring['snapshot']> { return this.journal.snapshot(this.priorTurns); }
 
   close(): void {
-    this.closed = true;
+    this._closed = true;
     this.abort.requestAbort('closed');
     this.abort.markClosed();
     debugLog(`🟢 ${PROVIDER_NAME}: closed`);

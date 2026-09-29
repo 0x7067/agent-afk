@@ -117,6 +117,7 @@ export async function* runTurnInner(
   turnStartTime: number,
   taskId: string,
 ): AsyncGenerator<ProviderEvent> {
+  // Vision is fixed for the turn — model can only change between turns.
   const vision = supportsVision(ctx.currentModel);
 
   // Context-overflow guard (#962): fail fast before the provider rejects
