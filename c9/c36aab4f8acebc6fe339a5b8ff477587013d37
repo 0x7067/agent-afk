@@ -1,0 +1,24 @@
+src/agent/plugins-scanner.test.ts
+  h_29be57c0addd47 39-50
+src/agent/plugins-scanner.ts
+  h_29be57c0addd47 20,136-143
+src/config/import-mcp-discovery.ts
+  h_29be57c0addd47 1-156
+src/config/import-sources.test.ts
+  h_29be57c0addd47 173-202
+src/config/import-sources.ts
+  h_29be57c0addd47 1,3-6,106
+src/config/plugin-discovery.ts
+  h_29be57c0addd47 1-101
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c9c36aab4f8acebc6fe339a5b8ff477587013d37",
+  "prompts": {},
+  "humans": {
+    "h_29be57c0addd47": {
+      "author": "Pedro Guimarães <21346846+0x7067@users.noreply.github.com>"
+    }
+  }
+}
