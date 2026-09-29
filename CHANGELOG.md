@@ -11,6 +11,14 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.275.3] - 2026-09-29
+
+### Fixed
+- advisory findings from 2026-09-29 pr-triage review (fa3647e1)
+
+### Changed
+- Merge pull request #2573 from griffinwork40/afk/iso-agent-tool-2-xnqdzl (4fb3854c)
+
 ## [5.275.2] - 2026-09-29
 
 ### Fixed
