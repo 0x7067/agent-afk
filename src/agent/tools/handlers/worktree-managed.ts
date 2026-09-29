@@ -436,6 +436,10 @@ export async function teardownIsolatedWorktree(args: {
         preservedAt: new Date().toISOString(),
       };
       if (outcome.reason === 'commits-ahead') patch['commitsAheadAtPreserve'] = outcome.commitsAhead;
+      if (outcome.reason === 'ignored-local-state') {
+        patch['ignoredDetailAtPreserve'] = outcome.detail;
+        patch['ignoredBecauseAtPreserve'] = outcome.because;
+      }
       await fs.writeFile(metaPath, JSON.stringify({ ...existing, ...patch }, null, 2), 'utf-8');
     } catch { /* best-effort — never fail teardown over a meta write */ }
     return { removed: false, preserved: true, reason: outcome.reason, ignoredDetail, ignoredBecause };
