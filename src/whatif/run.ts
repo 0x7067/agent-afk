@@ -42,6 +42,7 @@ import { persistRun } from './run.persist.js';
 import { verifyRun } from './run.verify.js';
 
 import { runVerifyPreflight, runBaselineSamplePhase } from './run.preflight.js';
+import { checkRedundancy, formatRedundancySection } from './redundancy.js';
 import type {
   EpisodeTrace,
   RunnerOptions,
@@ -140,6 +141,16 @@ async function runPredictPhase(
     normalizeSnapshot(candidateSnap, candidate, real),
   );
 
+  // ── Redundancy preflight (#2414) ─────────────────────────────────────────
+  // Check added paragraphs against the baseline system prompt using
+  // deterministic token-set Jaccard similarity.  Warnings are surfaced via
+  // onProgress BEFORE the model call so a user can abort a paid run early.
+  const redundancyWarnings = checkRedundancy(structural.baseline.system, structural.systemDiff);
+  for (const w of redundancyWarnings) {
+    deps.onProgress?.({ stage: 'predict', message: `[redundancy] ${w.message}` });
+  }
+  const redundancySection = formatRedundancySection(redundancyWarnings);
+
   deps.onProgress?.({ stage: 'predict', message: 'Generating predictions' });
 
   const changeKinds = spec.changes.map((c) => c.kind);
@@ -159,7 +170,11 @@ async function runPredictPhase(
   const maxPredictions = resolveMaxPredictions(probesPerPrediction, options.maxPredictions);
 
   const rawPredictions = await predictChanges(
-    { spec, changeDescriptions, structural, trackRecord, repoManifest, probesPerPrediction, maxPredictions },
+    {
+      spec, changeDescriptions, structural, trackRecord, repoManifest,
+      probesPerPrediction, maxPredictions,
+      ...(redundancySection !== undefined ? { redundancySection } : {}),
+    },
     wrappedComplete,
     options.analystModel,
   );
