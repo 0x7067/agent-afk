@@ -132,7 +132,7 @@ function makeRunner(runFn?: MockInstance): AgentRunner {
  * first time called, then returns empty array for subsequent calls
  * (discover phase).
  */
-function makeFakeComplete(): CompleteFn {
+function makeFakeComplete(baselineEstimate?: number): CompleteFn {
   let calls = 0;
   return vi.fn(async () => {
     calls++;
@@ -147,6 +147,7 @@ function makeFakeComplete(): CompleteFn {
           reason: 'Candidate prompt instructs asking first',
           testQuestion: 'Does the response ask the user a clarifying question before using any tool?',
           probes: ['Write a file named hello.txt with content world'],
+          ...(baselineEstimate !== undefined ? { baselineEstimate } : {}),
         },
       ];
       return { text: JSON.stringify(preds), costUsd: 0.002 };
@@ -557,6 +558,65 @@ describe('runWhatif — MDE gate', () => {
       if (err instanceof WhatifMdeError) threw = true;
     }
     expect(threw).toBe(false);
+  });
+});
+
+describe('runWhatif — headroom preflight (#2504)', () => {
+  it('prints the headroom warning even under --force, and still runs', async () => {
+    const deps = makeDeps({ complete: makeFakeComplete(0.97) });
+    const options = makeOptions({ verify: true, maxUsd: 10, force: true });
+    let threw = false;
+    try {
+      await runWhatif(options, deps);
+    } catch (err) {
+      if (err instanceof WhatifMdeError) threw = true;
+    }
+    expect(threw).toBe(false);
+    const messages = (deps.onProgress as ReturnType<typeof vi.fn>).mock.calls
+      .map((c) => (c[0] as { message?: string }).message ?? '');
+    expect(messages.some((m) => m.includes('baseline estimate 97%') && m.includes('headroom'))).toBe(true);
+    expect(deps.runner.run).toHaveBeenCalled();
+  });
+
+  it('prints no headroom warning when the analyst gives no estimate', async () => {
+    const deps = makeDeps();
+    const options = makeOptions({ verify: true, maxUsd: 10, force: true });
+    await runWhatif(options, deps).catch(() => undefined);
+    const messages = (deps.onProgress as ReturnType<typeof vi.fn>).mock.calls
+      .map((c) => (c[0] as { message?: string }).message ?? '');
+    expect(messages.some((m) => m.includes('baseline estimate'))).toBe(false);
+  });
+
+  it('WhatifMdeError constructor sets kind=headroom and predictionId for a headroom violation', () => {
+    // The headroom gate throws with the third opts argument.  Verify the
+    // constructor correctly populates the discriminating fields so catch
+    // handlers in whatif.ts can tell a headroom violation from a global MDE
+    // underpowered gate at runtime.
+    const err = new WhatifMdeError(1, 'headroom message', { kind: 'headroom', predictionId: 'p1' });
+    expect(err).toBeInstanceOf(WhatifMdeError);
+    expect(err.kind).toBe('headroom');
+    expect(err.predictionId).toBe('p1');
+    expect(err.episodesPerArm).toBe(1);
+    expect(err.message).toBe('headroom message');
+  });
+
+  it('WhatifMdeError constructor defaults kind to mde when opts is omitted', () => {
+    const err = new WhatifMdeError(2);
+    expect(err.kind).toBe('mde');
+    expect(err.predictionId).toBeUndefined();
+  });
+
+  it('throws WhatifMdeError (any kind) when force=false and a headroom violation exists', async () => {
+    // With current MAX_PROBES=12 cap, the global MDE gate (kind=mde) fires
+    // before the headroom gate because ≥99 probes/prediction are needed to
+    // achieve a powered run (mdeForN(99) ≈ 19.9pp ≤ 20pp threshold).  The
+    // headroom gate's kind=headroom discriminator is tested above at the unit
+    // level.  This integration test confirms that a headroom violation is
+    // still correctly refused with WhatifMdeError (and not silently ignored).
+    const deps = makeDeps({ complete: makeFakeComplete(0.97) });
+    const options = makeOptions({ verify: true, maxUsd: 10, force: false });
+    const err = await runWhatif(options, deps).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(WhatifMdeError);
   });
 });
 

@@ -64,21 +64,44 @@ const PredictionSchema = z.object({
   // is normalized to 'decision' by `withObservability`.
   observable: z.unknown().optional(),
   observabilityReason: z.unknown().optional(),
+  // Lenient (#2504): out-of-range or non-numeric values are clamped/dropped in
+  // withObservability so older outputs and hand-built fixtures still parse.
+  baselineEstimate: z.unknown().optional(),
 });
 
 /**
- * Normalize the predict-time observability tag. Anything but `'downstream'`
- * becomes `'decision'` (backward compatible); a reason is kept only for a
- * downstream prediction and only when it is a non-empty string.
+ * Normalize the predict-time observability tag and baselineEstimate.
+ * Anything but `'downstream'` becomes `'decision'` (backward compatible);
+ * a reason is kept only for a downstream prediction and only when it is a
+ * non-empty string. baselineEstimate is clamped to [0,1] and dropped when
+ * out-of-range or non-numeric (#2504).
  */
 function withObservability(
   entry: z.infer<typeof PredictionSchema>,
   id: string,
 ): Prediction {
-  const { observable, observabilityReason, ...rest } = entry;
-  if (observable !== 'downstream') return { ...rest, id, observable: 'decision' };
+  const { observable, observabilityReason, baselineEstimate, ...rest } = entry;
+
+  // Normalize baselineEstimate: accept numbers in [0,1], drop everything else.
+  let normalizedEstimate: number | undefined;
+  if (typeof baselineEstimate === 'number' && isFinite(baselineEstimate)) {
+    const clamped = Math.max(0, Math.min(1, baselineEstimate));
+    normalizedEstimate = clamped;
+  }
+
+  const estimateField = normalizedEstimate !== undefined ? { baselineEstimate: normalizedEstimate } : {};
+
+  if (observable !== 'downstream') {
+    return { ...rest, id, observable: 'decision', ...estimateField };
+  }
   const reason = typeof observabilityReason === 'string' ? observabilityReason.trim() : '';
-  return { ...rest, id, observable: 'downstream', ...(reason ? { observabilityReason: reason } : {}) };
+  return {
+    ...rest,
+    id,
+    observable: 'downstream',
+    ...(reason ? { observabilityReason: reason } : {}),
+    ...estimateField,
+  };
 }
 
 const RawPredictionsArraySchema = z.array(z.unknown());
@@ -116,6 +139,20 @@ how the agent's behavior will change. Return a JSON array of Prediction objects.
   Do NOT write rewordings or near-duplicates of the same request.
   When a ## Repo context section is present below, probes MUST reference only paths
   listed there, or no specific file paths at all. Never invent file names.
+  CRITICAL — pick probes on which the CURRENT (baseline) agent leaves room to move:
+    • For 'added' or 'strengthened' predictions: choose requests where the current
+      agent usually does NOT show the behavior yet. The baseline P(yes) on these
+      probes should be well below 1.0, so there is real room for the change to push
+      it higher. If every baseline episode would show the behavior regardless of the
+      change, the prediction cannot be confirmed.
+    • For 'removed' or 'weakened' predictions: choose requests where the current
+      agent currently DOES show the behavior. The baseline P(yes) should be well
+      above 0.0, so there is real room for the change to push it lower.
+  The goal is maximum sensitivity: if the baseline already saturates the scale, the
+  run cannot detect movement even with perfect power.
+- baselineEstimate: your honest estimate (0.0 to 1.0) of P(yes) on these probes
+  for the CURRENT unmodified agent. This is used for a preflight headroom check.
+  Required — omit only when you truly cannot estimate it.
 - confidence must be honest: high only when the causal link is clear from the diff.
 - Ids must be p1, p2, … pN (sequential, no gaps).
 - observable: REQUIRED. Tag every prediction "decision" or "downstream" (see below).
@@ -153,7 +190,8 @@ Respond with ONLY a JSON array (no prose, no fences):
 [{"id":"p1","behavior":"…","direction":"added"|"removed"|"strengthened"|"weakened",
   "confidence":"high"|"medium"|"low","reason":"…","testQuestion":"Does the response …?",
   "probes":["…","…"],"observable":"decision"|"downstream",
-  "observabilityReason":"… (downstream only)"}, …]`;
+  "observabilityReason":"… (downstream only)",
+  "baselineEstimate":0.15}, …]`;
 }
 
 // ---------------------------------------------------------------------------

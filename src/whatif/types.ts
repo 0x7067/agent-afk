@@ -170,6 +170,15 @@ export interface Prediction {
   observable?: PredictionObservable;
   /** One short line on why the behavior is `'downstream'`. Optional. */
   observabilityReason?: string;
+  /**
+   * Analyst's honest estimate of the baseline P(yes) on these probes, in
+   * [0, 1].  Optional — absent means no headroom check is applied (#2504).
+   *
+   * For `added`/`strengthened` predictions, low values (near 0) mean good
+   * headroom for an increase.  For `removed`/`weakened`, high values (near 1)
+   * mean good headroom for a decrease.
+   */
+  baselineEstimate?: number;
 }
 
 // ---------------------------------------------------------------------------
