@@ -183,6 +183,7 @@ async function handleWhatif(ctx: SlashContext, args: string): Promise<void> {
         keepSandboxes: parsed.options.keepSandboxes,
         ...(parsed.options.probes !== undefined ? { probes: parsed.options.probes } : {}),
         ...(parsed.options.maxPredictions !== undefined ? { maxPredictions: parsed.options.maxPredictions } : {}),
+        ...(parsed.options.noBaselineSample ? { noBaselineSample: true } : {}),
       },
       deps,
     );

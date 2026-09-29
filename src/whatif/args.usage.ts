@@ -63,6 +63,7 @@ RUN OPTIONS
   --probes <n>                 Synthetic probe episodes per prediction (1–12; default 6)
   --max-predictions <n>        Max predictions to retain (1–8; default 3 when probes>2, else 8)
   --keep-sandboxes             Keep sandbox directories after run
+  --no-baseline-sample         Skip the baseline-sample preflight; use analyst estimate instead (#2511)
   --yes                        Skip confirmation of compiled spec
   --force                      Bypass the MDE underpowered gate (--verify only)
   --json                       Print results as JSON to stdout
