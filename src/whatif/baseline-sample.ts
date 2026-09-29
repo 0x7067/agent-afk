@@ -93,6 +93,17 @@ export interface BaselineSampleResult {
 // ---------------------------------------------------------------------------
 
 /**
+ * A cold-cache episode costs about 5x a warm one, so the cold start adds about
+ * 4 warm episodes' worth. History: pilots 2 and 3 (runs ac34b6, 80f548) show
+ * cold first episodes at $0.55-0.61 against a $0.13-0.14 mean, i.e. 4.2-4.7x.
+ * The #2518 live check measured $1.16 of sample agent spend against the old
+ * warm-only estimate of $0.52; this model gives ~$1.21. The theoretical
+ * cache-write premium on systemTokens alone explains only ~$0.08-0.16, because
+ * the cached prefix also carries tool definitions that systemTokens omits.
+ */
+const COLD_START_EXTRA_EPISODES = 4;
+
+/**
  * Estimate the additional USD cost for one baseline-sample run.
  *
  * K samples × predictions.length probe episodes, baseline arm only, 1 sample
@@ -124,8 +135,15 @@ export function estimateBaselineSampleCost(input: {
   // Baseline-only: agent cost is ~½ (only baseline arm runs); judge cost is
   // still per output (1 baseline output per probe).
   // Both the agent and judge terms scale with outputs, and a baseline-only
-  // run has half the outputs, so half the symmetric estimate is the cost.
-  return fullCost.usd / 2;
+  // run has half the outputs, so half the symmetric estimate is the warm cost.
+  const warmUsd = fullCost.usd / 2;
+  // Invariant: estimateVerifyCost's per-episode figure is a warm prompt-cache
+  // average. That holds over a full run, but the sample runs its episodes one
+  // at a time on a cold cache, so its first episode pays the cache write. All
+  // predictions share one baseline prompt, so a sample phase pays exactly one
+  // cold start (the 5-minute cache TTL outlives the phase).
+  const warmPerEpisode = totalProbes > 0 ? warmUsd / totalProbes : 0;
+  return warmUsd + COLD_START_EXTRA_EPISODES * warmPerEpisode;
 }
 
 // ---------------------------------------------------------------------------

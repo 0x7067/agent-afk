@@ -29,6 +29,7 @@ import {
 } from './baseline-sample.js';
 import { runWhatif, WhatifMdeError } from './run.js';
 import { getWhatifDir } from '../paths.js';
+import { estimateVerifyCost } from './cost.js';
 import { headroomForPrediction, mdeForN } from './mde.js';
 import type {
   AgentRunner,
@@ -503,6 +504,21 @@ describe('runBaselineSample — arm isolation', () => {
 // ---------------------------------------------------------------------------
 
 describe('estimateBaselineSampleCost', () => {
+  it('adds exactly one cold-cache start (4 warm episodes) per sample phase', () => {
+    const args = { agentModel: 'claude-haiku-4-5-20250929', analystModel: 'claude-haiku-4-5-20250929', systemTokensBaseline: 5000 };
+    const warm = (n: number): number => estimateVerifyCost({
+      episodes: n * BASELINE_SAMPLE_K, samples: 1, ...args,
+      systemTokens: { baseline: 5000, candidate: 5000 }, judgeExternal: true,
+    }).usd / 2;
+    for (const n of [1, 3]) {
+      const preds = Array.from({ length: n }, (_, i) => makePrediction(`p${i}`, 'added', []));
+      const cost = estimateBaselineSampleCost({ predictions: preds, ...args, judgeExternal: true });
+      const perEpisode = warm(n) / (n * BASELINE_SAMPLE_K);
+      // One cold start per phase regardless of prediction count.
+      expect(cost).toBeCloseTo(warm(n) + 4 * perEpisode, 10);
+    }
+  });
+
   it('returns a positive number for one prediction', () => {
     const pred = makePrediction('p1', 'added', []);
     const cost = estimateBaselineSampleCost({
