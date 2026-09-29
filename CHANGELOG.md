@@ -11,6 +11,18 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.275.1] - 2026-09-29
+
+### Fixed
+- log stale-source overwrites in bg-injection; defer push body formatting (efffc209)
+- address advisory findings from overlap guard review (08d50bc1)
+
+### Changed
+- Merge pull request #2545 from griffinwork40/afk/iso-agent-tool-13-6nh80t (a4acbbb7)
+- Merge pull request #2538 from griffinwork40/afk/iso-agent-tool-7-aol66x (3ac45ad5)
+- Merge branch 'main' into afk/iso-agent-tool-13-6nh80t (fb3ea471)
+- Merge branch 'main' into afk/iso-agent-tool-7-aol66x (f6f77b22)
+
 ## [5.275.0] - 2026-09-29
 
 ### Added
