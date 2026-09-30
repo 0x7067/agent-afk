@@ -1,0 +1,21 @@
+src/cli/commands/plugin.test.ts
+  s_59a3ad3464b07c::t_c0abc38e0e1251 231-244
+src/cli/commands/plugin.ts
+  s_59a3ad3464b07c::t_1be67398a9de11 137-138
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1a2ad4e86ae98dcddaf29cdd827c82de85bf4e14",
+  "prompts": {},
+  "sessions": {
+    "s_59a3ad3464b07c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "55b83b0f-b57f-4c14-8ba8-0fea096bccdb",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Pedro Guimarães <21346846+0x7067@users.noreply.github.com>"
+    }
+  }
+}
