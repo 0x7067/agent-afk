@@ -2,8 +2,9 @@
  * Handler for the `send_telegram` tool.
  *
  * Sends a Telegram message to the operator from inside an agent loop.
- * Delegates to the `pushMarkdown()` helper from `src/telegram/push.ts` — same
- * raw-fetch path used by daemon crash-push and task-completion notifications.
+ * Delegates to the `pushMarkdown()` helper from `src/telegram/push.ts`, which
+ * renders Markdown to Telegram HTML (bold, italic, code, links) and falls back
+ * to plain text if Telegram rejects the formatting.
  *
  * @module agent/tools/handlers/send-telegram
  */
