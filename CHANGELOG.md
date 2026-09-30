@@ -11,6 +11,18 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.276.19] - 2026-09-30
+
+### Fixed
+- address advisory test-quality findings from Windows-compat PR batch (#2677) (0ce311df)
+- lift textContainsQuestion to module scope, tighten regex, improve tests (#2676) (13c357e4)
+- tighten comment precision, add prefix-boundary test cases, fix unresolvable @link (#2680) (826d881d)
+- harden pack check with jq and clarify postinstall docs (#2681) (5009c6e7)
+- extract clusterHits to cluster.ts; tighten detector test; fix doc order (#2682) (72698c27)
+- sanitize FTS5 queries with hyphens/colons before retrying (#2674) (448d3722)
+- count foreground subagents in health rail N/M subs (#2685) (c0b47588)
+- document latch/ask invariant, add selectBaseSchemas tests, annotate dead ternary (#2683) (57c7f6ae)
+
 ## [5.276.18] - 2026-09-30
 
 ### Fixed
