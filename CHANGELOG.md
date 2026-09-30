@@ -11,6 +11,16 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.278.0] - 2026-09-30
+
+### Added
+- hide skills from the model manifest via disable-model-invocation / skills.hidden (#2707) (2d988efe)
+- add setSystemPrompt, setBeforeNextRound, and rewind to openai-compatible (#2711) (ee7af094)
+
+### Fixed
+- contain AFK_FRAMEWORK_PROMPT_FILE throw at mid-lifecycle sites (#2704) (c3e7395d)
+- set maxRetries: 0 on SDK clients so AFK owns the retry loop (#2702) (ef707371)
+
 ## [5.277.0] - 2026-09-30
 
 ### Added
