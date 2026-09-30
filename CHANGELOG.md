@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.276.7] - 2026-09-30
+
+### Fixed
+- give oauthRefresher and port-file-lifecycle startDaemon calls an isolated telemetryPath (#2616) (25067360)
+
 ## [5.276.6] - 2026-09-30
 
 ### Fixed
