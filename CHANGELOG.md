@@ -11,6 +11,12 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.276.9] - 2026-09-30
+
+### Fixed
+- render Markdown in send_telegram messages (#2521) (db2dc20e)
+- default daemon session cwd to daemon-state-dir, not process.cwd() (#2613) (f3a7baff)
+
 ## [5.276.8] - 2026-09-30
 
 ### Changed
