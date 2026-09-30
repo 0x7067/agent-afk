@@ -11,7 +11,9 @@ const dirs: string[] = [];
 
 afterEach(() => {
   delete process.env['AFK_DIFF_LINES'];
-  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  // Retry ENOTEMPTY: background git tooling (fsmonitor, git-ai, indexers) can
+  // still be writing into .git when a test finishes.
+  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
 });
 
 function repo(): string {

@@ -1,6 +1,13 @@
 import { EventEmitter } from 'node:events';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TerminalCompositor } from './terminal-compositor.js';
+
+// Transform the bootstrap module graph once, outside any test's timeout. The
+// first cold import takes several seconds under load; later imports reuse the
+// transform cache even after vi.resetModules().
+beforeAll(async () => {
+  await import('./commands/interactive/bootstrap.js');
+}, 60_000);
 
 describe('interactive bootstrap status line hooks', () => {
   beforeEach(() => {

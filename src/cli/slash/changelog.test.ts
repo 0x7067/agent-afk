@@ -84,7 +84,9 @@ describe('/changelog', () => {
 
   afterEach(() => {
     process.chdir(origCwd);
-    rmSync(tmpDir, { recursive: true, force: true });
+    // Retry ENOTEMPTY: background git tooling (fsmonitor, git-ai, indexers) can
+    // still be writing into .git when a test finishes.
+    rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   });
 
   it('generates grouped entries from conventional commits', async () => {
