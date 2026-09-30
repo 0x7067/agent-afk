@@ -36,6 +36,26 @@ afterEach(() => {
 });
 
 describe('plugins-scanner', () => {
+  it('loads only the registered version for trusted imports and preserves disabled state', () => {
+    const old = join(tmpHome, 'cache', 'mp', 'test', '1.0');
+    const active = join(tmpHome, 'cache', 'mp', 'test', '2.0');
+    writePluginManifest(old);
+    writePluginManifest(active);
+    writeFileSync(join(tmpHome, 'installed_plugins.json'), JSON.stringify({ version: 2, plugins: {
+      'test@mp': [{ scope: 'user', installPath: active }],
+    } }));
+    expect(scanLocalPlugins(tmpHome, { trustAll: true })).toEqual([{ type: 'local', path: active }]);
+    expect(scanLocalPlugins(tmpHome, { trustAll: true, sourceEnabled: new Map([['test@mp', false]]) })).toEqual([]);
+  });
+
+  it('loads native Codex manifests and respects disabled imports', () => {
+    const dir = join(tmpHome, 'cache', 'mp', 'native', '1.0');
+    mkdirSync(join(dir, '.codex-plugin'), { recursive: true });
+    writeFileSync(join(dir, '.codex-plugin', 'plugin.json'), JSON.stringify({ name: 'native', main: 'index.js' }));
+    expect(scanLocalPlugins(tmpHome, { trustAll: true })).toEqual([{ type: 'local', path: dir, main: 'index.js' }]);
+    expect(scanLocalPlugins(tmpHome, { trustAll: true, sourceEnabled: new Map([['native@mp', false]]) })).toEqual([]);
+  });
+
   it('returns [] when the plugins dir does not exist', () => {
     expect(scanLocalPlugins(join(tmpHome, 'missing'))).toEqual([]);
   });

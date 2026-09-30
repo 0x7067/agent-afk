@@ -4,7 +4,7 @@
  * `~/.claude` / `~/.codex` tree under a tmp dir without touching real state.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -35,11 +35,13 @@ function writeSkill(root: string, name: string): void {
 }
 
 beforeEach(() => {
+  vi.stubEnv('CODEX_HOME', '');
   home = join(tmpdir(), `afk-import-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   mkdirSync(home, { recursive: true });
 });
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   if (existsSync(home)) rmSync(home, { recursive: true, force: true });
 });
 
@@ -161,15 +163,71 @@ describe('readSourceEnabledState', () => {
     expect(map.has('c@mp')).toBe(false);
   });
 
-  it('returns an empty map for codex (plugin import is detection-only)', () => {
-    // Even with a config.toml present, v1 reads no Codex plugin-enable state.
+  it('reads disabled Codex plugins', () => {
     mkdirSync(join(home, '.codex'), { recursive: true });
     writeFileSync(join(home, '.codex', 'config.toml'), '[plugins."x@mp"]\nenabled = false\n');
-    expect(readSourceEnabledState('codex', home).size).toBe(0);
+    expect(readSourceEnabledState('codex', home).get('x@mp')).toBe(false);
   });
 });
 
 describe('detectSources', () => {
+  it('selects registered global installs instead of old caches and marketplace copies', () => {
+    const root = join(home, '.claude', 'plugins');
+    for (const version of ['1.0', '2.0']) writePlugin(join(root, 'cache', 'mp', version), 'demo');
+    writePlugin(join(root, 'marketplaces', 'mp'), 'demo');
+    writePlugin(root, 'project-only');
+    const active = join(root, 'cache', 'mp', '2.0', 'demo');
+    writeFileSync(join(root, 'installed_plugins.json'), JSON.stringify({ version: 2, plugins: {
+      'demo@mp': [{ scope: 'user', installPath: active }, { scope: 'managed', installPath: active }],
+      'project-only@mp': [{ scope: 'local', installPath: join(root, 'project-only') }],
+    } }));
+    expect(detectSources(home).find((s) => s.binary === 'claude-code')?.plugins)
+      .toEqual([{ name: 'demo', path: active }]);
+  });
+
+  it('does not load cached plugins when the installed registry is empty or malformed', () => {
+    const root = join(home, '.claude', 'plugins');
+    writePlugin(root, 'stale');
+    for (const content of ['{', JSON.stringify({ version: 2, plugins: {} })]) {
+      writeFileSync(join(root, 'installed_plugins.json'), content);
+      expect(detectSources(home).find((s) => s.binary === 'claude-code')?.plugins).toEqual([]);
+    }
+  });
+
+  it('deduplicates fallback discovery without an installed registry', () => {
+    const root = join(home, '.codex', 'plugins');
+    writePlugin(join(root, 'a'), 'demo');
+    writePlugin(join(root, 'b'), 'demo');
+    expect(detectSources(home).find((s) => s.binary === 'codex')?.plugins).toHaveLength(1);
+  });
+
+  it('uses CODEX_HOME for native plugins, skills, MCP and enablement', () => {
+    const codex = join(home, 'custom-codex');
+    vi.stubEnv('CODEX_HOME', codex);
+    for (const version of ['1.9', '1.10']) {
+      const dir = join(codex, 'plugins', 'cache', 'mp', 'native', version, '.codex-plugin');
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'plugin.json'), JSON.stringify({ name: 'native' }));
+    }
+    writePlugin(join(home, '.codex', 'plugins'), 'wrong-home');
+    writeSkill(join(codex, 'skills'), 'custom');
+    writeSkill(join(home, '.agents', 'skills'), 'shared');
+    writeFileSync(join(codex, 'config.toml'), '[plugins."native@mp"]\nenabled = false # disabled\n[mcp_servers.test]\ncommand = "server"\n');
+    const detected = detectSources(home).find((s) => s.binary === 'codex');
+    expect(detected?.plugins).toEqual([{ name: 'native', path: join(codex, 'plugins', 'cache', 'mp', 'native', '1.10') }]);
+    expect(detected?.skills.map((s) => s.name)).toEqual(['custom', 'shared']);
+    expect(detected?.mcpServers).toEqual([{ name: 'test', command: 'server' }]);
+    expect(readSourceEnabledState('codex', home).get('native@mp')).toBe(false);
+    expect(resolveImportedRoots({ codex: { plugins: true, skills: true, mcp: true } }, home)).toEqual({
+      pluginRoots: [{ dir: join(codex, 'plugins'), binary: 'codex' }],
+      skillRoots: [
+        { dir: join(codex, 'skills'), origin: 'imported:codex' },
+        { dir: join(home, '.agents', 'skills'), origin: 'imported:codex' },
+      ],
+      mcpConfigs: [{ source: join(codex, 'config.toml'), format: 'toml' }],
+    });
+  });
+
   it('marks a binary not-present when nothing exists', () => {
     const sources = detectSources(home);
     const claude = sources.find((s) => s.binary === 'claude-code')!;
@@ -239,6 +297,28 @@ describe('detectSources', () => {
       { name: 'web', command: 'https://web.example/mcp' },
       { name: 'gh', command: 'npx -y pkg' },
     ]);
+  });
+});
+
+describe('plugin-discovery: per-entry realpathSync isolation', () => {
+  it('skips a dangling installPath entry and still returns other valid entries', () => {
+    const root = join(home, '.claude', 'plugins');
+    // writePlugin(pluginRoot, name) writes pluginRoot/name/.claude-plugin/plugin.json,
+    // so the installPath for the registry is pluginRoot/name.
+    const pluginRoot = join(root, 'cache', 'mp', '1.0');
+    writePlugin(pluginRoot, 'good');
+    const goodPath = join(pluginRoot, 'good');
+    // Write the registry with two plugin keys: one with a dangling path, one valid
+    writeFileSync(join(root, 'installed_plugins.json'), JSON.stringify({
+      version: 2,
+      plugins: {
+        'bad@mp': [{ scope: 'user', installPath: join(root, 'does-not-exist', 'bad') }],
+        'good@mp': [{ scope: 'user', installPath: goodPath }],
+      },
+    }));
+    const plugins = detectSources(home).find((s) => s.binary === 'claude-code')?.plugins ?? [];
+    // The dangling entry must NOT cause the whole batch to be discarded
+    expect(plugins).toEqual([{ name: 'good', path: goodPath }]);
   });
 });
 
