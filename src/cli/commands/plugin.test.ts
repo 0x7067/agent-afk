@@ -228,6 +228,20 @@ describe('plugin update', () => {
     expect(readIndex(indexPath).plugins['to-update'].ref).toBe('v2.0.0');
   });
 
+  it('reports a single-plugin outcome on stdout like the update-all path', async () => {
+    mkdirSync(join(pluginsDir, 'current'));
+    upsertPlugin(
+      'current',
+      {
+        source: 'owner/repo', sourceType: 'github', ref: 'v1.0.0', commit: 'old',
+        enabled: true, installedAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z',
+      },
+      indexPath,
+    );
+    await runArgv(makeProgram(fakeGit(['v1.0.0'])), ['plugin', 'update', 'current']);
+    expect(logs.some((l) => /current.*up-to-date \(v1\.0\.0\)/.test(l))).toBe(true);
+  });
+
   it('updates every plugin when no name is passed', async () => {
     mkdirSync(join(pluginsDir, 'a'));
     mkdirSync(join(pluginsDir, 'b'));
