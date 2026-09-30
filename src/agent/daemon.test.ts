@@ -1128,12 +1128,18 @@ describe('notifyChat threading in CronScheduler', () => {
 
 describe('oauthRefresher timer (proactive token refresh, #1296)', () => {
   let handle: DaemonHandle | null = null;
+  let telemetryPath: string;
+
+  beforeEach(() => {
+    telemetryPath = tmpTelemetryFile();
+  });
 
   afterEach(async () => {
     if (handle) {
       await handle.stop();
       handle = null;
     }
+    rmSync(telemetryPath, { force: true });
   });
 
   it('calls oauthRefresher on the configured interval', async () => {
@@ -1142,6 +1148,7 @@ describe('oauthRefresher timer (proactive token refresh, #1296)', () => {
     handle = await startDaemon({
       port: 0,
       writePortFile: false,
+      telemetryPath,
       oauthRefresher: refresher,
       oauthRefreshIntervalMs: 100,
     });
@@ -1165,6 +1172,7 @@ describe('oauthRefresher timer (proactive token refresh, #1296)', () => {
     handle = await startDaemon({
       port: 0,
       writePortFile: false,
+      telemetryPath,
       oauthRefresher: refresher,
       oauthRefreshIntervalMs: 100,
     });
@@ -1189,6 +1197,7 @@ describe('oauthRefresher timer (proactive token refresh, #1296)', () => {
     handle = await startDaemon({
       port: 0,
       writePortFile: false,
+      telemetryPath,
       oauthRefresher: async () => {
         try { await refresher(); } catch (e) { resolve(); throw e; }
       },
@@ -1212,7 +1221,7 @@ describe('oauthRefresher timer (proactive token refresh, #1296)', () => {
     // interval, but we verify that stop() succeeds and the daemon functions
     // normally — previously the oauthRefreshTimer undefined-check ensured
     // clearInterval is safely skipped.
-    handle = await startDaemon({ port: 0, writePortFile: false });
+    handle = await startDaemon({ port: 0, writePortFile: false, telemetryPath });
     await handle.stop();
     handle = null;
     vi.useRealTimers();
@@ -1231,34 +1240,37 @@ type SessionFactoryReturn = NonNullable<
 
 describe('port file lifecycle', () => {
   let tmpHome: string;
+  let telemetryPath: string;
   const portFilePath = (): string => join(getDaemonStateDir('default'), 'port');
 
   beforeEach(() => {
     tmpHome = mkdtempSync(join(tmpdir(), 'agent-afk-portfile-'));
     vi.stubEnv('AFK_HOME', tmpHome);
+    telemetryPath = tmpTelemetryFile();
   });
 
   afterEach(() => {
     vi.unstubAllEnvs();
     rmSync(tmpHome, { recursive: true, force: true });
+    rmSync(telemetryPath, { force: true });
   });
 
   it('writes the port file by default and removes it on stop', async () => {
-    const h = await startDaemon({ port: 0 });
+    const h = await startDaemon({ port: 0, telemetryPath });
     expect(readFileSync(portFilePath(), 'utf-8').trim()).toBe(`${h.host}:${h.port}`);
     await h.stop();
     expect(existsSync(portFilePath())).toBe(false);
   });
 
   it('writePortFile: false skips the port file entirely', async () => {
-    const h = await startDaemon({ port: 0, writePortFile: false });
+    const h = await startDaemon({ port: 0, writePortFile: false, telemetryPath });
     expect(existsSync(portFilePath())).toBe(false);
     await h.stop();
     expect(existsSync(portFilePath())).toBe(false);
   });
 
   it('stop() leaves a port file it no longer owns intact', async () => {
-    const h = await startDaemon({ port: 0 });
+    const h = await startDaemon({ port: 0, telemetryPath });
     // Another instance (re)claims the discovery path while we are running —
     // unconditional unlink would sever live-sync for that instance.
     writeFileSync(portFilePath(), '65501', 'utf-8');
@@ -1268,7 +1280,7 @@ describe('port file lifecycle', () => {
   });
 
   it('binds the control surface to loopback (127.0.0.1) by default', async () => {
-    const h = await startDaemon({ port: 0, writePortFile: false });
+    const h = await startDaemon({ port: 0, writePortFile: false, telemetryPath });
     // Regression guard: the prior code omitted the host argument, so Node bound
     // the unspecified address (all interfaces) — exposing the unauthenticated
     // control surface to the local network. Loopback-by-default closes that.
@@ -1280,13 +1292,13 @@ describe('port file lifecycle', () => {
   it('honors an explicit bind host option', async () => {
     // Exercises the `options.host`-defined branch (the default test above
     // covers the fallback branch). Loopback only — no external interface bind.
-    const h = await startDaemon({ port: 0, host: '127.0.0.1', writePortFile: false });
+    const h = await startDaemon({ port: 0, host: '127.0.0.1', writePortFile: false, telemetryPath });
     expect(h.host).toBe('127.0.0.1');
     await h.stop();
   });
 
   it('POST /tasks accepts cronExpression as an alias for cron', async () => {
-    const h = await startDaemon({ port: 0, writePortFile: false });
+    const h = await startDaemon({ port: 0, writePortFile: false, telemetryPath });
     try {
       const res = await fetch(`http://localhost:${h.port}/tasks`, {
         method: 'POST',
