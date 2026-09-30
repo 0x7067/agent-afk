@@ -11,6 +11,12 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.276.14] - 2026-09-30
+
+### Fixed
+- populate transcript_path in hook payloads from REPL transcript (#2647) (39e88574)
+- reserve viewport rows for the committed band under content-hug (#2648) (e8afd50b)
+
 ## [5.276.13] - 2026-09-30
 
 ### Fixed
