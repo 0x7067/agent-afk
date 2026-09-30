@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.276.22] - 2026-09-30
+
+### Fixed
+- close frozen Playwright context safely in renderHtml (#2698) (c6573703)
+
 ## [5.276.21] - 2026-09-30
 
 ### Added
