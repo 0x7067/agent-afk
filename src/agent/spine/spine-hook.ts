@@ -41,6 +41,7 @@ import type {
   SpineRelationItem,
 } from './spine-classifier.js';
 import { errorMessage } from '../../utils/errors.js';
+import { stripTrailingAnnotation, REINFORCED_LABEL, WEAKENED_LABEL } from './spine-hook.annotations.js';
 import { isSubagentContext } from '../hooks/hook-utils.js';
 
 // ---------------------------------------------------------------------------
@@ -122,18 +123,29 @@ export function createSpineSessionEndHook(options: SpineHookOptions = {}): HookH
             // Append a parenthetical note to the description to surface the
             // strengthening without creating a new entry (v1 keeps IDs stable).
             // Strip any pre-existing annotation (including truncated ones where
-            // the closing paren was sliced off) before appending the new one so
+            // the closing paren was sliced off, or where the annotation word was
+            // cut mid-character, e.g. "(reinf") before appending the new one so
             // that date-rollover and truncation do not accumulate duplicates.
+            //
+            // stripTrailingAnnotation removes any truncated prefix of
+            // " (reinforced YYYY-MM-DD)" at end of string (spine-hook.annotations.ts).
             const isoDate = new Date().toISOString().slice(0, 10);
             const suffix = ` (reinforced ${isoDate})`;
-            const baseDescription = existing.description
-              .replace(/ \(reinforced \d{4}-\d{2}-\d{2}\)?$/, '')
+            const baseDescription = stripTrailingAnnotation(existing.description, REINFORCED_LABEL)
               .slice(0, MAX_DESCRIPTION_LEN - suffix.length);
             const newDescription = baseDescription + suffix;
             if (newDescription !== existing.description) {
               existing.description = newDescription;
               dirty = true;
             }
+            // Log strengthens to spine-pending.jsonl (mirrors weakens) so the
+            // reinforcement date can always be traced back to a session.
+            appendSpinePending({
+              type: 'strengthens',
+              sessionId,
+              item,
+              ts: new Date().toISOString(),
+            });
           } else {
             // existingId not found — log for review so hallucinated IDs are visible
             appendSpinePending({
@@ -155,8 +167,10 @@ export function createSpineSessionEndHook(options: SpineHookOptions = {}): HookH
             // Strip any pre-existing annotation (including truncated ones) before
             // appending the new one — same date-rollover / truncation guard as
             // the strengthens branch above.
-            const baseDescription = existing.description
-              .replace(/ \(partially weakened \d{4}-\d{2}-\d{2}\)?$/, '')
+            //
+            // stripTrailingAnnotation removes any truncated prefix of
+            // " (partially weakened YYYY-MM-DD)" at end of string.
+            const baseDescription = stripTrailingAnnotation(existing.description, WEAKENED_LABEL)
               .slice(0, MAX_DESCRIPTION_LEN - suffix.length);
             const newDescription = baseDescription + suffix;
             if (newDescription !== existing.description) {
