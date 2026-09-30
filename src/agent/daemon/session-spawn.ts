@@ -64,16 +64,46 @@ export function daemonTraceLabel(taskId: string): string {
 // state directory cannot be created (e.g. permission denied after a system
 // misconfiguration or a full disk). The caller that has an explicit cwd
 // (task.cwd or sessionConfig.cwd) never reaches this function.
+
+/**
+ * Memoized result of the first daemonDefaultCwd() call (success or fallback).
+ *
+ * Contract: once set, this value is returned for every subsequent call without
+ * re-running mkdirSync or re-emitting the warning. The cached path is NOT
+ * re-verified for liveness — a directory that is later removed or unmounted is
+ * still returned. This is intentional: the daemon state dir is owned by the
+ * process and re-checking every tick would add I/O overhead with no recovery
+ * path (the scheduler has no mechanism to quarantine a single tick on cwd
+ * failure). Call `_resetDaemonDefaultCwdCache()` in tests that swap AFK_HOME.
+ */
+let _daemonDefaultCwdCache: string | null = null;
+
+/**
+ * Reset the memoized cwd cache. Exposed for tests that change AFK_HOME between
+ * cases — production code never calls this.
+ */
+export function _resetDaemonDefaultCwdCache(): void {
+  _daemonDefaultCwdCache = null;
+}
+
 export function daemonDefaultCwd(): string {
+  if (_daemonDefaultCwdCache !== null) return _daemonDefaultCwdCache;
   const dir = getDaemonStateDir();
   try {
     mkdirSync(dir, { recursive: true });
+    _daemonDefaultCwdCache = dir;
     return dir;
   } catch (err) {
     const fallback = tmpdir();
+    const code = (err as NodeJS.ErrnoException).code ?? String(err);
     console.warn(
-      `[daemon] daemonDefaultCwd: could not create ${dir} (${(err as NodeJS.ErrnoException).code ?? String(err)}); falling back to ${fallback}`,
+      `[daemon] daemonDefaultCwd: could not create ${dir} (${code}); ` +
+        `falling back to ${fallback}. ` +
+        `To fix: correct permissions on ${dir} or set AFK_STATE_DIR (or AFK_HOME) to a writable path.`,
     );
+    // Memoize the fallback too so the warning fires only once per process even
+    // if mkdirSync keeps throwing (e.g. EACCES on every scheduler tick).
+    _daemonDefaultCwdCache = fallback;
     return fallback;
   }
 }
