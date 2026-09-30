@@ -46,13 +46,30 @@ vi.mock('node-cron', () => ({
   })),
 }));
 
+// Mock shell-task so the shell executor path does not actually spawn a child
+// process. The spy records the resolved task (including cwd) so tests can
+// assert which cwd the scheduler chose before handing off to runShellTask.
+vi.mock('./shell-task.js', () => ({
+  runShellTask: vi.fn(async (task: { taskId: string; command: string; cwd?: string }) => ({
+    taskId: task.taskId,
+    command: task.command,
+    trigger: 'cron' as const,
+    triggeredAt: new Date().toISOString(),
+    durationMs: 0,
+    status: 'success' as const,
+    responseExcerpt: 'ok',
+  })),
+}));
+
 import { CronScheduler, daemonTraceLabel, resolveWorktreePruneRoot } from './scheduler.js';
+import { runShellTask } from './shell-task.js';
 // Reusables imported here (test-only — tests are not bound by the
 // src/agent → src/cli layering invariant that the scheduler source honours) so
 // the injected probe mirrors the production `doneUnverifiedProbe` in daemon.ts.
 import { parseTerminalState } from '../../cli/commands/interactive/terminal-state.js';
 import { DONE_EVIDENCE_TOOLS } from '../../cli/commands/interactive/afk-push.js';
-import { getTraceDir } from '../../paths.js';
+import { getTraceDir, getDaemonStateDir } from '../../paths.js';
+import { daemonDefaultCwd } from './session-spawn.js';
 import { AgentSession } from '../session/agent-session.js';
 import { McpManager } from '../mcp/index.js';
 import type { AgentConfig } from '../types.js';
@@ -1096,6 +1113,48 @@ describe('CronScheduler — per-task cwd', () => {
     expect(capturedCwd).toBe(daemonWideCwd);
   });
 
+  it('falls back to daemonDefaultCwd when neither task.cwd nor sessionConfig.cwd is set (#2585)', async () => {
+    // When no cwd is configured, the daemon must NOT fall back to process.cwd()
+    // (which is $HOME when installed as a service). It should use the daemon
+    // state dir (~/.afk/state/daemon/agent-afk@default/) instead.
+    let capturedCwd: string | undefined;
+    const scheduler = new CronScheduler({
+      telemetryPath,
+      // No sessionConfig.cwd — simulates a bare daemon with no AFK_DAEMON_CWD.
+      sessionFactory: (config) => {
+        capturedCwd = config.cwd;
+        return makeSession({ response: 'done' });
+      },
+    });
+    scheduler.register({
+      taskId: 'no-cwd',
+      command: '/test',
+      trigger: 'cron',
+      cronExpression: '* * * * *',
+      // No cwd — simulates a task with no explicit working directory.
+    });
+    await scheduler.tick('no-cwd');
+    // The cwd must be the daemon state dir, NOT process.cwd() / $HOME.
+    expect(capturedCwd).toBe(getDaemonStateDir());
+    // It must not be $HOME or process.cwd().
+    const { homedir } = await import('node:os');
+    expect(capturedCwd).not.toBe(homedir());
+    expect(capturedCwd).not.toBe(process.cwd());
+  });
+
+  it('daemonDefaultCwd() creates the directory when it does not exist', async () => {
+    // Simulate a fresh AFK_HOME where the daemon state dir has not been created.
+    // isolatedAfkHome is set in beforeEach so getDaemonStateDir() points to a
+    // temp dir that does not yet contain the daemon subdir.
+    const expectedDir = getDaemonStateDir();
+    // The dir may or may not exist before the call — daemonDefaultCwd must create it.
+    const result = daemonDefaultCwd();
+    expect(result).toBe(expectedDir);
+    // Verify the directory now exists.
+    const { statSync } = await import('node:fs');
+    expect(statSync(result).isDirectory()).toBe(true);
+  });
+
   it('produces an error telemetry record when task.cwd has vanished', async () => {
     // Create a dir, register a task pointing to it, then remove the dir.
     const vanishingDir = join(dir, 'vanishing');
@@ -1149,6 +1208,39 @@ describe('CronScheduler — per-task cwd', () => {
     // The task ran as a builtin (success or skipped). An error here would mean
     // the cwd guard fired before the executor branch — that is the regression.
     expect(record.status).not.toBe('error');
+  });
+
+  it('shell executor with no task.cwd or sessionConfig.cwd runs in getDaemonStateDir() (#2585)', async () => {
+    // When executor === 'shell' and no cwd is configured at any level, the
+    // scheduler must resolve daemonDefaultCwd() — the daemon state dir — before
+    // passing the task to runShellTask, NOT process.cwd() / $HOME.
+    const shellTaskSpy = vi.mocked(runShellTask);
+    shellTaskSpy.mockClear();
+
+    const scheduler = new CronScheduler({
+      telemetryPath,
+      // No sessionConfig.cwd — simulates a bare daemon with no AFK_DAEMON_CWD.
+    });
+    scheduler.register({
+      taskId: 'shell-no-cwd',
+      command: 'echo ok',
+      executor: 'shell',
+      trigger: 'cron',
+      cronExpression: '* * * * *',
+      // No cwd — fallback must apply.
+    });
+
+    await scheduler.tick('shell-no-cwd');
+
+    // runShellTask must have been called exactly once.
+    expect(shellTaskSpy).toHaveBeenCalledTimes(1);
+    // The task passed to runShellTask must have cwd resolved to the daemon state dir.
+    const capturedTask = shellTaskSpy.mock.calls[0]?.[0];
+    expect(capturedTask?.cwd).toBe(getDaemonStateDir());
+    // Must not be $HOME or process.cwd().
+    const { homedir } = await import('node:os');
+    expect(capturedTask?.cwd).not.toBe(homedir());
+    expect(capturedTask?.cwd).not.toBe(process.cwd());
   });
 });
 
