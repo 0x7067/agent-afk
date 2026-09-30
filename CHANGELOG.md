@@ -11,6 +11,15 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.276.5] - 2026-09-30
+
+### Fixed
+- reset denylist cache and use vi.stubEnv in symlink test block (#2615) (44477480)
+- wait (bounded) for killed ripgrep to exit before resolving (#2631) (c9aaf2e1)
+
+### Changed
+- fix POSIX path literals in daemon tests for Windows compat (#2617) (b0f1515f)
+
 ## [5.276.4] - 2026-09-29
 
 ### Fixed
