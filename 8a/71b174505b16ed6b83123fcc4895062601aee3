@@ -1,0 +1,31 @@
+src/agent/state/state-store.test.ts
+  s_59a3ad3464b07c::t_f1bda79c042597 13,29,184-188,194-195
+src/agent/tools/handlers/bash.test.ts
+  s_59a3ad3464b07c::t_6589e3e743fff5 368,374,386,403-407,420,432
+src/cli/_lib/stream-renderer-ordering.test.ts
+  s_59a3ad3464b07c::t_78b3446c7055af 13,21-26
+src/cli/interactive-lifecycle.test.ts
+  s_59a3ad3464b07c::t_928798bdc216a6 2,5-11
+src/cli/slash/changelog.test.ts
+  s_59a3ad3464b07c::t_a951638364a25f 87-89
+src/cli/slash/commands/diff.test.ts
+  s_59a3ad3464b07c::t_4ec7a256b7a81e 14-16
+src/whatif/sandbox.test.ts
+  s_59a3ad3464b07c::t_8ac0db95054f87 734-736
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8a71b174505b16ed6b83123fcc4895062601aee3",
+  "prompts": {},
+  "sessions": {
+    "s_59a3ad3464b07c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "55b83b0f-b57f-4c14-8ba8-0fea096bccdb",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Pedro Guimarães <21346846+0x7067@users.noreply.github.com>"
+    }
+  }
+}
