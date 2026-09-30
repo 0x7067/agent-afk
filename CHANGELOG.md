@@ -11,6 +11,13 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.276.11] - 2026-09-30
+
+### Fixed
+- openai-compatible has no first-byte or stream-stall timeout (also affects xAI and local runners) (#2431) (5fff9fa7)
+- strip truncated annotation fragments before re-appending (#2635) (63cfee41)
+- resolve confirmSpec promise before closing readline (#2633) (128284a1)
+
 ## [5.276.10] - 2026-09-30
 
 ### Fixed
