@@ -11,6 +11,17 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.276.16] - 2026-09-30
+
+### Fixed
+- stop clipping failed-tool error lines to 20 columns (#2667) (6a0681dd)
+- add updated and missing-dir stdout assertions to single-plugin update tests (#2672) (469f98bb)
+- add multi-byte elision test, explicit utf8 arg, fix JSDoc phrase (#2670) (b1447315)
+- epoch guard, over-cap fallback test, and clarifying comments (#2652) (e8a33963)
+- memoize daemonDefaultCwd, improve fallback warning, add EACCES test (#2655) (f9324b9a)
+- redact err.message, guard ambient credential on custom baseUrl, add missing tests (#2659) (2cb16e2e)
+- symlink guard, GlobAbortedError message, foldsOverlap predicate, hardlink test (#2658) (40a2f0ae)
+
 ## [5.276.15] - 2026-09-30
 
 ### Fixed
