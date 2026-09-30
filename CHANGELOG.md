@@ -11,6 +11,12 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.276.8] - 2026-09-30
+
+### Changed
+- make Windows a required test leg (closes #703) (#2630) (64532d99)
+- order-preserving parallel readdir in glob walker (#2614) (cbf614ec)
+
 ## [5.276.7] - 2026-09-30
 
 ### Fixed
