@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.276.13] - 2026-09-30
+
+### Fixed
+- fix --yes --force prompt bug and add measured-refusal handling (#2645) (1e695814)
+
 ## [5.276.12] - 2026-09-30
 
 ### Fixed
