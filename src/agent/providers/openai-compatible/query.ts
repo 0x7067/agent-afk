@@ -108,7 +108,7 @@ export { buildQueryFromConfig } from './query/build-query.js';
 
 // Re-exported from the extracted query/ submodules so existing import sites
 // (sibling tests + index.ts) keep resolving these from './query.js'.
-export { __setRetryBaseDelay } from './query/retry.js';
+export { __setRetryBaseDelay, __setRetryAfterMaxWaitMs } from './query/retry.js';
 export { __setOpenAIClientFactory } from './query/client.js';
 export type { OpenAIClientFactory } from './query/client.js';
 export { isOSeriesModel, mapEffortForOpenAI } from './query/model-params.js';
