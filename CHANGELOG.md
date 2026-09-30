@@ -11,6 +11,12 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.276.18] - 2026-09-30
+
+### Fixed
+- add avail=1 degenerate-terminal unit test for band reserve clamp (#2671) (e5128b7d)
+- sync message description, add test comment, clarify mock comment (#2675) (97fb0ffa)
+
 ## [5.276.17] - 2026-09-30
 
 ### Changed
