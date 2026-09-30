@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.276.17] - 2026-09-30
+
+### Changed
+- remove redundant subagent-status overlay slot (#2661) (3732b866)
+
 ## [5.276.16] - 2026-09-30
 
 ### Fixed
