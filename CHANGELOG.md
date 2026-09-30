@@ -11,6 +11,18 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.276.21] - 2026-09-30
+
+### Added
+- per-plugin hook env allowlist (#2700) (4c3db5ee)
+
+### Fixed
+- use undici's own fetch+Agent instead of globalThis.fetch+foreign dispatcher (#2697) (77e4fce9)
+- sort-then-slice fingerprint, drop unused barrel exports, clarify docs (#2696) (31d61c0a)
+- exitCode guarantee, module-scope const, beforeEach fake timers (#2690) (2f2dc903)
+- plumb tailWidth into grouped-root suffix; sum fixed-part widths directly (#2692) (be879a9d)
+- address advisory test-hygiene findings from #2671 + #2672 (#2691) (1e921566)
+
 ## [5.276.20] - 2026-09-30
 
 ### Fixed
