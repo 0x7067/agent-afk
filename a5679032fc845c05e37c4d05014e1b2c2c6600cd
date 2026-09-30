@@ -1,0 +1,19 @@
+src/cli/commands/status.ts
+  s_13fd9ef2af02cc::t_946497b5e84f44 10,91
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a5679032fc845c05e37c4d05014e1b2c2c6600cd",
+  "prompts": {},
+  "sessions": {
+    "s_13fd9ef2af02cc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "s_13fd9ef2af02cc",
+        "model": "unknown"
+      },
+      "human_author": "Pedro Guimarães <21346846+0x7067@users.noreply.github.com>"
+    }
+  }
+}

@@ -1,0 +1,21 @@
+src/agent/plugins-scanner.test.ts
+  s_7bc84c48d8bbee::t_47d4e0e2684f8a 234-281
+src/agent/plugins-scanner.ts
+  s_7bc84c48d8bbee::t_3a12b86ef3d244 185-192,294,299
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8cb6444ba80446ad5a8529ca8ce538a2469eb045",
+  "prompts": {},
+  "sessions": {
+    "s_7bc84c48d8bbee": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "s_7bc84c48d8bbee",
+        "model": "unknown"
+      },
+      "human_author": "Pedro Guimarães <21346846+0x7067@users.noreply.github.com>"
+    }
+  }
+}

@@ -1,0 +1,25 @@
+src/agent/marketplaces/update.test.ts
+  s_fbf57df9ba19e5::t_b64aca17ab2ea8 427-443
+src/agent/marketplaces/update.ts
+  s_fbf57df9ba19e5::t_cb35ca4ea7c72f 146-148
+src/agent/plugins/update.test.ts
+  s_fbf57df9ba19e5::t_7606eff2369b13 729-743
+src/agent/plugins/update.ts
+  s_fbf57df9ba19e5::t_94999af242d3fb 218-220
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1d6a211074563ca87372f878135bf0d0e87bd147",
+  "prompts": {},
+  "sessions": {
+    "s_fbf57df9ba19e5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4b8757ef-fa6c-402c-9b67-1982f1cde69d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Pedro Guimarães <21346846+0x7067@users.noreply.github.com>"
+    }
+  }
+}

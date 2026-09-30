@@ -1,0 +1,14 @@
+website/content/docs/configuration/overview.mdx
+  h_29be57c0addd47 317,325,327-329,343,352-353,359,395-400
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "770d9de97e9b20a4bf7a760af24eb63b6c386fa1",
+  "prompts": {},
+  "humans": {
+    "h_29be57c0addd47": {
+      "author": "Pedro Guimarães <21346846+0x7067@users.noreply.github.com>"
+    }
+  }
+}
