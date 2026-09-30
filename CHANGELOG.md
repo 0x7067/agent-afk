@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.276.10] - 2026-09-30
+
+### Fixed
+- discover installed Claude plugins and native Codex plugins (#2524) (1336213e)
+
 ## [5.276.9] - 2026-09-30
 
 ### Fixed
