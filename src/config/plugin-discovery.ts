@@ -24,9 +24,14 @@ function installedPlugins(root: string): DetectedAsset[] | undefined {
         if (entry.scope !== 'user' && entry.scope !== 'managed') continue;
         const name = manifestName(entry.installPath);
         if (name === null) continue;
-        const path = realpathSync(entry.installPath);
-        if (seen.has(path)) continue;
-        seen.add(path);
+        let realPath: string;
+        try {
+          realPath = realpathSync(entry.installPath);
+        } catch {
+          continue; // dangling symlink or deleted path — skip this entry, keep processing others
+        }
+        if (seen.has(realPath)) continue;
+        seen.add(realPath);
         assets.push({ name, path: entry.installPath });
         break;
       }

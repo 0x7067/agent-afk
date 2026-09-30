@@ -300,6 +300,28 @@ describe('detectSources', () => {
   });
 });
 
+describe('plugin-discovery: per-entry realpathSync isolation', () => {
+  it('skips a dangling installPath entry and still returns other valid entries', () => {
+    const root = join(home, '.claude', 'plugins');
+    // writePlugin(pluginRoot, name) writes pluginRoot/name/.claude-plugin/plugin.json,
+    // so the installPath for the registry is pluginRoot/name.
+    const pluginRoot = join(root, 'cache', 'mp', '1.0');
+    writePlugin(pluginRoot, 'good');
+    const goodPath = join(pluginRoot, 'good');
+    // Write the registry with two plugin keys: one with a dangling path, one valid
+    writeFileSync(join(root, 'installed_plugins.json'), JSON.stringify({
+      version: 2,
+      plugins: {
+        'bad@mp': [{ scope: 'user', installPath: join(root, 'does-not-exist', 'bad') }],
+        'good@mp': [{ scope: 'user', installPath: goodPath }],
+      },
+    }));
+    const plugins = detectSources(home).find((s) => s.binary === 'claude-code')?.plugins ?? [];
+    // The dangling entry must NOT cause the whole batch to be discarded
+    expect(plugins).toEqual([{ name: 'good', path: goodPath }]);
+  });
+});
+
 describe('readMcpServers', () => {
   it('returns [] for a missing file', () => {
     expect(readMcpServers(join(home, 'nope.json'), 'json')).toEqual([]);

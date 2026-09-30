@@ -8,6 +8,14 @@ import { readCodexEnabledPlugins } from './codex-discovery.js';
 import { findPluginDirs } from './plugin-discovery.js';
 import { getJsonConfigPath, getLegacyJsonConfigPath } from '../paths.js';
 
+/**
+ * Cross-tool import configuration: resolves which external asset sources (claude-code,
+ * codex) AFK trusts, defines per-binary source path maps (plugin roots, skill roots,
+ * MCP config candidates), and exposes detection helpers consumed by `afk migrate` and
+ * the doctor command. Security invariant: `importFrom` is only honored from the
+ * user-global config — never from a project-local `<cwd>/afk.config.json`.
+ */
+
 // ── Types ────────────────────────────────────────────────────────────────
 
 /** Known source binaries AFK can import assets from. */
@@ -72,6 +80,11 @@ interface SourcePathMap {
   pluginEnabledState: (home: string) => SourceEnabledMap;
 }
 
+/** Returns the Codex home directory: `CODEX_HOME` env override, or `~/.codex`. */
+function codexHome(home: string): string {
+  return env.CODEX_HOME?.trim() || join(home, '.codex');
+}
+
 const SOURCE_MAPS: Record<ImportSourceBinary, SourcePathMap> = {
   'claude-code': {
     label: 'Claude Code',
@@ -89,11 +102,11 @@ const SOURCE_MAPS: Record<ImportSourceBinary, SourcePathMap> = {
   },
   codex: {
     label: 'Codex',
-    pluginRoots: (home) => [join(env.CODEX_HOME?.trim() || join(home, '.codex'), 'plugins')],
-    skillRoots: (home) => [join(env.CODEX_HOME?.trim() || join(home, '.codex'), 'skills'), join(home, '.agents', 'skills')],
-    mcpConfigCandidates: (home) => [join(env.CODEX_HOME?.trim() || join(home, '.codex'), 'config.toml')],
+    pluginRoots: (home) => [join(codexHome(home), 'plugins')],
+    skillRoots: (home) => [join(codexHome(home), 'skills'), join(home, '.agents', 'skills')],
+    mcpConfigCandidates: (home) => [join(codexHome(home), 'config.toml')],
     mcpFormat: 'toml',
-    pluginEnabledState: (home) => readCodexEnabledPlugins(env.CODEX_HOME?.trim() || join(home, '.codex')),
+    pluginEnabledState: (home) => readCodexEnabledPlugins(codexHome(home)),
   },
 };
 
@@ -145,6 +158,15 @@ export function importFromConfigPaths(): string[] {
   return [getJsonConfigPath(), getLegacyJsonConfigPath()];
 }
 
+/**
+ * Load the first valid `importFrom` block found across the allowed config paths.
+ *
+ * Security invariant: `importFrom` is honored ONLY from the user-global config
+ * (`$AFK_HOME/config/afk.config.json`) and the legacy `~/.afk.config.json`.
+ * It is NEVER read from the project-local `<cwd>/afk.config.json` — a cloned
+ * repo must never be able to silently enable foreign-asset or MCP-server import.
+ * {@link importFromConfigPaths} enforces this by intentionally excluding the cwd config.
+ */
 export function loadImportFromConfig(
   configPaths: readonly string[] = importFromConfigPaths(),
 ): ImportFromConfig | undefined {
