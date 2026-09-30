@@ -11,6 +11,12 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.276.20] - 2026-09-30
+
+### Fixed
+- reorder realpathSync before manifestName, validate CODEX_HOME absolute, use realPath for asset path (#2678) (51a97242)
+- address advisory findings from 2026-09-29 pr-triage (#2684) (9c9355af)
+
 ## [5.276.19] - 2026-09-30
 
 ### Fixed
