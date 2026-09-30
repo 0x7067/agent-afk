@@ -11,6 +11,18 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.276.15] - 2026-09-30
+
+### Fixed
+- apply contentMargin() padding in appendLinesAtCursor (#2660) (3b9b1c4b)
+- stabilize tests that flake under local load (#2650) (2a0a457c)
+- tighten DATE_TEMPLATE, type label as union, expand boundary tests (#2654) (b5dada27)
+- print single-plugin update outcome to stdout (#2649) (600efab1)
+- fix bytes/chars mismatch, extract TurndownLike, tighten MIME cap (#2651) (83df6550)
+- fix AFK_SUBAGENT_LOG parenthesis, stale shell-escape doc, raw-input trailing blank (#2657) (3fe4fb8a)
+- guard queueMicrotask push against post-dispose settled events (#2656) (f3ebbdad)
+- address advisory findings from RetryLayer swapped detection review (#2653) (971e9908)
+
 ## [5.276.14] - 2026-09-30
 
 ### Fixed
