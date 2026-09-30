@@ -365,13 +365,13 @@ describe('bashHandler', () => {
     // child is SIGKILL'd the instant combined output crosses it — a
     // genuine-runaway circuit-breaker (a `cat` of a huge binary, a runaway
     // `yes`). This proves the mid-stream kill fires BEFORE the process
-    // finishes: we emit >8MB of 'q', then sleep 3s, then emit 'z'. If the
+    // finishes: we emit >8MB of 'q', then sleep 15s, then emit 'z'. If the
     // kill works, the child is terminated during the 'q' flood (before the
     // sleep), so we never see 'z', the call returns fast, and the hard-cap
     // kill sentinel ("… was terminated") is present. If the guard regressed
     // to letting the command complete, the close path would run instead —
     // emitting the ordinary head+tail marker (no "terminated" sentinel)
-    // only after waiting out the 3s sleep. NB: 'q'/'z' are the phase markers
+    // only after waiting out the 15s sleep. NB: 'q'/'z' are the phase markers
     // because neither letter appears in the truncation marker text — 'b',
     // for one, collides with the word "bytes".
     it.skipIf(process.platform === 'win32')('mid-stream hard cap: SIGKILLs a runaway before it completes (V8 overflow guard)', async () => {
@@ -383,7 +383,7 @@ describe('bashHandler', () => {
           // before the sleep and the 'z' emission are ever reached. Portable
           // on macOS + Linux without bash brace-expansion or sidecars.
           command:
-            "head -c 9000000 /dev/zero | tr '\\0' 'q'; sleep 3; head -c 9000000 /dev/zero | tr '\\0' 'z'",
+            "head -c 9000000 /dev/zero | tr '\\0' 'q'; sleep 15; head -c 9000000 /dev/zero | tr '\\0' 'z'",
           timeout_ms: 20_000,
         },
         createSignal(),
@@ -400,10 +400,11 @@ describe('bashHandler', () => {
       // Got some 'q' before the kill; never reached the post-sleep 'z'.
       expect(result.content).toContain('q');
       expect(result.content).not.toContain('z');
-      // Kill fired during the 'q' flood, before the 3s sleep elapsed.
-      // Reading 8MB off a pipe is sub-second; 3000ms cleanly separates the
-      // kill path from a "waited for the sleep" regression.
-      expect(elapsedMs).toBeLessThan(3_000);
+      // Kill fired during the 'q' flood, before the 15s sleep elapsed.
+      // Reading 8MB off a pipe is sub-second when idle but can take several
+      // seconds under load; 10000ms still cleanly separates the kill path from
+      // a "waited for the sleep" regression.
+      expect(elapsedMs).toBeLessThan(10_000);
     }, 25_000);
 
     // Companion test: the same hard cap protects stderr accumulation. Many
@@ -416,7 +417,7 @@ describe('bashHandler', () => {
       const result = await bashHandler(
         {
           command:
-            "head -c 9000000 /dev/zero | tr '\\0' 'q' >&2; sleep 3; head -c 9000000 /dev/zero | tr '\\0' 'z' >&2",
+            "head -c 9000000 /dev/zero | tr '\\0' 'q' >&2; sleep 15; head -c 9000000 /dev/zero | tr '\\0' 'z' >&2",
           timeout_ms: 20_000,
         },
         createSignal(),
@@ -428,7 +429,7 @@ describe('bashHandler', () => {
       expect(result.truncated).toBe(true);
       expect(result.content).toContain('q');
       expect(result.content).not.toContain('z');
-      expect(elapsedMs).toBeLessThan(3_000);
+      expect(elapsedMs).toBeLessThan(10_000);
     }, 25_000);
   });
 

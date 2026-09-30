@@ -731,7 +731,9 @@ describe('materializeSandboxes: git worktrees', () => {
   });
 
   afterEach(async () => {
-    rmSync(root, { recursive: true, force: true });
+    // Retry ENOTEMPTY: background git tooling (fsmonitor, git-ai, indexers) can
+    // still be writing into .git when a test finishes.
+    rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   });
 
   it('creates project worktrees for both envs; cleanup removes sandboxes', async () => {
