@@ -1,6 +1,6 @@
 {
   "name": "agent-afk",
-  "version": "5.271.3",
+  "version": "5.276.7",
   "description": "Open-source coding-agent harness you can actually change — own the loop (prompts, gates, routing, skills, terminal states), use any model, run long tasks while you're away.",
   "main": "dist/index.mjs",
   "types": "dist/index.d.ts",
@@ -23,7 +23,7 @@
     "assets/demo-placeholder.png"
   ],
   "scripts": {
-    "postinstall": "node dist/postinstall.mjs || node scripts/postinstall.mjs || true",
+    "postinstall": "node scripts/postinstall.mjs || true",
     "build": "tsc && node scripts/build-web-ui.mjs && node scripts/copy-prompts.js",
     "dev": "tsx src/cli/index.ts",
     "start": "node dist/cli/index.js",
@@ -66,6 +66,10 @@
     "audit:funcsize:check": "tsx scripts/check-function-size.ts --check",
     "audit:funcsize:list": "tsx scripts/check-function-size.ts --list",
     "audit:funcsize:update": "tsx scripts/check-function-size.ts --update-baseline",
+    "audit:posix": "tsx scripts/check-posix-guard.ts",
+    "audit:posix:check": "tsx scripts/check-posix-guard.ts --check",
+    "audit:posix:list": "tsx scripts/check-posix-guard.ts --list",
+    "audit:posix:update": "tsx scripts/check-posix-guard.ts --update-baseline",
     "audit:module-state": "tsx scripts/audit-module-state.ts",
     "audit:module-state:check": "tsx scripts/audit-module-state.ts --check",
     "fix:pins": "tsx scripts/update-hash-pins.ts",
@@ -77,7 +81,8 @@
     "prepublishOnly": "npm run clean && npm run build:dist",
     "release": "node scripts/release.mjs",
     "release:dry": "node scripts/release.mjs --dry-run",
-    "experiment:workspace": "tsx scripts/run-workspace-ab-test.ts"
+    "experiment:workspace": "tsx scripts/run-workspace-ab-test.ts",
+    "backfill:preexisting": "tsx scripts/backfill-preexisting-ledger.ts"
   },
   "keywords": [
     "ai-agent",
@@ -115,14 +120,9 @@
     "url": "https://github.com/griffinwork40/agent-afk/issues"
   },
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=22.13.0"
   },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "better-sqlite3",
-      "node-pty"
-    ]
-  },
+  "packageManager": "pnpm@11.28.2",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.74.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
@@ -144,7 +144,7 @@
     "string-width": "^8.2.0",
     "telegraf": "^4.16.3",
     "turndown": "^7.2.4",
-    "undici": "^7.27.0",
+    "undici": "^7.27.1",
     "wrap-ansi": "^10.0.0",
     "zod": "^4.3.6"
   },

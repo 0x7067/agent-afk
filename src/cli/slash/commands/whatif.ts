@@ -56,7 +56,7 @@ function isBudgetError(err: unknown): err is WhatifBudgetErrorType {
 // ---------------------------------------------------------------------------
 
 /** Emit a progress line at most once every ~10 episodes within the same stage. */
-function makeProgressThrottle(ctx: SlashContext): (stage: string, message: string, done?: number) => void {
+export function makeProgressThrottle(ctx: SlashContext): (stage: string, message: string, done?: number) => void {
   let lastStage = '';
   let episodeCount = 0;
 
@@ -67,9 +67,14 @@ function makeProgressThrottle(ctx: SlashContext): (stage: string, message: strin
       ctx.out.info(`[whatif] ${stage}: ${message}`);
       return;
     }
+    // Milestone lines (no done counter, e.g. the preflight MDE note) always show.
+    if (done === undefined) {
+      ctx.out.info(`[whatif] ${stage}: ${message}`);
+      return;
+    }
     if (stage === 'episodes' || stage === 'run') {
       episodeCount++;
-      if (done !== undefined && episodeCount % 10 === 0) {
+      if (episodeCount % 10 === 0) {
         ctx.out.info(`[whatif] ${stage}: ${message}`);
       }
     }
@@ -181,8 +186,13 @@ async function handleWhatif(ctx: SlashContext, args: string): Promise<void> {
         maxTurns: parsed.options.maxTurns,
         episodeTimeoutMs: parsed.options.episodeTimeoutMs,
         keepSandboxes: parsed.options.keepSandboxes,
+        // --force bypasses the MDE underpowered gate; the CLI path forwards it
+        // too (src/cli/commands/whatif.ts). Omitting it here made the gate
+        // unbypassable from the REPL.
+        force: parsed.force,
         ...(parsed.options.probes !== undefined ? { probes: parsed.options.probes } : {}),
         ...(parsed.options.maxPredictions !== undefined ? { maxPredictions: parsed.options.maxPredictions } : {}),
+        ...(parsed.options.noBaselineSample ? { noBaselineSample: true } : {}),
       },
       deps,
     );
@@ -216,6 +226,11 @@ async function handleWhatif(ctx: SlashContext, args: string): Promise<void> {
   for (const line of lines) ctx.out.line(line);
   ctx.out.line('');
   ctx.out.info(`Full report: ${report.runDir}/report.md`);
+  if (report.keptSandboxes) {
+    ctx.out.info(`Sandboxes kept — baseline: ${report.keptSandboxes.baseline}`);
+    ctx.out.info(`              candidate: ${report.keptSandboxes.candidate}`);
+    ctx.out.info(`(mapping written to ${report.runDir}/sandboxes.json)`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -255,7 +270,11 @@ export const whatifCmd: SlashCommand = {
     '--max-turns',
     '--timeout',
     '--keep-sandboxes',
+    '--probes',
+    '--max-predictions',
+    '--no-baseline-sample',
     '--yes',
+    '--force',
     '--json',
   ],
   async handler(ctx: SlashContext, args: string): Promise<'continue'> {

@@ -395,6 +395,12 @@ export interface VerifyResult {
    * Absent when the run had no failures or the imbalance was within threshold.
    */
   armImbalance?: import('./run.failures.js').ArmImbalance;
+  /**
+   * Per-prediction baseline-sample preflight results (#2511).
+   * Present when the baseline-sample preflight ran; absent when
+   * --no-baseline-sample was passed or sampling was skipped.
+   */
+  baselineSample?: import('./baseline-sample.js').PredictionBaselineSample[];
 }
 
 export interface WhatifReport {
@@ -410,10 +416,19 @@ export interface WhatifReport {
   /** Probes dropped by probe-grounding because they reference non-existent paths. */
   droppedProbes?: import('./probe-grounding.js').DroppedProbe[];
   /**
-   * Counts of turns/sessions excluded during corpus collection.
+   * Counts of real turns/sessions excluded during corpus collection.
+   * Covers only real-turn exclusions (whatif sessions, excluded session IDs,
+   * non-standalone turns, and whatif-topic turns); synthetic episodes and
+   * suite-file episodes are not counted here.
    * Present when the verify phase ran; lets callers see corpus shrinkage.
    */
   corpusExclusions?: import('./episodes.js').CorpusExclusions;
+  /**
+   * When --keep-sandboxes is set, the filesystem roots of the two arm sandboxes.
+   * Also written to <runDir>/sandboxes.json for durable reference.
+   * Absent when sandboxes were cleaned up normally.
+   */
+  keptSandboxes?: { baseline: string; candidate: string };
 }
 
 // ---------------------------------------------------------------------------
