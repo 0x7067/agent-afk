@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.279.1] - 2026-10-01
+
+### Fixed
+- address advisory findings from pr-triage pass 2 (#2737) (4b0b84d0)
+
 ## [5.279.0] - 2026-10-01
 
 ### Added
