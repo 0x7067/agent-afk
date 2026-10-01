@@ -11,6 +11,14 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.279.0] - 2026-10-01
+
+### Added
+- add image_edit tool via OpenAI Images Edit API (#2725) (50e4d361)
+
+### Fixed
+- address advisory findings from 2026-09-30 pr-triage (#2720) (a6549920)
+
 ## [5.278.2] - 2026-10-01
 
 ### Fixed
