@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.278.2] - 2026-10-01
+
+### Fixed
+- restore funcsize/filesize ratchets on openai-compatible query() after #2711/#2721 collision (#2729) (a3010b28)
+
 ## [5.278.1] - 2026-09-30
 
 ### Added
