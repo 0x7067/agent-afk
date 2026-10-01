@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.282.0] - 2026-10-01
+
+### Added
+- detach contract with Ctrl+B backgrounding for in-flight bash (#2735) (74c74b10)
+
 ## [5.281.0] - 2026-10-01
 
 ### Added
