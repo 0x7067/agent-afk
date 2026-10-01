@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.279.2] - 2026-10-01
+
+### Fixed
+- forward MCP image content blocks to the model (#2734) (f785c05a)
+
 ## [5.279.1] - 2026-10-01
 
 ### Fixed
