@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.281.0] - 2026-10-01
+
+### Added
+- add scrollable in-TUI viewer for captured bash output (#2739) (5da98b86)
+
 ## [5.280.0] - 2026-10-01
 
 ### Added
