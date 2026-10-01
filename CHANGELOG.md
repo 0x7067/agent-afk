@@ -11,6 +11,14 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.282.1] - 2026-10-01
+
+### Fixed
+- add fake-timer comment and extract rmSyncRetry test helper (#2673) (2d76fda3)
+
+### Changed
+- remove retired capture-flag deprecation notice (#2668) (ab2bbd75)
+
 ## [5.282.0] - 2026-10-01
 
 ### Added
