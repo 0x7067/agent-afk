@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.282.4] - 2026-10-02
+
+### Fixed
+- re-drive mid-stream network termination (TypeError: terminated) (#2776) (#2779) (28e4f60b)
+
 ## [5.282.3] - 2026-10-02
 
 ### Fixed
