@@ -3,8 +3,9 @@
  * @module agent/session/model-slots.test
  */
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  _resetJsonStringSlotWarnings,
   CLAUDE_FABLE_5_ID,
   CLAUDE_HAIKU_ID,
   CLAUDE_OPUS_ID,
@@ -476,5 +477,107 @@ describe('coerceSlotBindingInput', () => {
       expect(res.ok).toBe(false);
       if (!res.ok) expect(res.error).toMatch(/shadow a built-in alias/);
     }
+  });
+});
+
+describe('parseModelsConfig — JSON-string-as-object recovery (read path)', () => {
+  let stderrWrite: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    _resetJsonStringSlotWarnings();
+    stderrWrite = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('recovers a JSON-encoded object string and returns a valid binding', () => {
+    // This is the exact shape observed in the operator's broken config.
+    const result = parseModelsConfig({
+      small: '{"id":"gpt-oss-120b","name":"Cerebras GPT-OSS 120B"}',
+    });
+    expect(result.small).toEqual({ id: 'gpt-oss-120b', name: 'Cerebras GPT-OSS 120B' });
+  });
+
+  it('emits a one-shot warning to stderr when recovering a JSON-string slot', () => {
+    parseModelsConfig({ small: '{"id":"gpt-oss-120b"}' });
+    expect(stderrWrite).toHaveBeenCalledOnce();
+    const msg = String((stderrWrite.mock.calls[0] as [string])[0]);
+    expect(msg).toMatch(/models\.small/);
+    expect(msg).toMatch(/recovered|JSON-encoded/);
+
+    // Second call for the same slot must NOT produce another warning.
+    parseModelsConfig({ small: '{"id":"gpt-oss-120b"}' });
+    expect(stderrWrite).toHaveBeenCalledOnce();
+  });
+
+  it('never echoes apiKey/baseUrl in the recovery warning and single-quotes the suggestion', () => {
+    const result = parseModelsConfig({
+      local:
+        '{"id":"qwen-3.8-27b","name":"cerebras","provider":"openai","baseUrl":"https://api.cerebras.ai/v1","apiKey":"csk-SECRET-should-not-print"}',
+    });
+    // JSON-string slots are agent-provenance: human-gated fields are discarded.
+    expect(result.local).toEqual({ id: 'qwen-3.8-27b', name: 'cerebras', provider: 'openai' });
+    expect(result.local?.apiKey).toBeUndefined();
+    expect(result.local?.baseUrl).toBeUndefined();
+    const msg = String((stderrWrite.mock.calls[0] as [string])[0]);
+    expect(msg).not.toContain('csk-SECRET-should-not-print');
+    expect(msg).not.toContain('api.cerebras.ai');
+    expect(msg).toContain(
+      `afk config set models.local '{"id":"qwen-3.8-27b","name":"cerebras","provider":"openai"}'`,
+    );
+    expect(msg).toContain('AFK_MODEL_LOCAL_BASE_URL');
+  });
+
+  it('does not let a legacy agent-written JSON string redirect traffic via baseUrl (human-gate bypass)', () => {
+    const result = parseModelsConfig({
+      small: '{"id":"x","baseUrl":"https://attacker.example"}',
+    });
+    expect(result.small).toEqual({ id: 'x' });
+    expect(result.small?.baseUrl).toBeUndefined();
+  });
+
+  it('hand-written OBJECT slots keep baseUrl/apiKey (lenient loader unchanged)', () => {
+    const result = parseModelsConfig({
+      local: { id: 'llama3.2:3b', baseUrl: 'http://localhost:11434/v1', apiKey: 'ollama' },
+    });
+    expect(result.local?.baseUrl).toBe('http://localhost:11434/v1');
+    expect(result.local?.apiKey).toBe('ollama');
+  });
+
+  it('drops a malformed {-prefixed string and falls back to undefined', () => {
+    const result = parseModelsConfig({ small: '{not valid json}' });
+    expect(result.small).toBeUndefined();
+  });
+
+  it('emits a drop warning for a malformed {-prefixed string', () => {
+    parseModelsConfig({ small: '{not valid json}' });
+    expect(stderrWrite).toHaveBeenCalledOnce();
+    const msg = String((stderrWrite.mock.calls[0] as [string])[0]);
+    expect(msg).toMatch(/models\.small/);
+    expect(msg).toMatch(/malformed|dropping/);
+  });
+
+  it('bare id strings are NOT affected by the JSON-string recovery path', () => {
+    const result = parseModelsConfig({ small: 'claude-haiku-4-5-20251001' });
+    expect(result.small).toEqual({ id: 'claude-haiku-4-5-20251001' });
+    expect(stderrWrite).not.toHaveBeenCalled();
+  });
+
+  it('object values are NOT affected by the JSON-string recovery path', () => {
+    const result = parseModelsConfig({ small: { id: 'gpt-4o-mini', provider: 'openai' } });
+    expect(result.small).toEqual({ id: 'gpt-4o-mini', provider: 'openai' });
+    expect(stderrWrite).not.toHaveBeenCalled();
+  });
+
+  it('recovered JSON-string object discards baseUrl on the read path (agent-provenance)', () => {
+    // A JSON-encoded STRING slot was historically writable by the agent-tier
+    // setter, so its human-gated fields must not be activated on recovery. Only
+    // hand-written OBJECT values keep the lenient baseUrl/apiKey handling.
+    const result = parseModelsConfig({
+      small: '{"id":"gpt-oss-120b","baseUrl":"http://localhost/v1"}',
+    });
+    expect(result.small).toEqual({ id: 'gpt-oss-120b' });
   });
 });
