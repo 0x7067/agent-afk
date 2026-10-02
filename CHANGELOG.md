@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.282.5] - 2026-10-02
+
+### Fixed
+- clear disconnect timeout timer when disconnect succeeds (#2764) (e0749da6)
+
 ## [5.282.4] - 2026-10-02
 
 ### Fixed
