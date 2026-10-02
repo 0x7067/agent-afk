@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.284.0] - 2026-10-02
+
+### Added
+- per-slot contextWindow override (#2793) (6ced67c5)
+
 ## [5.283.0] - 2026-10-02
 
 ### Added
