@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.282.9] - 2026-10-02
+
+### Fixed
+- reject/recover JSON-string model-slot values instead of treating them as a model id (#2790) (ce285210)
+
 ## [5.282.8] - 2026-10-02
 
 ### Fixed
