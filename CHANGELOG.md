@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.282.8] - 2026-10-02
+
+### Fixed
+- echo reasoning under its origin field (Cerebras 400) (#2788) (ae814b46)
+
 ## [5.282.7] - 2026-10-02
 
 ### Fixed
