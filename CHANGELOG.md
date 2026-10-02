@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.282.7] - 2026-10-02
+
+### Fixed
+- trustworthy outcome, primary_success, produced_pr, tool_errors_total (#2777) (#2781) (bd054244)
+
 ## [5.282.6] - 2026-10-02
 
 ### Fixed
