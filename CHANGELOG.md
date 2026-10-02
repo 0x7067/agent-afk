@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.282.2] - 2026-10-02
+
+### Fixed
+- honor undici lookup all:true contract in egress guard (web_scrape fetch failed) (#2754) (86f77d75)
+
 ## [5.282.1] - 2026-10-01
 
 ### Fixed
