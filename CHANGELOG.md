@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.283.0] - 2026-10-02
+
+### Added
+- add Cerebras gpt-oss-120b and qwen-3.8-27b context windows (#2789) (11a5e1b8)
+
 ## [5.282.9] - 2026-10-02
 
 ### Fixed
