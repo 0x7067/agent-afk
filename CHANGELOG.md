@@ -11,6 +11,14 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.282.3] - 2026-10-02
+
+### Fixed
+- read Claude Code OAuth credentials on Windows (#2755) (9a4b20b8)
+
+### Changed
+- use --ak for Harbor agent kwargs (#2775) (dd1fbcbf)
+
 ## [5.282.2] - 2026-10-02
 
 ### Fixed
