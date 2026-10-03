@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.287.1] - 2026-10-03
+
+### Fixed
+- diagnostic detail on no readable content errors (#2808) (42a5be5e)
+
 ## [5.287.0] - 2026-10-03
 
 ### Added
