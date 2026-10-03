@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.287.0] - 2026-10-03
+
+### Added
+- cross-session peer messaging (list_sessions / send_to_session) (#2806) (dff4418f)
+
 ## [5.286.2] - 2026-10-03
 
 ### Fixed
