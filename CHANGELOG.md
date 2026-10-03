@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.288.0] - 2026-10-03
+
+### Added
+- tell scoped children which agent_type values they may dispatch (#2829) (23633647)
+
 ## [5.287.2] - 2026-10-03
 
 ### Fixed
