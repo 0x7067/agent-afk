@@ -11,6 +11,12 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.290.1] - 2026-10-03
+
+### Fixed
+- invariant comment + redactSecrets at Telegram delivery boundary (#2849) (#2858) (e17db879)
+- address advisory findings from #2805 atomic-write review (#2837) (9e1b9b10)
+
 ## [5.290.0] - 2026-10-03
 
 ### Added
