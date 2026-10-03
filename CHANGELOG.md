@@ -11,6 +11,12 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.286.2] - 2026-10-03
+
+### Fixed
+- retry rename on Windows EPERM/EACCES/EBUSY (#2805) (1d3ef5ca)
+- right-size /review budgets, fix compose guidance, trace the effective budget (#2815) (c90e1303)
+
 ## [5.286.1] - 2026-10-03
 
 ### Fixed
