@@ -11,6 +11,13 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.288.2] - 2026-10-03
+
+### Fixed
+- enforce CommonMark fence rules in fencedLines() so unbalanced fence-like lines no longer hide the end-of-turn heading (#2833) (16bb8711)
+- retry connection-phase network errors (regression from #2422) (#2838) (fe5c90aa)
+- make default provider stores lazy so importing a provider opens no SQLite files (#2842) (2096f82e)
+
 ## [5.288.1] - 2026-10-03
 
 ### Fixed
