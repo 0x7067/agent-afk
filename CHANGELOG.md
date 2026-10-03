@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.289.0] - 2026-10-03
+
+### Added
+- disabledPluginHooks config key; warn before marketplace update discards local edits (#2841) (f8c0c4fe)
+
 ## [5.288.3] - 2026-10-03
 
 ### Fixed
