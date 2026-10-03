@@ -319,6 +319,18 @@ export const QueuedUserMessagePayloadSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// peer_message
+// ---------------------------------------------------------------------------
+
+export const PeerMessagePayloadSchema = z.object({
+  action: z.enum(['sent', 'delivered', 'held', 'refused', 'dropped']),
+  messageId: z.string().optional(),
+  peer: z.string(),
+  bytes: z.number().int().nonnegative(),
+  reason: z.string().optional(),
+});
+
+// ---------------------------------------------------------------------------
 // session_sealed
 // ---------------------------------------------------------------------------
 
@@ -364,6 +376,7 @@ export const TraceEventInputSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('claim'), payload: ClaimPayloadSchema }),
   z.object({ kind: z.literal('browser_event'), payload: BrowserEventPayloadSchema }),
   z.object({ kind: z.literal('queued_user_message'), payload: QueuedUserMessagePayloadSchema }),
+  z.object({ kind: z.literal('peer_message'), payload: PeerMessagePayloadSchema }),
   z.object({ kind: z.literal('session_phase'), payload: SessionPhasePayloadSchema }),
 ]);
 
@@ -434,6 +447,12 @@ export const TraceEventSchema = z.discriminatedUnion('kind', [
     seq: z.number().int().nonnegative(),
     kind: z.literal('queued_user_message'),
     payload: QueuedUserMessagePayloadSchema,
+  }),
+  z.object({
+    ts: z.string().datetime(),
+    seq: z.number().int().nonnegative(),
+    kind: z.literal('peer_message'),
+    payload: PeerMessagePayloadSchema,
   }),
   z.object({
     ts: z.string().datetime(),
