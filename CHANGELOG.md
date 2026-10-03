@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.290.2] - 2026-10-03
+
+### Fixed
+- refill the screen after a tall overlay collapses (content-hug blank gap) (#2857) (eed966f0)
+
 ## [5.290.1] - 2026-10-03
 
 ### Fixed
