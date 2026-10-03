@@ -11,6 +11,15 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.286.1] - 2026-10-03
+
+### Fixed
+- address advisory findings from 2026-09-30 pr-triage (#2745) (da8899f6)
+
+### Changed
+- unskip clipboard and tildifyHome tests on Windows (#2744) (f1c022f4)
+- exercise real undici + egress-guard fetch path (#2774) (#2783) (510a003c)
+
 ## [5.286.0] - 2026-10-03
 
 ### Added
