@@ -11,6 +11,15 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.287.2] - 2026-10-03
+
+### Fixed
+- keep bash output on abort/timeout; make write_file atomic (#2814) (936a6f27)
+
+### Changed
+- remove dead autoRouting.daemon key (#2827) (b8a0b1e1)
+- upgrade vitest + @vitest/coverage-v8 2.1.9 -> 4.1.11 (#2828) (88914f3c)
+
 ## [5.287.1] - 2026-10-03
 
 ### Fixed
