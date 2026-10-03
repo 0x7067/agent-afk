@@ -11,6 +11,12 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.288.1] - 2026-10-03
+
+### Fixed
+- exclude subagent tool events from toolDurationsMs; document trace interleaving (#2831) (cd682695)
+- persist result bodies and fix mislabeled delivered witness events (#2830) (5afd055d)
+
 ## [5.288.0] - 2026-10-03
 
 ### Added
