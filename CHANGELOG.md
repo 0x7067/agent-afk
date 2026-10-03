@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.289.1] - 2026-10-03
+
+### Fixed
+- do not retry egress-blocked requests in retryFetch (#2832) (1c7d48ba)
+
 ## [5.289.0] - 2026-10-03
 
 ### Added
