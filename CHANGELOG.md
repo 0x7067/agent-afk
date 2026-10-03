@@ -11,6 +11,13 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.288.3] - 2026-10-03
+
+### Fixed
+- retry and pause on status-less mid-stream overload errors (#2845) (42457e6f)
+- per-file retention for inbox delivered/ receipts (#2840) (7cd2d35b)
+- never forward an Anthropic credential to OpenAI-routed compose nodes (#2846) (f831dffc)
+
 ## [5.288.2] - 2026-10-03
 
 ### Fixed
