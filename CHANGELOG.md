@@ -11,6 +11,16 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.292.1] - 2026-10-04
+
+### Fixed
+- emit PowerShell-compatible env-var syntax in Playwright install hint on win32 (#2765) (5a13c15e)
+- allowlist gh/curl read-only CI polls; fail fast on classifier block (#2769) (a034b5ff)
+- doctor: use resolveOpenAIAuth to cover ChatGPT/Codex OAuth (#2766) (85f9c2e8)
+
+### Changed
+- gate-liveness coverage for safety-gate wiring (#2882) (c78dcfb0)
+
 ## [5.292.0] - 2026-10-04
 
 ### Added
