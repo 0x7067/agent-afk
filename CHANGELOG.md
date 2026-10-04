@@ -11,6 +11,18 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.293.1] - 2026-10-04
+
+### Added
+- detach in-flight compose with Ctrl+B (#2746) (5b6e5510)
+
+### Fixed
+- skip WSL bash.exe in findGitBashOnWindows; derive from git.exe (#2763) (4deddfe0)
+- correct stale delivery-timing text and add sender rules (#2907) (616a9a05)
+
+### Changed
+- remove internal @deprecated items (#2748) (9d2cf2f3)
+
 ## [5.293.0] - 2026-10-04
 
 ### Fixed
