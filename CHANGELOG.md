@@ -11,6 +11,18 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.292.0] - 2026-10-04
+
+### Added
+- integrate skill previews with live dispatch activity (#2895) (0d2b4bc8)
+- improve peer-arrival UX — sanitized identity, silent auto-resume echo (#2896) (f68305fd)
+
+### Fixed
+- consistent, provider-labeled usage-limit errors for Claude and Codex (#2883) (5d3c2cb5)
+
+### Changed
+- redirect HOME in every test worker so tests can never hit the real home (#2905) (4f0d82d0)
+
 ## [5.291.1] - 2026-10-04
 
 ### Fixed
