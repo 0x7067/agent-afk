@@ -11,6 +11,15 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.292.2] - 2026-10-04
+
+### Fixed
+- fix npm bin PATH check for Windows (delimiter and /bin suffix) (#2768) (d08d77c6)
+- silence Ajv unknown-format warnings for gRPC integer formats (#2767) (2696e63a)
+
+### Changed
+- bump the prod-minor-patch group across 1 directory with 7 updates (#2890) (46c634f0)
+
 ## [5.292.1] - 2026-10-04
 
 ### Fixed
