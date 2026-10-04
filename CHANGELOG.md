@@ -11,6 +11,16 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.293.0] - 2026-10-04
+
+### Fixed
+- SIGTERM tracked stdio servers at process exit so stubborn servers are never orphaned (#2931) (7f904dff)
+- wire DetachableToolRegistry at REPL bootstrap so Ctrl+B works on bash (#2753) (26064ba9)
+
+### Changed
+- regenerate env-registry after per-session TMPDIR change (#2929) (a57839af)
+- regenerate env-registry after #2747 merge (212 vars) (#2916) (8c1ab0ea)
+
 ## [5.292.3] - 2026-10-04
 
 ### Added
