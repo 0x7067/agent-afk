@@ -11,11 +11,45 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.291.0] - 2026-10-04
+
 ### Fixed
 - keep facet schema backward-compatible with v7 caches missing `pr_url` (#2863)
 
 ### Changed
 - document SessionFacet v7 outcome semantics for public consumers (#2797)
+
+### Added
+- cooperative mid-turn boundary delivery for both providers (#2810) (fa17faaa)
+- tool-health builtin alerts on cross-session tool degradation (#2774 3/3) (#2785) (14c7fc9f)
+- per-session ToolHealthMonitor + tool_degraded trace event (#2774 2/3) (#2784) (fd77b367)
+- Claude Fable 5.1 support with drop_block prefix-binding observable (#2854) (b9dddee3)
+- one traced retry layer for compaction and one-shot calls (#2851) (baad7c6a)
+- opt-in usage-limit park for subagents so an account switch rescues in-flight children (#2826) (464fdac3)
+- cross-process usage awareness (per-provider buckets, afk usage, daemon budget gate) (#2853) (b90e9112)
+
+### Fixed
+- unify spinner verbs onto humanVerbForTool and prune flavour pools (#2878) (17b30f66)
+- key unparseable baseURLs distinctly in rate-limit/ledger (#2872) (#2879) (f0d82a2b)
+- add endedAt + exitReason to session sidecar on all exit paths (#2771) (aafff031)
+- prefer remote default branch over mutable local HEAD in resolveAnchorBaseRef (#2770) (e08b023c)
+- polish v7 public schema notes (#2863) (8f447b64)
+- fix gh pr create detection gaps (quoted separators, $(), flattened multi-line) (#2834) (71aceb7f)
+- resolve ghost-text credential per suggest model; route ChatGPT OAuth over Responses (#2864) (884a2da4)
+- accept completed response when transport drops after stop_reason (#2835) (68f14880)
+- advisory follow-ups from #2845 review (#2855) (#2860) (93b90799)
+- address allowlist wiring test and fork-site audit (#2848) (#2859) (a60783f9)
+- treat raised engines.node floor as major in auto-release (#2839) (c4db34e1)
+
+### Changed
+- remove @types/jest, refresh lockfile to clear prod advisories (#2825) (afd64a82)
+- bump the dashboard-minor-patch group (#2886) (6b1d592e)
+- bump chalk from 5.6.2 to 6.0.1 (#2894) (297013ea)
+- bump the dev-minor-patch group with 2 updates (#2891) (a305976e)
+- bump next from 16.3.6 to 16.3.8 in /website (#2887) (260f51f5)
+- point Dependabot at the root package and dashboard (#2824) (77cf1bd7)
+- remove stale autoRouting daemon refs (#2862) (03469197)
+- regression tests for redactSecrets at Telegram push boundary (#2849) (#2866) (e25238dd)
 
 ## [5.290.4] - 2026-10-03
 
