@@ -11,6 +11,21 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.291.1] - 2026-10-04
+
+### Fixed
+- read tool arguments from Responses *.done events (#2904) (45a3a0fc)
+
+### Changed
+- bump openai from 6.38.0 to 7.25.0 (#2893) (ff5379c3)
+- bump shiki (#2898) (077d20f3)
+- bump vitest from 3.2.7 to 5.0.3 in /dashboard (#2889) (fcfe9576)
+- bump @vitejs/plugin-react in /dashboard (#2888) (524c13df)
+- bump @types/node from 26.6.2 to 26.6.3 in /website (#2885) (de8d70f5)
+- bump jsdom and @types/jsdom (#2892) (ddd4991e)
+- bump @types/node from 22.19.11 to 26.6.3 (#2897) (fdd13ba7)
+- bump the fumadocs group across 1 directory with 3 updates (#2884) (df8022ff)
+
 ## [5.291.0] - 2026-10-04
 
 ### Fixed
