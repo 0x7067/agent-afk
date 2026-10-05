@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.299.0] - 2026-10-05
+
+### Added
+- combiner v2 with severity tiers and good-by-default (#2997) (db76e12a)
+
 ## [5.298.2] - 2026-10-05
 
 ### Fixed
