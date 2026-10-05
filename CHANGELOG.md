@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.295.4] - 2026-10-05
+
+### Fixed
+- recover claimed-but-uninjected peer envelopes after crash (#2924) (4c199481)
+
 ## [5.295.3] - 2026-10-05
 
 ### Added
