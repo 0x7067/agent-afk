@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.296.7] - 2026-10-05
+
+### Fixed
+- make dynamic .mjs import tests portable to Windows (#2730) (3ee6bc78)
+
 ## [5.296.6] - 2026-10-05
 
 ### Fixed
