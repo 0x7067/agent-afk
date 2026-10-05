@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.296.3] - 2026-10-05
+
+### Changed
+- split message handler, session manager and farm callbacks under the 350-line ceiling (#832) (#2964) (e0c0087f)
+
 ## [5.296.2] - 2026-10-05
 
 ### Changed
