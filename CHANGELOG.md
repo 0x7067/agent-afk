@@ -11,6 +11,15 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.298.1] - 2026-10-05
+
+### Fixed
+- remove stale bypass-mode execFile warning (#2716) (a73ac02c)
+- stop SessionEnd hook classifying its own SPINE.md edits and the main checkout's stale diff (#2641) (6fbb9d98)
+- credit nested sub-agent commits to the root session (#2710) (698bdf4f)
+- get_facet cwd-aware 'latest'; add 'current'/'self'; add resolution fields (#2975) (1bd93f34)
+- quarantine unparseable pending/ peer envelopes to held/ (#2976) (8eb6408b)
+
 ## [5.298.0] - 2026-10-05
 
 ### Added
