@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.296.8] - 2026-10-05
+
+### Changed
+- split memory-store and memory-tools under the 350-line ceiling (#832) (#2959) (e75edd2e)
+
 ## [5.296.7] - 2026-10-05
 
 ### Fixed
