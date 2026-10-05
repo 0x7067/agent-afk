@@ -11,6 +11,18 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.295.3] - 2026-10-05
+
+### Added
+- blocking Stop hook continues the turn with a hard cap (#2740) (082b7609)
+
+### Fixed
+- introduce parentCredential to atomically pair key+sourceModel (#2928) (86ebeab6)
+- preserve body text when annotating; strip dangling label fragments (#2921) (cec37cf8)
+
+### Changed
+- rebuild parseSelfReport on parseTerminalState (#2922) (23b9194e)
+
 ## [5.295.2] - 2026-10-05
 
 ### Fixed
