@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.295.7] - 2026-10-05
+
+### Fixed
+- deliver queued user messages at end of turn, not between tool rounds (#2956) (66f8e7da)
+
 ## [5.295.6] - 2026-10-05
 
 ### Added
