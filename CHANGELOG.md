@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.295.5] - 2026-10-05
+
+### Changed
+- drop the spinner to 4 Hz after a 2 s warm-up and skip identical frames (#2946) (1e43fa75)
+
 ## [5.295.4] - 2026-10-05
 
 ### Fixed
