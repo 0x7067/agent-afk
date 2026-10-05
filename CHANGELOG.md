@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.295.8] - 2026-10-05
+
+### Fixed
+- replace wall-clock budget with ordering probe in 'returns immediately' test (#2947) (6dfbe3ae)
+
 ## [5.295.7] - 2026-10-05
 
 ### Fixed
