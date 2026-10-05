@@ -11,6 +11,15 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.295.6] - 2026-10-05
+
+### Added
+- record thumbs reactions as /good and /bad feedback (#2646) (90c9bb06)
+
+### Fixed
+- explicit truncation notice with line count on both Telegram and REPL (#2642) (0fb04855)
+- render the skill identity preview once per dispatch (#2915) (9bc80faa)
+
 ## [5.295.5] - 2026-10-05
 
 ### Changed
