@@ -170,6 +170,12 @@ export interface SessionToolDispatcherOptions {
    */
   parentSessionId?: string;
   /**
+   * Root (depth-0) session id, inherited from {@link AgentConfig.rootSessionId}.
+   * Undefined for top-level (depth-0) sessions. Stamped on PostToolUse so
+   * child-attribution credits artifacts to the root record regardless of depth.
+   */
+  rootSessionId?: string;
+  /**
    * This fork's own subagent id, when the dispatcher belongs to a forked child.
    * Stamped onto every `hook_decision` this dispatcher emits so a block can be
    * ATTRIBUTED to the child that provoked it, mirroring what `tool_call`
@@ -300,6 +306,7 @@ export class SessionToolDispatcher implements ToolDispatcher {
   private readonly _env: Record<string, string> | undefined;
   private readonly sessionId: string | undefined;
   private readonly parentSessionId: string | undefined;
+  private readonly rootSessionId: string | undefined;
   private readonly subagentId: string | undefined;
   /**
    * Provider that owns this dispatcher (implements GrantManager). Injected onto
@@ -388,6 +395,7 @@ export class SessionToolDispatcher implements ToolDispatcher {
     this._env = opts.env;
     this.sessionId = opts.sessionId;
     this.parentSessionId = opts.parentSessionId;
+    this.rootSessionId = opts.rootSessionId;
     this.subagentId = opts.subagentId;
     this.sessionGrantManager = opts.sessionGrantManager;
     this.traceWriter = opts.traceWriter;
@@ -705,6 +713,7 @@ export class SessionToolDispatcher implements ToolDispatcher {
       hookRegistry: this.hookRegistry,
       sessionId: this.sessionId,
       parentSessionId: this.parentSessionId,
+      rootSessionId: this.rootSessionId,
       sessionGrantManager: this.sessionGrantManager,
       traceWriter: this.traceWriter,
       maxOutputBytes: this.maxOutputBytes,
