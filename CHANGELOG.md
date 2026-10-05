@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.297.0] - 2026-10-05
+
+### Added
+- re-render resumed and forked sessions from the message journal (#2715) (fefcf386)
+
 ## [5.296.9] - 2026-10-05
 
 ### Fixed
