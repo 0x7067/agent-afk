@@ -10,7 +10,7 @@
 import { promises as fs, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { getWorktreeSweepLockPath, getTelemetryPath } from '../../paths.js';
-import { readPresenceFiles, type PresenceRecord } from '../awareness/presence.js';
+import type { PresenceRecord } from '../awareness/presence.js';
 // Runtime value import. Safe despite the mutual reference: the only import
 // going the other way (worktree-ignored-probe.ts importing ExecFileFn from
 // THIS file) is `import type`, which TypeScript erases at compile time — so
@@ -39,6 +39,8 @@ import {
   classifyCandidate,
 } from './worktree-sweep.classify.js';
 export { MIN_EMPTY_AGE_MS } from './worktree-sweep.classify.js';
+import { applySchedulePin, loadSchedulePinsForSweep } from './worktree-sweep.schedule-pins.js';
+import { readLiveSessionCwds } from './worktree-sweep.liveness.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -104,6 +106,12 @@ export interface SweepOptions {
    * worktree) is never reaped — even if the creator pid in meta is dead.
    */
   readPresence?: () => Promise<PresenceRecord[]>;
+  /**
+   * Override the schedules file path used by the schedule-pins guard.
+   * Defaults to the process-global schedules store (~/.afk/config/schedules.json).
+   * Injected by tests for hermeticity.
+   */
+  schedulesPath?: string;
 }
 
 interface SweepCandidateSummary {
@@ -270,27 +278,10 @@ export async function runSweep(options: SweepOptions): Promise<SweepResult> {
       }
     }
 
-    // Invariant: a worktree hosting a LIVE top-level session must never be
-    // reaped, even when the creator pid in .afk-worktree-meta.json is dead —
-    // the creating process and the session actively working inside are
-    // frequently different (a resumed session, or a hand-recreated worktree).
-    // meta.pid alone misses this and the dead-owner verdict would reap an
-    // in-use worktree. Presence files are the authoritative "someone is working
-    // here now" signal: each live top-level session writes one with its own pid
-    // + cwd. We trust a record only when its pid is actually alive, so a crashed
-    // session's stale file cannot protect a worktree forever.
-    const presenceReader = options.readPresence ?? readPresenceFiles;
-    let liveSessionCwds: string[] = [];
-    try {
-      const presenceRecords = await presenceReader();
-      liveSessionCwds = presenceRecords
-        .filter((r) => typeof r.pid === 'number' && r.pid > 0 && isProcessAlive(r.pid))
-        .map((r) => r.cwd)
-        .filter((cwd): cwd is string => typeof cwd === 'string' && cwd.length > 0);
-    } catch {
-      // Presence is advisory + best-effort: on any read failure, fall back to
-      // the meta.pid liveness check alone (prior behavior).
-    }
+    // Live-session + schedule-pin liveness (see worktree-sweep.liveness.ts and
+    // worktree-sweep.schedule-pins.ts). Both are best-effort and never throw.
+    const liveSessionCwds = await readLiveSessionCwds(options.readPresence);
+    const schedulePins = await loadSchedulePinsForSweep(parsed, result.warnings, options.schedulesPath);
 
     // Process registered worktrees (skip main/bare)
     let hasOrphanedRegistrations = false;
@@ -479,7 +470,8 @@ export async function runSweep(options: SweepOptions): Promise<SweepResult> {
         ownerLiveness,
       };
 
-      const verdict = classifyCandidate(candidate, maxAgeDaysClean, maxAgeDaysDirty);
+      const raw = classifyCandidate(candidate, maxAgeDaysClean, maxAgeDaysDirty);
+      const verdict = applySchedulePin(raw, entry.path, schedulePins, result.warnings);
       result.candidates.push({ path: entry.path, verdict, owner: resolvedOwner, ageMs });
 
       if (effectiveDryRun) continue;
