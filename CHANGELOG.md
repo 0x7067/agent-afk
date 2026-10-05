@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.296.1] - 2026-10-05
+
+### Changed
+- split eval-run/contracts, runner, and propose/template-engine under the 350-line ceiling (#832) (#2961) (6f01d6d2)
+
 ## [5.296.0] - 2026-10-05
 
 ### Added
