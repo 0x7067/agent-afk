@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.295.9] - 2026-10-05
+
+### Fixed
+- enforce domain policy independently of unrelated browser config fields (#2919) (5a4ee000)
+
 ## [5.295.8] - 2026-10-05
 
 ### Fixed
