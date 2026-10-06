@@ -11,6 +11,12 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.301.3] - 2026-10-06
+
+### Changed
+- inject execSync via deps, extract mockPrefix helper, share win32 invariant helper (#3055) (41062f4b)
+- replace wall-clock budget, fix EBUSY teardown, harden watch timing (#3056) (67ef042b)
+
 ## [5.301.2] - 2026-10-06
 
 ### Fixed
