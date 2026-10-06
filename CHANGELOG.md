@@ -11,6 +11,17 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.302.2] - 2026-10-06
+
+### Fixed
+- report rewound prompts, not raw API message counts (#3109) (29a0d8d7)
+- complete truncated SPINE.md citations and trim SKILL.md descriptions (#3112) (3ff0fa7b)
+- complete schema extraction, add type guards (#3113) (919afeec)
+- document onTaskComplete disk-durability contract and add afterEach flag-leak guard (#3110) (9d52188f)
+- close lingering .rm sibling, add EXDEV fallback, add .rm-linger test assertion (#3101) (5a8c68b0)
+- fix cwd precedence comment, restore tilde JSDoc, add EXDEV lock-degrade test (#3111) (7e8845ef)
+- poll groupAlive assertions to avoid zombie-window flake (#3098) (2f4c5695)
+
 ## [5.302.1] - 2026-10-06
 
 ### Fixed
