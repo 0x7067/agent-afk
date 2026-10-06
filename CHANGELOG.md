@@ -11,6 +11,20 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.299.9] - 2026-10-06
+
+### Fixed
+- harden per-session TMPDIR (TOCTOU, registry leak, hook shells, cache, docs) (#3052) (e5faf816)
+- restore pendingWindowCap invariant on all-sentinel displacement, document sync guarantee, add compact+sentinel tests (#3014) (6c06fbb0)
+- treat blank optional args as absent in edit_file and patch_apply (#3051) (359fbcca)
+- suppress burn-rate ETA when latest sample pair is non-increasing (#3048) (d068b217)
+- real candidates count + debugLog in memory GC sweep (#3049) (a0e22e77)
+- delete-then-set in _mergeVotes to preserve Map arrival order (#3047) (c5bc6887)
+- use path.relative-based containment in sandbox-guard (#3033) (a4cb15fd)
+
+### Changed
+- unit-test queuedSubmission + restore runInputLoop funcsize headroom (#3050) (88c290df)
+
 ## [5.299.8] - 2026-10-06
 
 ### Fixed
