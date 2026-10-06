@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.301.2] - 2026-10-06
+
+### Fixed
+- wire Stop on afk web, forward beforeTurnEnd, honor cap=0 (#3057) (9a918d6c)
+
 ## [5.301.1] - 2026-10-06
 
 ### Fixed
