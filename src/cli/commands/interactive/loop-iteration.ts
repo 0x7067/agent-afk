@@ -59,7 +59,7 @@ export async function runInputLoop(
   footer: FooterSubsystems,
   history: ReplHistory,
 ): Promise<void> {
-  const { verdictLedger, bgResultNotifier, peerNotifier } = footer;
+  const { verdictLedger, bgResultNotifier, peerNotifier, processJobNotifier } = footer;
   const maxTurnsNum = (() => { const mt = parseInt(ctx.options.maxTurns, 10); return mt > 0 ? mt : undefined; })();
 
   // Init metadata deferred to loop top so it prints cleanly between turns.
@@ -105,14 +105,14 @@ export async function runInputLoop(
   const tryAutoResume = (): void => {
     if (autoResumeCount >= MAX_AUTO_RESUMES_PER_TURN) return;
     if (!surface.isAwaitingInput() || !surface.bufferIsEmpty()) return;
-    if (!bgResultNotifier.hasPendingInjections() && !peerNotifier.hasPendingInjections()) return;
+    const bgPending = bgResultNotifier.hasPendingInjections() || processJobNotifier?.hasPendingInjections() === true;
+    if (!bgPending && !peerNotifier.hasPendingInjections()) return;
     autoResumeCount++;
     ringBellIfEnabled(process.stdout);
-    seedBuffer = { text: autoResumeDirective(bgResultNotifier.hasPendingInjections()), attachments: [], echo: 'silent' };
+    seedBuffer = { text: autoResumeDirective(bgPending), attachments: [], echo: 'silent' };
     surface.abortPendingRead();
   };
-  bgResultNotifier.onInjectable = tryAutoResume;
-  peerNotifier.onInjectable = tryAutoResume;
+  for (const n of [bgResultNotifier, peerNotifier, processJobNotifier]) if (n) n.onInjectable = tryAutoResume;
   surface.onAwaitingInput = tryAutoResume;
 
   while (true) {
@@ -219,7 +219,9 @@ export async function runInputLoop(
     if (isPluginForward) runText = await runPluginPreflight(text, ctx);
 
     // Prepend shell/bg/peer injections (human barrier + admission-queue drain).
-    runText = applyDeferPeers(runText, queuedHumanTurn, surface, footer.shellPassthrough, bgResultNotifier, peerNotifier, admissionQueue);
+    // processJobNotifier is passed as the optional extra source so background
+    // process job results are injected between bg-subagent and peer messages.
+    runText = applyDeferPeers(runText, queuedHumanTurn, surface, footer.shellPassthrough, bgResultNotifier, peerNotifier, admissionQueue, processJobNotifier);
     if (pendingStopInjection !== undefined) {
       runText = pendingStopInjection + '\n\n' + runText;
       pendingStopInjection = undefined;

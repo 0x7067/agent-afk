@@ -237,6 +237,11 @@ export function drainAdmissionQueueFallback(text: string, q: AdmissionQueue): st
  * Returns the updated `runText`. All parameters are passed explicitly — no
  * closure over enclosing loop locals — so this function is trivially testable
  * and adds zero lines to `runInputLoop`.
+ *
+ * `processJobNotifier` is optional — supplied when the background-process job
+ * notifier is present (i.e. the `run_in_background` feature is active). When
+ * provided it is injected between `bgResultNotifier` and the peer notifier,
+ * matching the same position it occupies in the full sources array.
  */
 export function applyDeferPeers(
   runText: string,
@@ -246,9 +251,11 @@ export function applyDeferPeers(
   bgResultNotifier: InjectionSource,
   peerNotifier: InjectionSource,
   admissionQueue: AdmissionQueue,
+  processJobNotifier?: InjectionSource,
 ): string {
   const deferPeers = queuedHumanTurn || (surface.getCompositor()?.hasPendingSubmission() ?? false);
-  let out = prependTurnInjections(runText, [shellPassthrough, bgResultNotifier, ...(!deferPeers ? [peerNotifier] : [])]);
+  const extraSources: InjectionSource[] = processJobNotifier ? [processJobNotifier] : [];
+  let out = prependTurnInjections(runText, [shellPassthrough, bgResultNotifier, ...extraSources, ...(!deferPeers ? [peerNotifier] : [])]);
   if (!deferPeers) out = drainAdmissionQueueFallback(out, admissionQueue);
   return out;
 }
