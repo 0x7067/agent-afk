@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.302.3] - 2026-10-06
+
+### Fixed
+- add test-typecheck error-count ratchet and document tsconfig.test.json include scope (#3114) (5676f002)
+
 ## [5.302.2] - 2026-10-06
 
 ### Fixed
