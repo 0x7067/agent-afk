@@ -11,6 +11,17 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.301.1] - 2026-10-06
+
+### Fixed
+- persist compose partial flags in the journal and count partial nodes (#3058) (f0dc157a)
+- explicit case + tests for no-usable-auth-forced-chatgpt-oauth and source:config (#3059) (c37ef0d9)
+- harden gate-liveness test assertions — URL check, module reset scope, neutral token, catch comment (#3092) (146b93e9)
+- drop unused flushed var, move comment, add isDirty rationale (#3091) (f736859a)
+- bind resolver inside vi.waitFor to eliminate post-poll non-null assertion (#3090) (b03df02d)
+- add curl -si allowlist comment; pin execSync arg in gh run list test; fix double-space nit (#3089) (fd608e90)
+- de-flake windows tests (rm retries; sync process-jobs cancel test on registry leader-exit) (#3093) (b11580ae)
+
 ## [5.301.0] - 2026-10-06
 
 ### Added
