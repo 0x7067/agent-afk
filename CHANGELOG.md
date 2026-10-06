@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.300.0] - 2026-10-06
+
+### Added
+- run_in_background for managed long-running processes (#3037) (254fb1cc)
+
 ## [5.299.9] - 2026-10-06
 
 ### Fixed
