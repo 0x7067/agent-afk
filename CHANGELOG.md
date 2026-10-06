@@ -11,6 +11,24 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.301.0] - 2026-10-06
+
+### Added
+- perfect the goblin — v17 banner portrait + sharper mini sprite (#3064) (23c6001d)
+
+### Fixed
+- correct curl -si comment; add gh run list wait_for test (#3060) (ef678e0d)
+- advisory findings from #2895 — security, perf, nit cleanup (#3061) (6aa297d8)
+- close lstat-to-rm TOCTOU window in session-tmpdir cleanup (#3076) (c31f825e)
+- address advisory findings from #2883 review (#3063) (bf4383e4)
+
+### Changed
+- replace fixed sleeps with vi.waitFor polling in afk-two-way-roundtrip (#3073) (f65a3fe3)
+- harden gate-liveness tests — fake token, fail-open coverage, real workspace dir (#3062) (939d49b1)
+- direct _mergeVotes ordering tests + accurate ordering docs (#3074) (a5ee46fa)
+- cover cappedHistory and falling-start/rising-tail burn-rate paths (#3075) (2b1173bf)
+- assert pendingWindowCap via test hook in S2 (#3077) (caaa28ef)
+
 ## [5.300.0] - 2026-10-06
 
 ### Added
