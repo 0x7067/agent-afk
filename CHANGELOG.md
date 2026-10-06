@@ -11,6 +11,15 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.302.5] - 2026-10-06
+
+### Fixed
+- address advisory findings from review of #3075 (#3121) (8578aecb)
+- shorten regression test title, justify realistic variant, inline JSDoc (#3120) (1881a64f)
+- reject {content: null, edits: []} as no_change_specified (#3130) (0355ed77)
+- bash-detach stale listener, unref timer, sentinel + compose JSDoc/guard fixes (#3124) (0d2b846f)
+- address combined advisory findings from 2026-10-06 triage (#3119) (45c1993c)
+
 ## [5.302.4] - 2026-10-06
 
 ### Fixed
