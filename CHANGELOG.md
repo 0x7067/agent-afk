@@ -11,6 +11,14 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.302.6] - 2026-10-06
+
+### Fixed
+- guard history.push for silent auto-resume; add held size hint (#3122) (8d7749ce)
+- harden process-jobs — escapeXmlAttr apos, sweep tests, quota-rotation guard, trace observability, docs (#3123) (73d850d6)
+- truthful background-result delivery note so agents stop busy-polling (#3125) (68c7d0b3)
+- add containment and uid checks to EXDEV cleanup fallback (#3131) (a62bf115)
+
 ## [5.302.5] - 2026-10-06
 
 ### Fixed
