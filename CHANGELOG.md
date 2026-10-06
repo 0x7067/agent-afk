@@ -11,6 +11,12 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.299.6] - 2026-10-06
+
+### Fixed
+- override proxy-addr >=2.0.8 and source-map-js >=1.2.2 (GHSA-jqcg-44mw-7w3h, GHSA-68fv-2mgg-jv7q) (#3046) (d627aedd)
+- exhaustive switch in closureFromTrace and inline comment in normalClosure (#3031) (2e6349e7)
+
 ## [5.299.5] - 2026-10-06
 
 ### Added
