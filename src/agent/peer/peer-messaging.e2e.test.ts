@@ -34,6 +34,10 @@ afterEach(async () => {
   else delete process.env['AFK_HOME'];
   delete process.env['AFK_STATE_DIR'];
   delete process.env['AFK_FRAMEWORK_DIR'];
+  // maxRetries/retryDelay: on Windows, the inbox `delivered/acked` directory
+  // can be EBUSY immediately after the last async file op (link/copyFile) that
+  // claims a pending envelope.  Retrying with a short delay lets any lingering
+  // kernel handles drain before the rm proceeds.
   await rm(tmpHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
