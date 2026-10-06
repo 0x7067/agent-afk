@@ -11,6 +11,14 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.302.4] - 2026-10-06
+
+### Fixed
+- treat standalone content: null as absent, not a parse error (#3100) (2df47ac1)
+
+### Changed
+- unit-test applyDeferPeers branches and processJobNotifier ordering (#3099) (ac4303e7)
+
 ## [5.302.3] - 2026-10-06
 
 ### Fixed
