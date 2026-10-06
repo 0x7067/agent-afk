@@ -11,6 +11,13 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.302.7] - 2026-10-06
+
+### Fixed
+- address advisory review findings from #2857 (#3147) (be9c4ba9)
+- advisory findings from #2835, #2860, #2862 (#3143) (50042fd7)
+- address advisory findings from #2852 presence review (#3141) (3314dc73)
+
 ## [5.302.6] - 2026-10-06
 
 ### Fixed
