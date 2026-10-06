@@ -23,6 +23,8 @@ import { randomUUID } from 'node:crypto';
 import type { ResolvedResumeTarget } from '../../resume-session.js';
 import type { CliOptions } from './shared.js';
 import { recordBootWarning } from './boot-warning-recorder.js';
+import { isAutoDeliverEnabled, replCanAutoWake } from './bg-result-notifier.js';
+import { env } from '../../../config/env.js';
 
 /** Wired infra bundle returned by {@link createBootstrapInfra}. */
 export interface BootstrapInfra {
@@ -197,6 +199,14 @@ export function createBootstrapInfra(a: {
     // Background dispatch (`agent` with mode:"background") is REPL-only; the
     // registry must reach every depth of the skill/agent fork chain.
     backgroundRegistry,
+    // Idle-prompt auto-wake on bg results exists only on the TTY REPL path;
+    // the probe keeps the agent tool's delivery note truthful
+    // (agent/tools/subagent/background-delivery.ts).
+    backgroundAutoWake: replCanAutoWake,
+    // Delivery-enabled probe: false when AFK_BG_AUTO_DELIVER=0. When false,
+    // resolveBackgroundDelivery returns 'manual-join' so the model is not
+    // promised automatic delivery that the disabled notifier will never perform.
+    backgroundAutoDeliver: () => isAutoDeliverEnabled(env.AFK_BG_AUTO_DELIVER),
     // `warn` routes into bootWarnings rather than stderr: the built-in-shadow
     // warning is a safety signal and the startup screen clear eats stderr.
     // Also emits a durable `boot_warning` trace event via the shared
