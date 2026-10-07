@@ -11,6 +11,11 @@ auto-release workflow to deduplicate commits across successive runs.
 
 ## [Unreleased]
 
+## [5.302.9] - 2026-10-07
+
+### Fixed
+- session sidecar exitReason/eof advisory findings (#3145) (7402bddf)
+
 ## [5.302.8] - 2026-10-07
 
 ### Fixed
